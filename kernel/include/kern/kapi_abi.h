@@ -571,6 +571,10 @@ struct kapi_gpu_batch
 #define KAPI_GPU_WRAP_MIRROR	2
 #define KAPI_GPU_B_NOMATRIX	(1u << 17)
 #define KAPI_GPU_B_ALPHATEST(t)	(1u << 18 | ((t) & 255u) << 19)	// (v54) alpha < t / 255: not drawn
+// (gpu_render3) The batch's vertices are NOT clip positions: its program's own vertex and coordinate shaders make
+// them (from attributes: a shader generated for an emulated console's). The kernel does not look at them -- no
+// view, no clipping on the processor --: the GPU clips the triangles from the coordinate shader's clip position.
+#define KAPI_GPU_B_NOCLIP	(1u << 27)
 
 // A window, for the remote desktop (v56 win_list): its client area on the screen (x, y, w,
 // h: without the frame; the full-screen window: the whole screen), WIN_FLAG_* flags, its

@@ -132,6 +132,8 @@ static int run (int argc, char **argv)
 	if (getenv ("N3DS_MONO")) m->monoOnly = true;
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
+	if (getenv ("N3DS_SPECDUMP")) { m->specDump = fopen (getenv ("N3DS_SPECDUMP"), "wb"); m->specCheck = true; }	// (N3DS_SPECDUMP=<file>: each new shape's list, for tools/tests/v3d/picavs_test)
+	if (getenv ("N3DS_SPECCHECK")) m->specCheck = true;		// (N3DS_SPECCHECK=1: every draw's shader specialized, its list checked against the interpreter)
 	m->surveyShaders = getenv ("N3DS_SURVEY") != 0;	// (N3DS_SURVEY=1: the vertex shaders the program used, at the end)
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
 	if (const char *fontPath = argc > 4 ? argv[4] : getenv ("N3DS_FONT"))		// (or the 4th argument: where there is no environment)
@@ -314,6 +316,19 @@ static int run (int argc, char **argv)
 			b->draws = 0;
 		}
 	}
+	if (m->specCheck)
+	{
+		const auto &st = m->specStat;
+		fprintf (stderr, "the shaders specialized: %llu draws of %llu (%.1f %% of the vertices), %u shapes, %.0f operations and %.0f constants a list; not specialized: %llu for a branch on a vertex's value, %llu for an index, %llu for an instruction, %llu for room%c",
+			 (unsigned long long) (st.draws - st.failDraws), (unsigned long long) st.draws, st.vertices ? 100.0 * (double) (st.vertices - st.failVertices) / (double) st.vertices : 0.0, (unsigned) st.shapes,
+			 st.draws > st.failDraws ? (double) st.ops / (double) (st.draws - st.failDraws) : 0.0, st.draws > st.failDraws ? (double) st.consts / (double) (st.draws - st.failDraws) : 0.0,
+			 (unsigned long long) st.why[1], (unsigned long long) st.why[2], (unsigned long long) st.why[3], (unsigned long long) st.why[4], 10);
+		fprintf (stderr, "not specialized, in %% of the vertices: an index %.1f, a jump on a vertex's comparison %.1f, the end under a guard %.1f, too deep %.1f, other %.1f%c", st.vertices ? 100.0 * (double) st.whyVerts[2] / (double) st.vertices : 0.0, st.vertices ? 100.0 * (double) st.whyVerts[5] / (double) st.vertices : 0.0, st.vertices ? 100.0 * (double) st.whyVerts[6] / (double) st.vertices : 0.0, st.vertices ? 100.0 * (double) st.whyVerts[7] / (double) st.vertices : 0.0, st.vertices ? 100.0 * (double) (st.whyVerts[1] + st.whyVerts[3] + st.whyVerts[4]) / (double) st.vertices : 0.0, 10);
+		fprintf (stderr, "the lighting with its tables as broken lines against the processor's: %llu vertices, the worst colour off by %.2f of 255 on average, %.1f at most, %llu vertices off by more than 8%c", (unsigned long long) st.litChecked, st.litChecked ? st.litErrSum / (double) st.litChecked : 0.0, st.litErrMax, (unsigned long long) st.litBad, 10);
+		fprintf (stderr, "(off by more than 8: the diffuse %llu, the specular %llu, the primary alpha %llu, the secondary's %llu; with no normal %llu, no view vector %llu)%c", (unsigned long long) st.litWhere[0], (unsigned long long) st.litWhere[1], (unsigned long long) st.litWhere[2], (unsigned long long) st.litWhere[3], (unsigned long long) st.litWhere[4], (unsigned long long) st.litWhere[5], 10);
+		fprintf (stderr, "the lists against the interpreter: %llu vertices, %llu differ%c", (unsigned long long) st.checked, (unsigned long long) st.wrong, 10);
+	}
+	if (m->specDump) { fclose ((FILE *) m->specDump); m->specDump = 0; }
 	const unsigned char *rgb = screens (m);
 	const size_t rgbSize = (size_t) n3ds::TOP_W * n3ds::SCREEN_H * 2 * 3;
 	fprintf (stderr, "screens %08x (%llu VBlanks; the GPU was asked %u fills, %u transfers, %u command lists)\n", crc32 (rgb, rgbSize),

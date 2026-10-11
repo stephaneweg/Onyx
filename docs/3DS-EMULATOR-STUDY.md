@@ -815,6 +815,118 @@ So in a level the two big shares stay the lists (7 to 8.5 ms a VBlank) and the G
 shaders on the V3D (9r) for the first; for the second, cheaper generated fragment shaders and the kernel's own
 clipping ("clip": 0.6 to 2 ms a frame on the processor) are what is left to look at.
 
+## 9t. S1, the specializer (2026-10-10): a draw's shader as a straight list, checked against the interpreter
+
+`n3ds_pica.cpp`: `Spec`, `specBuild`, `specRun` (and `shaderArith`, the instructions' arithmetic shared with the
+interpreter). The interpreter runs the shader once for the draw with hooks (`specStep`, `specFlow`, `specPop`,
+`specAt`, `specEnd`) that mark every register's component "the draw's" or "the vertex's":
+
+- the draw's: the uniforms, the fixed attributes, the registers no attribute feeds, **an attribute's component
+  that has one value over the draw's vertices** (a rigid mesh's bone index and weights), and what is computed
+  from them -- worked out by that very run, they become the list's constants (given again at each draw);
+- an instruction with a vertex's operand goes into the list (its known operands as constants; a known component
+  beside a vertex's one in a register is put in place first);
+- the flow on boolean and integer uniforms, and on a comparison of the draw's values, is simply followed;
+- **a branch on a vertex's comparison**: the comparison goes into the list, and the block it decides is run under
+  a GUARD -- a per-vertex yes / no the list computes (the comparison's two results as the branch reads them, and
+  the guard around): both arms of an IF, a called block, the block a forward jump skips. Every write under a
+  guard is conditional (on a GPU: a conditional move). MOVA under a guard, a backward jump, a jump out of its
+  block, the end of the shader under a guard: not specialized;
+- an index register that is a vertex's (a skinned mesh): not specialized -- the draw stays on the processor.
+
+The list's SHAPE (a hash of its instructions, registers, guards and of the flow followed) is what a compiled
+program will be kept by: 124 shapes in Mario's first 8 000 frames, 44 in Zelda's first 2 400.
+
+**Checked** (`N3DS_SPECCHECK=1`: every draw specialized, its list run beside the interpreter on its first eight
+vertices and one in 97, the sixteen outputs compared bit for bit): *Super Mario 3D Land*, 3 856 894 vertices, **0
+differ**, 66.7 % of the vertices in specialized draws (18 % have a vertex's index, 15 % a jump not followed);
+*A Link Between Worlds*, 609 495 vertices, **0 differ**, 37.7 % specialized (16 % an index, 46 % a jump not
+followed -- the next thing to look at). A list is 53 to 67 operations and 45 to 52 constants on average.
+
+**The jumps, since** (the same day): the jump not followed was one shape, read in Zelda's code -- an "if ... else"
+written with two jumps: `JMPC else; ...; JMPU end; else: ...; end:`. A jumped-over block whose LAST instruction is a
+taken jump further on is the "if" part; what that jump skips is the "else", run under the other guard (both guards
+are made at the first jump, from the comparison's results as they are then), up to where it lands. Any other taken
+jump under a guard: not specialized. **Super Mario 3D Land: 82.0 % of the vertices, 4 117 066 checked, 0 differ; A
+Link Between Worlds: 83.9 %, 1 048 163 checked, 0 differ.** What is left (18 % and 16 %) is the vertex's index
+register alone: the skinned meshes, which stay on the processor. 132 and 54 shapes; 69 and 86 operations a list.
+
+## 9u. S2, the list as a V3D vertex shader (2026-10-11): `user/Libs/v3d/picavs`
+
+`picavs::build` makes a QPU program (V3D 4.2 or 7.1, through qpu.h) from a specialized list -- the core's `Spec`
+copied into plain structures by `specList` (the library knows nothing of the core). Three passes: the list opened
+into scalar values (a register's component is "its current value": a MOV costs nothing, a guarded write is a
+choice between the new value and the old; a comparison and a guard are masks); what the asked outputs do not
+need dropped (a coordinate shader is the position's chain alone); the rest written out in order, each value in a
+register of the file from where it is made to its last use, an output stored in the VPM as soon as it is made.
+It tells the caller the VPM inputs it reads (input registers' components, in order) and the uniform stream it
+wants (the list's constants' components and the view's ten values, in order). Outputs: raw components of the
+shader's output registers, `1 - t`, or the position as a vertex shader gives it (Xs Ys Zs 1/Wc) or a coordinate
+shader (Xc Yc Zc Wc Xs Ys). A list with more values alive at once than the file holds is refused.
+
+What the QPU asked for: a register of the file is not read by the instruction right after its write (a nop is put
+in: many -- to be packed later), the SFU's result three instructions on, a VPM read's too, a VPM index above 15
+counted up in an accumulator, a comparison as `fcmp` + a conditional move of -1, a choice as a move then a
+conditional move under the guard's flag.
+
+**Checked** (`tools/tests/v3d/picavs_test.cpp`, in `run_qpu_test.sh`): random lists (arithmetic, shuffled and
+negated operands, comparisons, guards one inside another, guarded writes) built as a vertex and as a coordinate
+shader, passed through the instruction restrictions (qpulib), run in the QPU simulator on random vertices against
+`picavs_ref.h`: 8 994 programs for V3D 4.2 and 2 967 for 7.1, none wrong. **And the games' own lists**
+(`N3DS_SPECDUMP=<file>` in n3dstest writes each new shape with eight vertices and the interpreter's outputs;
+`PICAVS_FILE=<file>` runs them -- not in the repository: they come from a game): *Super Mario 3D Land* **124 of
+132 built, all right**, 8 refused for registers; *A Link Between Worlds* **44 of 54, all right**, 10 refused.
+A program with all sixteen outputs is ~650 instructions (22 registers at most), the position alone 190 to 250.
+
+Not done here: nothing draws with these programs yet (S3 the kernel's clipping, S4 the lighting, S5 the
+recorder and the Pi); the refused lists (which vertices they are is not counted); the PICA's "0 x infinity = 0".
+
+## 9v. S3, the kernel (2026-10-11): a batch with its own vertex shader is clipped by the V3D
+
+`gpu_render3` clips every triangle on the processor (the near plane, the guard band: `ClipFrame3`,
+`ClipInPlace`) -- it needs clip positions in the vertices. A batch whose program has a generated vertex shader
+gives attributes instead. **`KAPI_GPU_B_NOCLIP`** (bit 27 of a batch's flags, `kern/kapi_abi.h`): the kernel
+leaves that batch's vertices alone (copied whole, or one run in place), and the V3D clips from the coordinate
+shader's clip position (the shader record already asks for it; the Z planes are set).
+
+**Tried on the Pi 4** (`tools/tests/v3d/vsclip_pi.cpp`, built by hand as an Onyx program; a kernel built on the
+PC and put back after): five triangles -- inside, 40 times wider than the view, one vertex behind the eye,
+through the near and the far planes, uneven w -- drawn with the stock shaders the usual way and with the flag:
+**65 109 pixels drawn each way, 0 of 65 536 differ.** So the V3D's own clipping can be trusted for this.
+
+The flag is in the sources only: **the kernel is not published** (it goes with S5, when something uses it; the
+Pi 5's kernel is to be built then too).
+
+## 9w. S4, the lighting in the generated vertex shader (2026-10-11)
+
+On the host GPU's frames the core works the PICA's fragment lighting out at the vertices, on the processor
+(`lightVertices`), and hands its two colours on as varyings. A draw whose vertex shader runs on the V3D must do
+that there too: **`picavs::build` takes a `Lighting`** and two new writes, `W_LITP` and `W_LITS` (the primary and
+the secondary colour's components). The program then goes on from the shader's outputs: the normal from the
+quaternion, the view vector, each light's direction and half-way vector, the dot products the configuration names,
+the sums, the alphas from the Fresnel table; two-sided lights, the highlights' clamp, the distance attenuation.
+Its values come as uniforms (`U_LIGHT`: the colours, the lights' positions, the tables).
+
+**A table is not looked up** (a vertex shader has no texture here): the core gives each one as a **broken line**
+-- `y = a + b x + sum c[j] max (x - t[j], 0)` over `LUT_KNOTS` = 8 knots, the scale folded in -- fitted by
+`lutFit` (the 256 steps cut, piece after piece, where a straight piece is furthest from them). A vector of
+length 0 stays 0, as on the processor (the square kept above 1e-30 under the inverse square root: `U_TINY`).
+
+**Checked.** The generator in the simulator (`picavs_test.cpp`, in `run_qpu_test.sh`): random lists with a random
+lighting (1 or 2 lights, every table on or off, each input), against `picavs_ref.h`'s `refLight` -- V3D 4.2 and
+7.1, none wrong (a comparison that falls the other way on a rounding is allowed on 3 outputs of a run). **And the
+broken lines against the processor's lighting in the games** (`N3DS_SPECCHECK=1`: each checked vertex lit both
+ways): *Super Mario 3D Land*, 2 811 903 vertices up to the first level -- the worst colour component off by
+**0.63 of 255 on average, 4.3 at most**; *A Link Between Worlds*, 857 288 vertices -- **0.89 on average, 2.8 at
+most**. (With 6 knots and no care for the null vectors: 1.7 on average, up to 119, 2.7 % of Mario's vertices off
+by more than 8 -- half of them vertices with no normal and no view vector, the rest the specular and the Fresnel
+alpha, steep tables.)
+
+Not done here: nothing draws with it yet -- **S5**: the recorder gives a translatable draw's raw attributes with
+the generated vertex and coordinate shaders (`KAPI_GPU_B_NOCLIP`), the kernel published for both boards, the
+speed measured on the Pi. The lighting makes a program longer (more values alive at once): how many of the
+games' lists are then refused for registers is to be counted in S5.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

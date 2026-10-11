@@ -48,6 +48,8 @@
 #include <string.h>
 #include "n3ds/n3ds.h"
 #include "v3d/picatev.h"
+#include "v3d/picavs.h"
+#include "v3d/picavs_ref.h"		// (the tests' check of the lighting; plain arithmetic)
 
 namespace n3ds {
 
@@ -120,6 +122,7 @@ struct Pica
 	struct Job *jobs; u32 jobCount;			// the triangles waiting to be rasterized
 	u32 bandNext, bandCount;			// the bands of the flush under way: the next one to take, how many
 	u32 dbgIn, dbgClipped, dbgBoxed, dbgDrawn;	// (the trace: what became of the last draw's triangles)
+	struct Spec *spec;						// (the specialization being made by the running shader, or 0)
 	Machine::ShaderUse *use;				// (the survey's entry the running shader is counted in, or 0)
 	bool guarded;					// VRAM pages are kept from the program (picaGuestTouch gives them back)
 	bool busy; u64 busySince;			// the queue is being rasterized aside (since when, in microseconds)
@@ -257,6 +260,40 @@ static bool decReady (Pica *p, bool all)
 }
 
 // (stepsOut: the instructions run are added there; badOp: an instruction it does not know is left there)
+// An arithmetic instruction's result (the whole vector: the caller keeps the components it writes) -> false: not one.
+static inline bool shaderArith (u32 op, u32 shape, V4 s1, V4 s2, V4 s3, V4 &v)
+{
+	if (shape == 2) { v = mulz (s1, s2) + s3; return true; }
+	switch (op)
+	{
+	case 0x00: v = s1 + s2; break;											// ADD
+	case 0x01: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2]; v = (V4) { f, f, f, f }; break; }		// DP3
+	case 0x02: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + m[3]; v = (V4) { f, f, f, f }; break; }	// DP4
+	case 0x03: case 0x18: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + s2[3]; v = (V4) { f, f, f, f }; break; }	// DPH
+	case 0x04: case 0x19: v = (V4) { 1.0f, s1[1] * s2[1], s1[2], s2[3] }; break;					// DST
+	case 0x05: { const float f = exp2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// EX2
+	case 0x06: { const float f = log2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// LG2
+	case 0x08: v = mulz (s1, s2); break;										// MUL
+	case 0x09: case 0x1A: v = (V4) ((s1 >= s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SGE
+	case 0x0A: case 0x1B: v = (V4) ((s1 < s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SLT
+	case 0x0B: v = (V4) { floorf (s1[0]), floorf (s1[1]), floorf (s1[2]), floorf (s1[3]) }; break;			// FLR
+	case 0x0C: { const VI c = s1 > s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MAX
+	case 0x0D: { const VI c = s1 < s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MIN
+	case 0x0E: { const float f = 1.0f / s1[0]; v = (V4) { f, f, f, f }; break; }					// RCP
+	case 0x0F: { const float f = 1.0f / sqrtf (s1[0]); v = (V4) { f, f, f, f }; break; }				// RSQ
+	case 0x13: v = s1; break;											// MOV
+	default: return false;
+	}
+	return true;
+}
+
+struct Spec;
+static int specFlow (Pica *p, const struct Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth);
+static void specPop (Pica *p, int depth, u32 endPc, u32 retPc);
+static void specAt (Pica *p, u32 pc, int depth);
+static void specEnd (Pica *p);
+static void specStep (Pica *p, const struct Shader &s, const struct ShaderIns &I, u32 pcOf, u32 r1, u32 r2, u32 r3, V4 s1, V4 s2);
+
 static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 {
 	if (!p->dec || p->decDirty) { if (!decReady (p, false)) return; }
@@ -272,9 +309,10 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		{
 			Frame &f = stack[depth - 1];
 			if (f.repeat) { f.repeat--; s.aL += (int) f.inc; pc = f.loop; }
-			else { pc = f.ret; depth--; }
+			else { const u32 was = pc; pc = f.ret; depth--; if (p->spec) specPop (p, depth, was, pc); }
 		}
 		if (pc >= CODE_MAX) return;
+		if (p->spec) specAt (p, pc, depth);
 		if (!p->decValid[pc]) { decodeIns (p, pc, p->dec[pc]); p->decValid[pc] = 1; }
 		const ShaderIns &I = p->dec[pc];
 		const u32 ins = p->code[pc++];
@@ -292,7 +330,7 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		}
 		if (I.shape == 0)
 		{
-			if (op == 0x22) return;						// END
+			if (op == 0x22) { if (p->spec) specEnd (p); return; }		// END
 			if (op == 0x21 || op == 0x20 || op == 0x2A || op == 0x2B || op == 0x23) continue;	// NOP, BREAK, EMIT, SETEMIT (geometry shaders), BREAKC
 			// flow: CALL*, IF*, LOOP, JMP*
 			const u32 dst = ins >> 10 & 0xFFF, num = ins & 0xFF;
@@ -303,6 +341,10 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 				switch (ins >> 22 & 3) { case 0: cond = x || y; break; case 1: cond = x && y; break; case 2: cond = x; break; default: cond = y; break; }
 			}
 			else if (op == 0x26 || op == 0x27 || op == 0x2D) cond = (p->bu >> (ins >> 22 & 15) & 1) != 0;	// ...U: on a boolean uniform
+			const int both = p->spec ? specFlow (p, s, op, ins, pc, cond, depth) : 0;
+			if (both == 1) cond = true;
+			if (both == 3) continue;					// (a jump on a vertex's comparison: its block is run, guarded)
+			if (both == 2) { stack[depth++] = { dst + num, dst + num, 0, 0, 0 }; stack[depth++] = { dst, dst, 0, 0, 0 }; continue; }	// [pc, dst) then [dst, dst + num)
 			switch (op)
 			{
 			case 0x24: case 0x25: case 0x26:			// CALL: num instructions at dst, then back
@@ -334,28 +376,11 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 		}
 		const V4 s1 = operand (srcReg (p, s, r1 & 0x7F), I.sh[0], I.neg[0]);
 		const V4 s2 = operand (srcReg (p, s, r2 & 0x7F), I.sh[1], I.neg[1]);
+		if (p->spec) specStep (p, s, I, pc - 1, r1 & 0x7F, r2 & 0x7F, r3 & 0x7F, s1, s2);
 		V4 v;
-		if (I.shape == 2) v = mulz (s1, s2) + operand (srcReg (p, s, r3 & 0x7F), I.sh[2], I.neg[2]);
-		else switch (op)
+		if (op == 0x12) { if (I.writes & 8) s.a[0] = (int) s1[0]; if (I.writes & 4) s.a[1] = (int) s1[1]; continue; }		// MOVA
+		if (op == 0x2E || op == 0x2F)											// CMP
 		{
-		case 0x00: v = s1 + s2; break;											// ADD
-		case 0x01: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2]; v = (V4) { f, f, f, f }; break; }		// DP3
-		case 0x02: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + m[3]; v = (V4) { f, f, f, f }; break; }	// DP4
-		case 0x03: case 0x18: { const V4 m = mulz (s1, s2); const float f = m[0] + m[1] + m[2] + s2[3]; v = (V4) { f, f, f, f }; break; }	// DPH
-		case 0x04: case 0x19: v = (V4) { 1.0f, s1[1] * s2[1], s1[2], s2[3] }; break;					// DST
-		case 0x05: { const float f = exp2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// EX2
-		case 0x06: { const float f = log2f (s1[0]); v = (V4) { f, f, f, f }; break; }					// LG2
-		case 0x08: v = mulz (s1, s2); break;										// MUL
-		case 0x09: case 0x1A: v = (V4) ((s1 >= s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SGE
-		case 0x0A: case 0x1B: v = (V4) ((s1 < s2) & (VI) (V4) { 1.0f, 1.0f, 1.0f, 1.0f }); break;			// SLT
-		case 0x0B: v = (V4) { floorf (s1[0]), floorf (s1[1]), floorf (s1[2]), floorf (s1[3]) }; break;			// FLR
-		case 0x0C: { const VI c = s1 > s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MAX
-		case 0x0D: { const VI c = s1 < s2; v = (V4) (((VI) s1 & c) | ((VI) s2 & ~c)); break; }				// MIN
-		case 0x0E: { const float f = 1.0f / s1[0]; v = (V4) { f, f, f, f }; break; }					// RCP
-		case 0x0F: { const float f = 1.0f / sqrtf (s1[0]); v = (V4) { f, f, f, f }; break; }				// RSQ
-		case 0x12: if (I.writes & 8) s.a[0] = (int) s1[0]; if (I.writes & 4) s.a[1] = (int) s1[1]; continue;		// MOVA
-		case 0x13: v = s1; break;											// MOV
-		case 0x2E: case 0x2F:												// CMP
 			for (int i = 0; i < 2; i++)
 			{
 				const u32 c = i == 0 ? ins >> 24 & 7 : ins >> 21 & 7;
@@ -363,14 +388,336 @@ static void runShader (Pica *p, Shader &s, u32 entry, u64 &stepsOut, u32 &badOp)
 				s.cmp[i] = c == 0 ? x == y : c == 1 ? x != y : c == 2 ? x < y : c == 3 ? x <= y : c == 4 ? x > y : c == 5 ? x >= y : true;
 			}
 			continue;
-		default: badOp = op | 0x100; continue;
 		}
+		if (!shaderArith (op, I.shape, s1, s2, I.shape == 2 ? operand (srcReg (p, s, r3 & 0x7F), I.sh[2], I.neg[2]) : s1, v)) { badOp = op | 0x100; continue; }
 		float *dst = I.d < 0x10 ? s.out[I.d] : s.reg[I.d];
 		V4 old;
 		memcpy (&old, dst, sizeof old);
 		v = (V4) (((VI) v & I.mask) | ((VI) old & ~I.mask));
 		memcpy (dst, &v, sizeof v);
 	}
+}
+
+// ---- a shader specialized for a draw -------------------------------------------------------------------------------
+// What a GPU's vertex shader can be made from (the study's 9r, S1): the shader is run ONCE for the draw with every
+// value marked "the draw's" (known: uniforms, constants, fixed attributes, what is computed from them) or "the
+// vertex's". Its flow and its index registers must be the draw's -- else the draw is not specialized --; what
+// remains is a straight list of the instructions that touch a vertex's values, the draw's values becoming constants
+// (given again at each draw; the list's SHAPE -- which instructions, on which registers -- is what a compiled
+// program is kept by). specRun runs the list on a vertex: the check against the interpreter.
+struct SpecOp
+{
+	u8 op, shape, d, writes;					// (op 0xFE: constants put into a register's components;
+	bool dOut;							//  0xFD: a comparison's two results; 0xFC: a guard made; 0xFB: a result set)
+	u8 guard;							// the guard it is done under (0: always)
+	u8 kind[3], reg[3]; u16 slot[3];				// an operand: a register (0) or a constant (1: slot)
+	VB sh[3]; VI neg[3]; VI mask;
+};
+struct Spec
+{
+	enum { OPS_MAX = 768, CONSTS_MAX = 1024, GUARDS_MAX = 32, WHY_CMP = 1, WHY_INDEX, WHY_OP, WHY_ROOM, WHY_JUMP, WHY_END, WHY_DEEP };
+	u8 known[32], mat[32], outKnown[16], outMat[16];		// per register: the components (x = 8) known; of those, the ones the list has put in place
+	bool cmpKnown[2], cmpMat[2], aKnown[2];
+	// A branch on a vertex's comparison: both arms are done, each under a guard -- a per-vertex yes / no the list
+	// works out (the GPU: a conditional write). gs: the guards of the blocks being run, by the interpreter's depth.
+	struct { int depth, until; u8 slot, other; } gs[8]; int ng; u32 nGuards;	// (until: a jumped-over block's end, or -1: the interpreter's block)
+	SpecOp ops[OPS_MAX]; u32 nOps;
+	float consts[CONSTS_MAX][4]; u32 nConsts;
+	u64 shape; int fail;
+};
+static inline void specNeeds (u32 op, u32 shape, u32 writes, u32 need[3])
+{
+	need[0] = need[1] = need[2] = 0;
+	if (shape == 2) { need[0] = need[1] = need[2] = writes; return; }
+	switch (op)
+	{
+	case 0x01: need[0] = need[1] = 0xE; break;			// DP3
+	case 0x02: case 0x04: case 0x19: need[0] = need[1] = 0xF; break;	// DP4, DST
+	case 0x03: case 0x18: need[0] = 0xE; need[1] = 0xF; break;	// DPH
+	case 0x05: case 0x06: case 0x0E: case 0x0F: need[0] = 8; break;	// EX2, LG2, RCP, RSQ: of x
+	case 0x0B: case 0x13: need[0] = writes; break;			// FLR, MOV
+	case 0x12: need[0] = writes & 0xC; break;			// MOVA
+	case 0x2E: case 0x2F: need[0] = need[1] = 0xC; break;		// CMP: x and y
+	default: need[0] = need[1] = writes; break;
+	}
+}
+static inline u8 specGuardNow (const Spec &sp) { return sp.ng ? sp.gs[sp.ng - 1].slot : 0; }
+static void specFlagsPut (Spec &sp, const Shader &s, int i)		// a known result the list has not got yet
+{
+	if (!sp.cmpKnown[i] || sp.cmpMat[i] || sp.nOps >= Spec::OPS_MAX) return;
+	SpecOp m;
+	memset (&m, 0, sizeof m);
+	m.op = 0xFB; m.d = (u8) i; m.reg[0] = s.cmp[i] ? 1 : 0;
+	sp.ops[sp.nOps++] = m; sp.cmpMat[i] = true;
+	sp.shape = (sp.shape ^ ((u64) 0xFB << 40 | (u64) i << 8 | m.reg[0])) * 1099511628211ull;
+}
+static u8 specGuardMake (Spec &sp, u32 ins, bool negate)
+{
+	if (sp.nGuards + 1 >= Spec::GUARDS_MAX || sp.nOps >= Spec::OPS_MAX) { sp.fail = Spec::WHY_ROOM; return 0; }
+	SpecOp g;
+	memset (&g, 0, sizeof g);
+	g.op = 0xFC; g.d = (u8) ++sp.nGuards; g.reg[0] = specGuardNow (sp); g.reg[1] = (u8) (ins >> 22 & 3); g.reg[2] = (u8) (ins >> 24 & 3); g.shape = negate ? 1 : 0;
+	sp.ops[sp.nOps++] = g;
+	sp.shape = (sp.shape ^ ((u64) 0xFC << 40 | (u64) g.reg[0] << 24 | (u64) g.reg[1] << 16 | (u64) g.reg[2] << 8 | g.shape)) * 1099511628211ull;
+	return g.d;
+}
+// A flow instruction. -> 0: as the interpreter decides; 1: the block is to be run (a call on a vertex's comparison,
+// under its guard); 2: both arms of an IF are to be run, each under its guard. `depth`: the interpreter's, before.
+static int specFlow (Pica *p, const Shader &s, u32 op, u32 ins, u32 pc, bool cond, int depth)
+{
+	Spec &sp = *p->spec;
+	if (sp.fail) return 0;
+	if (op == 0x25 || op == 0x28 || op == 0x2C)			// on the comparison's results
+	{
+		const u32 mode = ins >> 22 & 3;
+		const bool known = !((mode != 3 && !sp.cmpKnown[0]) || (mode != 2 && !sp.cmpKnown[1]));
+		if (!known)
+		{
+			if (op == 0x2C)					// a jump forward over a block: the block, under the opposite guard
+			{
+				const u32 to = ins >> 10 & 0xFFF;
+				if (to <= pc || sp.ng + 1 > 8) { sp.fail = Spec::WHY_JUMP; p->m->note ("spec: jump %03x -> %03x %s (depth %d, %d guards)", (unsigned) (pc - 1), (unsigned) to, to <= pc ? "backward" : "too many guards", depth, sp.ng); return 0; }
+				specFlagsPut (sp, s, 0); specFlagsPut (sp, s, 1);
+				sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | 0x33)) * 1099511628211ull;
+				const u8 g = specGuardMake (sp, ins, true);		// (the block is run when the jump is not taken)
+				const u8 gOther = specGuardMake (sp, ins, false);	// (... and, should the block end by jumping over an "else" part, that part when it is)
+				sp.gs[sp.ng].depth = depth; sp.gs[sp.ng].until = (int) to; sp.gs[sp.ng].other = gOther; sp.gs[sp.ng++].slot = g;
+				return 3;
+			}
+			if (sp.ng + 2 > 8 || depth + 2 > 16) { sp.fail = Spec::WHY_DEEP; return 0; }
+			specFlagsPut (sp, s, 0); specFlagsPut (sp, s, 1);
+			sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | 0x55)) * 1099511628211ull;
+			if (op == 0x25) { const u8 g = specGuardMake (sp, ins, false); sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = g; return 1; }
+			const u8 gThen = specGuardMake (sp, ins, false), gElse = specGuardMake (sp, ins, true);
+			sp.gs[sp.ng].depth = depth + 1; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = gElse;
+			sp.gs[sp.ng].depth = depth + 2; sp.gs[sp.ng].until = -1; sp.gs[sp.ng].other = 0; sp.gs[sp.ng++].slot = gThen;
+			return 2;
+		}
+	}
+	sp.shape = (sp.shape ^ ((u64) pc << 8 | (u64) op << 1 | (cond ? 1 : 0))) * 1099511628211ull;
+	// A jump that IS taken (its condition the draw's) inside guarded blocks. The one shape followed: the last
+	// instruction of a jumped-over block, jumping further on -- "if ... else ..." written with jumps: the part it
+	// skips is the "else", run under the other guard, up to where it lands.
+	if ((op == 0x2C && cond) || (op == 0x2D && cond == !(ins & 1)))
+	{
+		const u32 to = ins >> 10 & 0xFFF;
+		if (sp.ng)
+		{
+			auto &g = sp.gs[sp.ng - 1];
+			if (g.until == (int) pc && g.depth == depth && g.other && to > pc) { g.slot = g.other; g.other = 0; g.until = (int) to; return 3; }
+			sp.fail = Spec::WHY_JUMP;
+		}
+	}
+	return 0;
+}
+static void specPop (Pica *p, int depth, u32 endPc, u32 retPc)	// the interpreter left a block (at endPc, for retPc): its guards with it
+{
+	Spec &sp = *p->spec;
+	while (sp.ng && sp.gs[sp.ng - 1].depth > depth) { if (sp.gs[sp.ng - 1].until >= 0 && sp.gs[sp.ng - 1].until != (int) endPc && sp.gs[sp.ng - 1].until != (int) retPc && !sp.fail) { sp.fail = Spec::WHY_JUMP; p->m->note ("spec: a jump to %03x leaves its block", (unsigned) sp.gs[sp.ng - 1].until); } sp.ng--; }	// (a jump to the block's very end, or to where the block goes on -- past an IF's other arm --, ends with it; one elsewhere is not followed)
+}
+static void specAt (Pica *p, u32 pc, int depth)				// the instruction a jumped-over block ends at
+{
+	Spec &sp = *p->spec;
+	while (sp.ng && sp.gs[sp.ng - 1].until == (int) pc && sp.gs[sp.ng - 1].depth == depth) sp.ng--;
+}
+static void specStep (Pica *p, const Shader &s, const ShaderIns &I, u32 pcOf, u32 r1, u32 r2, u32 r3, V4 s1, V4 s2)
+{
+	Spec &sp = *p->spec;
+	if (sp.fail) return;
+	const u32 op = I.op, regs[3] = { r1, r2, r3 };
+	if ((I.idx == 1 && !sp.aKnown[0]) || (I.idx == 2 && !sp.aKnown[1])) { sp.fail = Spec::WHY_INDEX; return; }
+	u32 need[3];
+	specNeeds (op, I.shape, I.writes, need);
+	// each operand: the source components it needs, known?
+	u32 srcNeed[3] = { 0, 0, 0 }; bool known[3] = { true, true, true };
+	for (int k = 0; k < 3; k++)
+		for (int i = 0; i < 4; i++)
+			if (need[k] & (8u >> i))
+			{
+				const u32 c = I.sh[k][4 * i] / 4;
+				srcNeed[k] |= 8u >> c;
+				if (regs[k] < 0x20 && !(sp.known[regs[k]] & (8u >> c))) known[k] = false;
+			}
+	sp.shape = (sp.shape ^ ((u64) op << 40 | (u64) I.d << 32 | (u64) I.writes << 24 | (u64) r1 << 16 | (u64) r2 << 8 | r3)) * 1099511628211ull;
+	const u8 guard = specGuardNow (sp);
+	if (op == 0x12)							// MOVA
+	{
+		if (I.writes & 8) sp.aKnown[0] = known[0] && !guard;
+		if (I.writes & 4) sp.aKnown[1] = known[0] && !guard;
+		return;
+	}
+	if (op == 0x2E || op == 0x2F)					// CMP: x's result, y's
+	{
+		bool k[2];
+		for (int i = 0; i < 2; i++)
+		{
+			k[i] = true;
+			for (int o = 0; o < 2; o++) { const u32 c = I.sh[o][4 * i] / 4; if (regs[o] < 0x20 && !(sp.known[regs[o]] & (8u >> c))) k[i] = false; }
+		}
+		if (k[0] && k[1] && !guard) { sp.cmpKnown[0] = sp.cmpKnown[1] = true; sp.cmpMat[0] = sp.cmpMat[1] = false; return; }
+		// a vertex's (or done under a guard): the comparison goes into the list
+		if (sp.nOps + 4 > Spec::OPS_MAX || sp.nConsts + 4 > Spec::CONSTS_MAX) { sp.fail = Spec::WHY_ROOM; return; }
+		if (guard) { specFlagsPut (sp, s, 0); specFlagsPut (sp, s, 1); }	// (what the results stay when the guard says no)
+		SpecOp o;
+		memset (&o, 0, sizeof o);
+		o.op = 0xFD; o.guard = guard; o.slot[2] = (u16) (p->code[pcOf] >> 21 & 0x3F);
+		const V4 val[2] = { s1, s2 };
+		for (int q = 0; q < 2; q++)
+		{
+			o.sh[q] = I.sh[q]; o.neg[q] = I.neg[q];
+			if (known[q]) { o.kind[q] = 1; o.slot[q] = (u16) sp.nConsts; memcpy (sp.consts[sp.nConsts++], &val[q], sizeof (float) * 4); continue; }
+			o.kind[q] = 0; o.reg[q] = (u8) regs[q];
+			const u8 put = (u8) (srcNeed[q] & sp.known[regs[q]] & ~sp.mat[regs[q]]);
+			if (put)
+			{
+				SpecOp m;
+				memset (&m, 0, sizeof m);
+				m.op = 0xFE; m.d = (u8) regs[q]; m.writes = put; m.slot[0] = (u16) sp.nConsts;
+				for (int e = 0; e < 4; e++) m.mask[e] = (put & (8u >> e)) ? -1 : 0;
+				memcpy (sp.consts[sp.nConsts++], s.reg[regs[q]], sizeof (float) * 4);
+				sp.ops[sp.nOps++] = m; sp.mat[regs[q]] |= put;
+				sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) regs[q] << 8 | put)) * 1099511628211ull;
+			}
+		}
+		sp.ops[sp.nOps++] = o;
+		sp.cmpKnown[0] = sp.cmpKnown[1] = false;
+		sp.shape = sp.shape * 31 + 3 + guard * 64 + (known[0] ? 4 : 0) + (known[1] ? 8 : 0);
+		return;
+	}
+	u8 &dk = I.d < 0x10 ? sp.outKnown[I.d] : sp.known[I.d], &dm = I.d < 0x10 ? sp.outMat[I.d] : sp.mat[I.d];
+	const int nOperands = I.shape == 2 ? 3 : need[1] ? 2 : 1;
+	bool all = true;
+	for (int k = 0; k < nOperands; k++) all = all && known[k];
+	if (all && !guard) { dk |= I.writes; dm &= (u8) ~I.writes; sp.shape = sp.shape * 31 + 1; return; }	// (the draw's: worked out by this very run)
+	// the vertex's: the instruction goes into the list
+	if (sp.nOps + 4 > Spec::OPS_MAX || sp.nConsts + 4 > Spec::CONSTS_MAX) { sp.fail = Spec::WHY_ROOM; return; }
+	SpecOp o;
+	memset (&o, 0, sizeof o);
+	o.op = (u8) op; o.shape = I.shape; o.d = I.d; o.dOut = I.d < 0x10; o.writes = I.writes; o.mask = I.mask; o.guard = guard;
+	if (guard)							// (what it keeps when the guard says no must be there)
+	{
+		const u8 put = (u8) (I.writes & dk & ~dm);
+		if (put)
+		{
+			SpecOp m;
+			memset (&m, 0, sizeof m);
+			m.op = 0xFE; m.d = I.d; m.dOut = I.d < 0x10; m.writes = put; m.slot[0] = (u16) sp.nConsts;
+			for (int e = 0; e < 4; e++) m.mask[e] = (put & (8u >> e)) ? -1 : 0;
+			memcpy (sp.consts[sp.nConsts++], I.d < 0x10 ? s.out[I.d] : s.reg[I.d], sizeof (float) * 4);
+			sp.ops[sp.nOps++] = m; dm |= put;
+			sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) I.d << 8 | put | (I.d < 0x10 ? 0x80 : 0))) * 1099511628211ull;
+		}
+	}
+	const V4 val[3] = { s1, s2, I.shape == 2 ? operand (srcReg (p, s, r3), I.sh[2], I.neg[2]) : s1 };
+	for (int k = 0; k < nOperands; k++)
+	{
+		o.sh[k] = I.sh[k]; o.neg[k] = I.neg[k];
+		if (known[k]) { o.kind[k] = 1; o.slot[k] = (u16) sp.nConsts; memcpy (sp.consts[sp.nConsts++], &val[k], sizeof (float) * 4); continue; }
+		o.kind[k] = 0; o.reg[k] = (u8) regs[k];
+		const u8 put = (u8) (srcNeed[k] & sp.known[regs[k]] & ~sp.mat[regs[k]]);	// (known components beside a vertex's: put in place first)
+		if (put)
+		{
+			SpecOp m;
+			memset (&m, 0, sizeof m);
+			m.op = 0xFE; m.d = (u8) regs[k]; m.dOut = false; m.writes = put; m.slot[0] = (u16) sp.nConsts;
+			for (int i = 0; i < 4; i++) m.mask[i] = (put & (8u >> i)) ? -1 : 0;
+			memcpy (sp.consts[sp.nConsts++], s.reg[regs[k]], sizeof (float) * 4);
+			sp.ops[sp.nOps++] = m; sp.mat[regs[k]] |= put;
+			sp.shape = (sp.shape ^ ((u64) 0xFE << 40 | (u64) regs[k] << 8 | put)) * 1099511628211ull;
+		}
+	}
+	sp.ops[sp.nOps++] = o;
+	dk &= (u8) ~I.writes;
+	sp.shape = sp.shape * 31 + 2 + guard * 64 + (known[0] ? 4 : 0) + (known[1] ? 8 : 0) + (known[2] ? 16 : 0);
+}
+static void specEnd (Pica *p) { if (p->spec->ng && !p->spec->fail) p->spec->fail = Spec::WHY_END; }	// (the shader ends inside a guarded block)
+// The list run on a vertex: regs[0..15] hold its attributes (the fixed ones need not be there), the outputs come out.
+static void specRun (const Spec &sp, float regs[32][4], float out[16][4])
+{
+	bool flag[2] = { false, false }, gv[Spec::GUARDS_MAX];
+	gv[0] = true;
+	for (u32 n = 0; n < sp.nOps; n++)
+	{
+		const SpecOp &o = sp.ops[n];
+		if (o.op == 0xFC)						// a guard: its parent's, and the comparison's results as the branch reads them
+		{
+			const bool x = flag[0] == ((o.reg[2] >> 1 & 1) != 0), y = flag[1] == ((o.reg[2] & 1) != 0);
+			bool c;
+			switch (o.reg[1]) { case 0: c = x || y; break; case 1: c = x && y; break; case 2: c = x; break; default: c = y; break; }
+			gv[o.d] = gv[o.reg[0]] && (o.shape ? !c : c);
+			continue;
+		}
+		if (o.op == 0xFB) { flag[o.d] = o.reg[0] != 0; continue; }
+		if (o.guard && !gv[o.guard]) continue;
+		V4 v, old, in[3];
+		if (o.op != 0xFE)
+			for (int k = 0; k < 3; k++)
+			{
+				if (o.kind[k]) memcpy (&in[k], sp.consts[o.slot[k]], sizeof (V4));
+				else in[k] = operand (regs[o.reg[k]], o.sh[k], o.neg[k]);
+			}
+		if (o.op == 0xFD)
+		{
+			for (int i = 0; i < 2; i++)
+			{
+				const u32 c = i == 0 ? o.slot[2] >> 3 & 7 : o.slot[2] & 7;
+				const float x = in[0][i], y = in[1][i];
+				flag[i] = c == 0 ? x == y : c == 1 ? x != y : c == 2 ? x < y : c == 3 ? x <= y : c == 4 ? x > y : c == 5 ? x >= y : true;
+			}
+			continue;
+		}
+		float *dst = o.dOut ? out[o.d] : regs[o.d];
+		memcpy (&old, dst, sizeof old);
+		if (o.op == 0xFE) memcpy (&v, sp.consts[o.slot[0]], sizeof v);
+		else if (!shaderArith (o.op, o.shape, in[0], in[1], in[2], v)) continue;
+		v = (V4) (((VI) v & o.mask) | ((VI) old & ~o.mask));
+		memcpy (dst, &v, sizeof v);
+	}
+}
+// The list as the GPU's shader generator takes it (user/Libs/v3d/picavs.h).
+static void specList (const Spec &sp, picavs::Op *out)
+{
+	for (u32 n = 0; n < sp.nOps; n++)
+	{
+		const SpecOp &o = sp.ops[n];
+		picavs::Op &d = out[n];
+		memset (&d, 0, sizeof d);
+		d.op = o.op; d.shape = o.shape; d.d = o.d; d.writes = o.writes; d.dOut = o.dOut ? 1 : 0; d.guard = o.guard;
+		for (int k = 0; k < 3; k++)
+		{
+			d.kind[k] = o.kind[k]; d.reg[k] = o.reg[k]; d.slot[k] = o.slot[k];
+			for (int i = 0; i < 4; i++) d.sw[k][i] = (u8) (o.sh[k][4 * i] / 4);
+			d.neg[k] = o.neg[k][0] != 0;
+		}
+	}
+}
+// A draw's shader specialized: inKnown[r] = the components of input register r that are the draw's (a fixed
+// attribute, a register no attribute feeds); `s` holds a vertex's inputs (the draw's are read from it).
+static bool specBuild (Pica *p, Spec &sp, const u8 inKnown[16], Shader &s)
+{
+	memset (sp.known, 0xF, sizeof sp.known); memset (sp.mat, 0, sizeof sp.mat);
+	memset (sp.outKnown, 0xF, sizeof sp.outKnown); memset (sp.outMat, 0, sizeof sp.outMat);
+	for (int r = 0; r < 16; r++) sp.known[r] = inKnown[r];
+	sp.cmpKnown[0] = sp.cmpKnown[1] = true; sp.aKnown[0] = sp.aKnown[1] = true;	// (false, 0 at the start)
+	sp.cmpMat[0] = sp.cmpMat[1] = false; sp.ng = 0; sp.nGuards = 0;
+	sp.nOps = 0; sp.nConsts = 0; sp.shape = 1469598103934665603ull; sp.fail = 0;
+	u64 steps = 0; u32 bad = 0;
+	p->spec = &sp; runShader (p, s, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, bad); p->spec = 0;
+	if (bad && !sp.fail) sp.fail = Spec::WHY_OP;
+	if (sp.fail) return false;
+	for (int o = 0; o < 16; o++)					// the outputs that are the draw's
+	{
+		const u8 put = (u8) (sp.outKnown[o] & ~sp.outMat[o]);
+		if (!put) continue;
+		if (sp.nOps >= Spec::OPS_MAX || sp.nConsts >= Spec::CONSTS_MAX) { sp.fail = Spec::WHY_ROOM; return false; }
+		SpecOp m;
+		memset (&m, 0, sizeof m);
+		m.op = 0xFE; m.d = (u8) o; m.dOut = true; m.writes = put; m.slot[0] = (u16) sp.nConsts;
+		for (int i = 0; i < 4; i++) m.mask[i] = (put & (8u >> i)) ? -1 : 0;
+		memcpy (sp.consts[sp.nConsts++], s.out[o], sizeof (float) * 4);
+		sp.ops[sp.nOps++] = m;
+	}
+	return true;
 }
 
 // Runs the shader on a vertex's attributes (the input registers are fed through the permutation) and maps its
@@ -2235,6 +2582,80 @@ static void shadeWorker (void *arg, int worker)
 }
 
 // ---- draws ---------------------------------------------------------------------------------------------------------------
+// ---- the lighting for a GPU's vertex shader (user/Libs/v3d/picavs.h) ---------------------------------------------------
+// Where each of the shader's meanings (A_*) is among its output registers.
+static void specSems (const Pica *p, picavs::Sem sem[A_COUNT])
+{
+	for (int i = 0; i < A_COUNT; i++) { sem[i].reg = 0xFF; sem[i].comp = 0; }
+	const u32 outMask = p->regs[R_VSH_OUTMASK];
+	const int total = (int) (p->regs[R_OUTMAP_TOTAL] & 7);
+	int slot = 0;
+	for (int o = 0; o < 16 && slot < total && slot < 7; o++)
+	{
+		if (!(outMask >> o & 1)) continue;
+		const u32 map = p->regs[R_OUTMAP + slot++];
+		for (int c = 0; c < 4; c++) { const u32 s = map >> (8 * c) & 0x1F; if (s < A_COUNT) { sem[s].reg = (u8) o; sem[s].comp = (u8) c; } }
+	}
+}
+// A lighting table (times its scale) as a broken line of LUT_KNOTS knots: the 256 steps are cut where a straight
+// piece is furthest from them, piece after piece. out: a, b, then (t, c) a knot -- y = a + b x + sum c max (x - t, 0).
+static void lutFit (const Pica *p, int table, bool abs, float scale, float *out)
+{
+	enum { N = 257 };
+	float x[N], f[N];
+	for (int i = 0; i < N; i++) { x[i] = abs ? (float) i / 256.0f : -1.0f + (float) i / 128.0f; f[i] = lutLook (p, table, x[i], abs) * scale; }
+	int cut[picavs::LUT_KNOTS + 2], n = 2;
+	cut[0] = 0; cut[1] = N - 1;
+	while (n < picavs::LUT_KNOTS + 2)
+	{
+		float worst = 1e-4f; int at = -1;
+		for (int s = 0; s + 1 < n; s++)
+			for (int i = cut[s] + 1; i < cut[s + 1]; i++)
+			{
+				const float line = f[cut[s]] + (f[cut[s + 1]] - f[cut[s]]) * (x[i] - x[cut[s]]) / (x[cut[s + 1]] - x[cut[s]]);
+				const float e = fabsf (f[i] - line);
+				if (e > worst) { worst = e; at = i; }
+			}
+		if (at < 0) break;
+		int k = n;
+		while (k > 0 && cut[k - 1] > at) { cut[k] = cut[k - 1]; k--; }
+		cut[k] = at; n++;
+	}
+	float slope[picavs::LUT_KNOTS + 1];
+	for (int s = 0; s + 1 < n; s++) slope[s] = (f[cut[s + 1]] - f[cut[s]]) / (x[cut[s + 1]] - x[cut[s]]);
+	out[1] = slope[0]; out[0] = f[0] - slope[0] * x[0];
+	for (int j = 0; j < picavs::LUT_KNOTS; j++)
+	{
+		if (j + 2 < n) { out[2 + 2 * j] = x[cut[j + 1]]; out[3 + 2 * j] = slope[j + 1] - slope[j]; }
+		else { out[2 + 2 * j] = 4.0f; out[3 + 2 * j] = 0.0f; }		// (no knot: past every x)
+	}
+}
+// The lighting's configuration and its values (the broken lines among them) as picavs wants them.
+static void specLighting (const Pica *p, const Lighting &l, const picavs::Sem *sem, picavs::Lighting &L, float *lv)
+{
+	memset (&L, 0, sizeof L);
+	memset (lv, 0, sizeof (float) * picavs::LIGHT_FLOATS);
+	L.count = (u8) l.count; L.fresnel = (u8) l.fresnel; L.clampHighlights = l.clampHighlights;
+	for (int i = 0; i < 4; i++) L.quat[i] = sem[A_QUAT + i];
+	for (int i = 0; i < 3; i++) L.view[i] = sem[A_VIEW + i];
+	for (int c = 0; c < 3; c++) lv[c] = l.ambient[c];
+	for (int i = 0; i < l.count && i < picavs::LIGHTS_MAX; i++)
+	{
+		const Lighting::Light &g = l.light[i];
+		float *o = lv + picavs::lightAt (i);
+		L.light[i].directional = g.directional; L.light[i].twoSided = g.twoSided; L.light[i].distance = g.distance;
+		for (int c = 0; c < 3; c++) { o[c] = g.pos[c]; o[3 + c] = g.diff[c]; o[6 + c] = g.amb[c]; o[9 + c] = g.spec0[c]; o[12 + c] = g.spec1[c]; }
+		o[15] = g.bias; o[16] = g.scale;
+		if (g.distance) lutFit (p, LUT_DA + g.id, true, 1.0f, lv + picavs::tableAt (6 + i));
+	}
+	const struct { const Lighting::Lut *t; int table; } T[6] = { { &l.d0, LUT_D0 }, { &l.d1, LUT_D1 }, { &l.fr, LUT_FR }, { &l.rr, LUT_RR }, { &l.rg, LUT_RG }, { &l.rb, LUT_RB } };
+	for (int k = 0; k < 6; k++)
+	{
+		L.table[k].on = T[k].t->on; L.table[k].abs = T[k].t->abs; L.table[k].input = (u8) (T[k].t->input < 4 ? T[k].t->input : 4);
+		if (T[k].t->on) lutFit (p, T[k].table, T[k].t->abs, T[k].t->scale, lv + picavs::tableAt (k));
+	}
+}
+
 // The survey (Machine::surveyShaders): a draw counted for its shader -- the entry and the uniforms that decide its
 // flow; a new one is run once, on a vertex of zeros, to see what it is made of.
 static void surveyDraw (Pica *p, u32 count)
@@ -2398,6 +2819,94 @@ static void draw (Pica *p, bool indexed)
 		if (sameC) m->shaderNow->fixedCmp += count;
 		if (sameI) m->shaderNow->fixedIdx += count;
 		if (sameC && sameI) { m->shaderNow->fixedVertices += count; m->shaderNow->fixedDraws++; }
+	}
+	// (tests) the draw's shader specialized, and its list run beside the interpreter on some of its vertices
+	if (m->specCheck && count)
+	{
+		static Spec sp; static Shader s0, si, sl; static float pa[16][4];
+		const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
+		u8 inKnown[16]; memset (inKnown, 0xF, sizeof inKnown);		// (a register no attribute feeds: zeros, the draw's)
+		for (int i = 0; i < inputs && i < 16; i++) inKnown[perm >> (4 * i) & 15] = i < 12 && (fixedMask >> i & 1) ? 0xF : 0;
+		auto load = [&] (u32 n, Shader &s) { memset (&s, 0, sizeof s); memset (pa, 0, sizeof pa); readVertex (vertexIndex (n), pa); for (int i = 0; i < inputs && i < 16; i++) memcpy (s.reg[perm >> (4 * i) & 15], pa[i], sizeof (float) * 4); };
+		load (0, s0);
+		// (an attribute's component that has one value in the whole draw -- a rigid mesh's bone index, its weights --
+		//  is the draw's too: looked for over the draw's vertices, some 3 000 of them at most here)
+		{
+			static float first[16][4];
+			memcpy (first, pa, sizeof first);			// (vertex 0's attributes: load left them in pa)
+			u8 same[16]; memset (same, 0xF, sizeof same);
+			const u32 step = count > 3000 ? count / 3000 : 1;
+			for (u32 n = step; n < count; n += step)
+			{
+				readVertex (vertexIndex (n), pa);
+				for (int i = 0; i < inputs && i < 16; i++) for (int c = 0; c < 4; c++) if (memcmp (&pa[i][c], &first[i][c], sizeof (float)) != 0) same[i] &= (u8) ~(8u >> c);
+			}
+			for (int i = 0; i < inputs && i < 16; i++) inKnown[perm >> (4 * i) & 15] |= same[i];
+		}
+		auto &st = m->specStat;
+		st.draws++; st.vertices += count;
+		if (!specBuild (p, sp, inKnown, s0)) { st.failDraws++; st.failVertices += count; st.why[sp.fail < 8 ? sp.fail : 0]++; st.whyVerts[sp.fail < 8 ? sp.fail : 0] += count; }
+		else
+		{
+			st.ops += sp.nOps; st.consts += sp.nConsts;
+			bool seen = false;
+			for (u32 i = 0; i < st.shapes && !seen; i++) seen = st.shape[i] == sp.shape;
+			if (!seen && st.shapes < 256) st.shape[st.shapes++] = sp.shape;
+			const bool dumpIt = !seen && m->specDump;
+			static float dumpV[8][128]; u32 dumped = 0;
+			for (u32 n = 0; n < count; n += n < 8 ? 1 : 97)
+			{
+				u64 steps = 0; u32 bad = 0;
+				load (n, si); runShader (p, si, p->regs[R_VSH_ENTRY] & 0xFFFF, steps, bad);
+				load (n, sl); specRun (sp, sl.reg, sl.out);
+				st.checked++;
+				if (memcmp (si.out, sl.out, sizeof si.out) != 0) st.wrong++;
+				// (the lighting as the GPU's shader will do it -- the tables as broken lines -- beside the processor's)
+				if (p->regs[R_LIGHTING] & 1)
+				{
+					static Lighting cl; static picavs::Lighting gl; static float lv[picavs::LIGHT_FLOATS]; static picavs::Sem sem[A_COUNT];
+					if (!p->scratch) p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
+					if (p->scratch)
+					{
+						lightingState (p, cl); specSems (p, sem); specLighting (p, cl, sem, gl, lv);
+						Vertex lvx; memset (&lvx, 0, sizeof lvx);
+						for (int j = 0; j < 4; j++) lvx.a[A_QUAT + j] = sem[A_QUAT + j].reg == 0xFF ? 0.0f : si.out[sem[A_QUAT + j].reg][sem[A_QUAT + j].comp];
+						for (int j = 0; j < 3; j++) lvx.a[A_VIEW + j] = sem[A_VIEW + j].reg == 0xFF ? 0.0f : si.out[sem[A_VIEW + j].reg][sem[A_VIEW + j].comp];
+						lightVertices (p, cl, &lvx, 1, p->scratch[7]);
+						float gp[4], gs[4];
+						picavs::refLight (gl, lv, si.out, gp, gs);
+						double worst = 0;
+						for (int c = 0; c < 4; c++)
+						{
+							const double e0 = fabs ((double) gp[c] - lvx.a[A_LITP + c]) * 255.0, e1 = fabs ((double) gs[c] - lvx.a[A_LITS + c]) * 255.0;
+							if (e0 == e0 && e0 > worst) worst = e0;
+							if (e1 == e1 && e1 > worst) worst = e1;
+						}
+						for (int c = 0; c < 4; c++)			// (where the big differences are: diffuse, specular, the two alphas; a zero normal or view)
+						{
+							if (fabs ((double) gp[c] - lvx.a[A_LITP + c]) * 255.0 > 8.0) st.litWhere[c < 3 ? 0 : 2]++;
+							if (fabs ((double) gs[c] - lvx.a[A_LITS + c]) * 255.0 > 8.0) st.litWhere[c < 3 ? 1 : 3]++;
+						}
+						if (worst > 8.0)
+						{
+							const float *q = lvx.a + A_QUAT, *w = lvx.a + A_VIEW;
+							if (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] < 1e-12f) st.litWhere[4]++;
+							if (w[0] * w[0] + w[1] * w[1] + w[2] * w[2] < 1e-12f) st.litWhere[5]++;
+						}
+						st.litChecked++; st.litErrSum += worst; if (worst > st.litErrMax) st.litErrMax = worst; if (worst > 8.0) st.litBad++;
+					}
+				}
+				if (dumpIt && dumped < 8) { load (n, sl); memcpy (dumpV[dumped], sl.reg, sizeof (float) * 64); memcpy (dumpV[dumped] + 64, si.out, sizeof (float) * 64); dumped++; }
+			}
+			if (dumpIt)
+			{
+				static picavs::Op lo[Spec::OPS_MAX];
+				specList (sp, lo);
+				const u32 head[4] = { 0x4C535650, sp.nOps, sp.nConsts, dumped };
+				FILE *f = (FILE *) m->specDump;
+				fwrite (head, 4, 4, f); fwrite (lo, sizeof (picavs::Op), sp.nOps, f); fwrite (sp.consts, sizeof (float) * 4, sp.nConsts, f); fwrite (dumpV, sizeof dumpV[0], dumped, f);
+			}
+		}
 	}
 	// the draw's shader as a function, when it compiles (gpuSkip 2048: never)
 	if (p->jitDirty) { shaderJitReset (p->jit); p->jitDirty = false; }
