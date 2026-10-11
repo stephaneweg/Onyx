@@ -37,6 +37,7 @@ using namespace uikit;
 // TR: 16:9, Full HD
 // TR: 16:10, WUXGA
 // TR: 16:9, QHD
+// TR: 4:3, SVGA
 // TR: 5:3, WVGA (small panels)
 // TR: 4:3, VGA (a 3.5-inch handheld)
 #define NMODES	display_modes ()

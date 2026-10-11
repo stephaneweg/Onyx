@@ -15,7 +15,8 @@ static const struct dp_mode DP_MODES[] = {
 	{ 1600,  900, "16:9, HD+" }, { 1600, 1200, "4:3, UXGA" }, { 1680, 1050, "16:10, WSXGA+" },
 	{ 1920, 1080, "16:9, Full HD" }, { 1920, 1200, "16:10, WUXGA" }, { 2560, 1440, "16:9, QHD" },
 	// (the small screens, after the others: a list read from its start for "the smallest size that holds" keeps its answers)
-	{  800,  480, "5:3, WVGA (small panels)" }, {  640,  480, "4:3, VGA (a 3.5-inch handheld)" } };
+	{  800,  600, "4:3, SVGA" }, {  800,  480, "5:3, WVGA (small panels)" },
+	{  640,  480, "4:3, VGA (a 3.5-inch handheld)" } };
 static inline int dp_len (const char *s) { int n = 0; while (s && s[n]) n++; return n; }
 static inline char dp_low (char c) { return c >= 'A' && c <= 'Z' ? (char) (c + 32) : c; }
 // A whole file read into b -> its length, -1 none.
