@@ -109,7 +109,7 @@ static Lay lay (void)
 		int yy = (L.today && L.narrow ? L.ty + L.th : L.sy + L.sh);
 		L.colx = g_aw - L.M - L.colw;
 		L.cx = L.M; L.cy = yy + D (9); L.ch = D (30); L.cw = g_aw - 2 * L.M - (L.side ? L.colw + L.M : 0);
-		L.rh = L.strip ? D (107) : D (12);
+		L.rh = L.strip ? D (83) : D (12);			// (the pills, the line, the hints: down to 9 px of the bottom)
 		L.px = L.M; L.py = L.cy + L.ch + D (8); L.pw = L.cw; L.ph = g_ah - L.py - L.rh;
 		if (L.ph < D (120)) L.ph = D (120);
 		L.ry = g_ah - L.rh + D (6);
@@ -662,7 +662,7 @@ static void draw_strip_flat (Canvas &cv, const Lay &L)
 			x += pw + D (6);
 		}
 	}
-	int ly = g_ah - D (64);
+	int ly = g_ah - D (40);
 	cv.fillRect (L.M + D (8), ly, g_aw - 2 * L.M - D (16), 1, UK_N_LINE);
 	static UkPadHint H[4];
 	if (g_stripFocus >= 0) { H[0] = { "-", TR ("choose") }; H[1] = { "A", TR ("bring it") }; H[2] = { "X", TR ("close") }; H[3] = { "B", TR ("back") }; }

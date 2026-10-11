@@ -71,6 +71,8 @@ void nav_register (Widget *w, int prio, bool (*step) (Widget *, int dir));
 void nav_unregister (Widget *w);
 bool key_first (Root *r, long k);	// a key before the controls (Root::keyEvent): Prev / Next step the window's tabs -> true used
 bool key_fallback (Root *r, long k);	// a key nobody took (Root::keyEvent) -> true used here
+bool tool_ring_key (Root *r, long k);	// F6: the keys' ring on the window's toolbars (uikit/toolbar.cpp) -> true used
+Widget *tool_ring ();			// the tool the ring is on, 0: none
 void focus_ring (Canvas &cv, Widget *c, int x, int y);	// the ring around c, at x, y of cv (Widget::draw)
 void root_tick (Root *r);
 void redraw_soon (Widget *w);		// w's window drawn again at its next turn (a widget that moved while drawn)		// the focused control's rectangle, a field's type -> the server

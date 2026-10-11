@@ -309,7 +309,22 @@ static bool nav_action (Root *r, int action)
 // (a terminal, an editor) has the focus. Not under a modal dialog.
 bool key_first (Root *r, long k)
 {
-	if (!ring_on () || r == 0 || !in_ready ()) return false;
+	if (!ring_on () || r == 0) return false;
+	// SCROLLING WITHOUT A MOUSE: Alt + Up / Down (Alt + Page Up / Down: five notches) is the wheel over the focused
+	// control -- what a list, a text, a page does with the wheel it does with these keys, no code of its own. (On a
+	// handheld whose D-pad is the arrows: Alt held and the D-pad.)
+	if ((kapi_get_modifiers () & (MOD_ALT | MOD_CTRL | MOD_SHIFT)) == MOD_ALT && (k == KEY_UP || k == KEY_DOWN || k == KEY_PGUP || k == KEY_PGDN))
+	{
+		Widget *f = leaf (modal_or (r));
+		int x = r->width / 2, y = r->height / 2;
+		if (f != 0) { abs_pos (f, &x, &y); x += f->width / 2; y += f->height / 2; }
+		int n = k == KEY_PGUP || k == KEY_PGDN ? 5 : 1;
+		r->handleMouse (x, y, 0, 0, 0, k == KEY_UP || k == KEY_PGUP ? n : -n);
+		r->handleMouse (-1, -1, 0, 0, 0, 0);			// (the pointer is not there: no hover left behind)
+		return true;
+	}
+	if (tool_ring_key (r, k)) return true;		// (F6: the keys' ring on the toolbars -- uikit/toolbar.cpp)
+	if (!in_ready ()) return false;
 	int a = in_key_action ((int) k, kapi_get_modifiers ());
 	if (a != IN_PREV && a != IN_NEXT) return false;
 	for (Widget *n = r->lastChild; n; n = n->prevSib) if (n->modal) return false;

@@ -713,7 +713,10 @@ the home there is no Menu entry: the name is *Onyx* (a click on it: the Onyx men
 games' buttons. The **CMD key** (the Super key) pressed and released opens the **Menu**: the app's menus, then
 **Home**, **Open apps** and **Quit** (on the home: Open apps, Quick settings, Shut Down...); CMD again closes it.
 **CMD held half a second** goes Home. **F10** opens the Menu too; Alt + Tab shows the open apps, Ctrl + Esc goes
-Home. In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
+Home. **Alt + Up / Down** scrolls what has the focus as the mouse wheel does (a page, a list, a text; Alt + Page Up /
+Page Down: five notches) -- on a handheld whose D-pad is the arrows: Alt held and the D-pad. **F6** puts a ring on the window's **toolbar**: Left / Right move it over the tools (the **»** too), Enter or Space
+uses the tool, Esc, Down or F6 again gives the keys back to the document. In pocket mode under 800 px wide the Control
+Panel shows one thing at a time: its list, then an applet whole with a "< Control Panel" bar. In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
 mode's dark look, draws its text in a TrueType face (DejaVu Sans Mono 15: 69 × 22 on a 640 × 480 screen);
 `SD:/etc/terminal.ini` (`font = bitmap`, `size = 18`...) changes it.
 

@@ -674,6 +674,94 @@ void ToolBar::showOverflow ()
 	invalidate (true);
 }
 
+// ---- THE KEYS' RING ON THE TOOLBARS (pocket and console: no mouse) ------------------------------------------------
+// F6 puts a ring on the window's first tool; Left / Right move it over the tools of every shown toolbar (in reading
+// order: the "»" too), Enter or Space uses the tool -- a click at its middle, as the overflow's panel does; a field
+// takes the focus instead --, Esc, Down or F6 again gives the keys back to what had them. Any other key leaves the
+// ring and goes its way. The state is here, not in ToolBar: a program's `new ToolBar` keeps its size.
+namespace internal {
+static Widget *s_ringTool; static Root *s_ringRoot;
+Widget *tool_ring () { return s_ringTool; }
+static bool ring_shown (Widget *w) { for (; w; w = w->parent) if (w->hidden) return false; return true; }
+static void ring_collect (Widget *w, Widget **list, int &n, int cap)
+{
+	for (Widget *c = w->firstChild; c; c = c->nextSib)
+	{
+		if (c->hidden) continue;
+		ExtHead *h = ext_head (c);
+		if (h != 0 && h->kind == EXT_TOOLBAR)
+		{
+			for (Widget *t = c->firstChild; t; t = t->nextSib)
+				if (!t->hidden && !t->disabled && t->width > 0 && t->left < c->width && n < cap) list[n++] = t;
+		}
+		else ring_collect (c, list, n, cap);
+	}
+}
+static int ring_list (Root *r, Widget **list, int cap)		// the tools, a bar after the other, left to right
+{
+	int n = 0;
+	ring_collect (r, list, n, cap);
+	long key[96];
+	for (int i = 0; i < n && i < 96; i++)
+	{
+		int bx, by, x, y;
+		abs_pos (list[i]->parent, &bx, &by); abs_pos (list[i], &x, &y);
+		key[i] = (long) by * 100000 + x;
+	}
+	for (int i = 1; i < n && i < 96; i++)
+	{
+		Widget *w = list[i]; long k = key[i];
+		int j = i - 1;
+		for (; j >= 0 && key[j] > k; j--) { list[j + 1] = list[j]; key[j + 1] = key[j]; }
+		list[j + 1] = w; key[j + 1] = k;
+	}
+	return n;
+}
+static void ring_set (Widget *t)
+{
+	if (s_ringTool && s_ringTool->parent) s_ringTool->parent->invalidate (true);
+	s_ringTool = t;
+	if (t && t->parent) t->parent->invalidate (true);
+}
+bool tool_ring_key (Root *r, long k)
+{
+	if (r == 0 || !ring_on ()) return false;
+	for (Widget *m = r->lastChild; m; m = m->prevSib) if (m->modal) { if (s_ringTool) ring_set (0); return false; }
+	Widget *list[96];
+	bool f6 = k == KEY_F1 + 5 && (kapi_get_modifiers () & (MOD_CTRL | MOD_SHIFT | MOD_ALT)) == 0;
+	if (s_ringTool == 0 || s_ringRoot != r)
+	{
+		if (!f6) return false;
+		int n = ring_list (r, list, 96);
+		if (n == 0) return false;
+		s_ringRoot = r; ring_set (list[0]);
+		return true;
+	}
+	int n = ring_list (r, list, 96), at = -1;
+	for (int i = 0; i < n; i++) if (list[i] == s_ringTool) at = i;
+	if (at < 0 || !ring_shown (s_ringTool)) { ring_set (0); return false; }	// (the tool went away: the overflow took it)
+	if (f6 || k == 27 || k == KEY_DOWN) { ring_set (0); return true; }
+	if (k == KEY_LEFT) { ring_set (list[at > 0 ? at - 1 : n - 1]); return true; }
+	if (k == KEY_RIGHT || k == KEY_TAB) { ring_set (list[at + 1 < n ? at + 1 : 0]); return true; }
+	if (k == KEY_UP) return true;
+	if (k == KEY_ENTER || k == ' ')
+	{
+		Widget *c = s_ringTool;
+		bool small = c->width <= 64 && c->height <= 48;
+		if (c->canFocus && !small) { ring_set (0); c->setFocus (); c->onTabFocus (); c->invalidate (true); return true; }	// (a field: typed into)
+		int x = c->width / 2 < 14 ? c->width / 2 : c->width - 10;	// (a box with a list: its arrow's side opens it)
+		if (small) x = c->width / 2 < 14 ? c->width / 2 : 14;
+		c->onMouse (x, c->height / 2, 1, 0, 0, 0);
+		c->onMouse (x, c->height / 2, 0, 0, 0, 0);
+		c->onMouse (-1, -1, 0, 0, 0, 0);				// (no pointer there: no hover left)
+		if (s_ringTool && s_ringTool->parent) s_ringTool->parent->invalidate (true);
+		return true;
+	}
+	ring_set (0);							// any other key: the app's again
+	return false;
+}
+}
+
 void ToolBar::onDraw ()
 {
 	unsigned b = bgColor ();
@@ -685,6 +773,12 @@ void ToolBar::onDraw ()
 	else
 		for (int i = 0; i < m_nsep; i++) uk_etch_v (canvas, m_sepX[i], 7, height - 14, b);
 	if (line) uk_etch_h (canvas, 0, height - 2, width, b);
+	Widget *rt = internal::tool_ring ();				// the keys' ring (F6) round one of this bar's tools
+	if (rt != 0 && rt->parent == this)
+	{
+		uk_rline (canvas, rt->left - 3, rt->top - 3, rt->width + 6, rt->height + 6, 7, C_ACCENT, 255);
+		uk_rline (canvas, rt->left - 2, rt->top - 2, rt->width + 4, rt->height + 4, 6, C_ACCENT, 255);
+	}
 }
 
 } // namespace uikit

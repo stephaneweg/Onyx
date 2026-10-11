@@ -251,7 +251,14 @@ static void close_applet (void)
 // ---- the window ---------------------------------------------------------------------------------------
 static int g_winW = W0;			// the window's width (place)
 // Portrait -- and a window under 600 px wide: the list, then an applet under a bar.
-static bool narrow () { return uk_size_class () == UK_SC_NARROW || g_winW < 600; }
+// One thing at a time -- the list, then an applet whole with its "< Control Panel" bar: portrait, a small window, and
+// pocket's landscape under 800 px wide, where the pane beside the links would be far under the applets' least width (640:
+// the links hidden; an applet is opened from the shell there anyway).
+static bool narrow ()
+{
+	if (uk_size_class () == UK_SC_NARROW || g_winW < 600) return true;
+	return uk_mode () == UK_MODE_POCKET && g_winW < 800;
+}
 
 class ControlRoot : public Root
 {
