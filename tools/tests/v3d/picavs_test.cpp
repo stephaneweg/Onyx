@@ -126,7 +126,10 @@ static bool check (const char *name, const Case &c, const std::vector<Write> &w,
 	static Uni uni[2048]; static In in[64];
 	Result r;
 	const List l = { c.ops.data (), (u32) c.ops.size () };
-	if (!build (p, l, w.data (), (u32) w.size (), uni, 2048, in, 64, r, 0, lit)) { refused++; return true; }	// (too many values at once: a list the processor keeps)
+	// (half the time the vertex's first inputs are given, as a vertex shader's are by its coordinate shader)
+	const u32 pre = !coord && rr (2) ? 3 : 0;
+	if (pre) { in[0].reg = 1; in[0].comp = 0; in[1].reg = 0; in[1].comp = 2; in[2].reg = 5; in[2].comp = 1; }
+	if (!build (p, l, w.data (), (u32) w.size (), uni, 2048, in, 64, r, 0, lit, pre)) { refused++; return true; }	// (too many values at once: a list the processor keeps)
 	built++;
 	char err[200];
 	if (qpu_check ((const uint64_t *) p.words (), p.count (), coord ? QPU_COORD : QPU_VERTEX, err, sizeof err) < 0) { printf ("FAIL %s: %s\n", name, err); fails++; return false; }
@@ -227,8 +230,69 @@ static int fileRun (const char *path)
 	return bad ? 1 : 0;
 }
 
+// PICAVS_CASE=<file>: a program the 3DS core made on the Pi, at its first use (Machine::vsDebug: its code, its
+// uniforms, each vertex as given, and what the processor's path makes of it) -- run in the simulator.
+static int caseRun (const char *path)
+{
+	FILE *f = fopen (path, "rb");
+	if (!f) { printf ("cannot open %s\n", path); return 2; }
+	uint32_t h[10];
+	if (fread (h, 4, 10, f) != 10 || h[0] != 0x45534356) { printf ("not a case\n"); return 2; }
+	const uint32_t nvs = h[1], ncs = h[2], nvu = h[3], ncu = h[4], nIn = h[5], stride = h[6], count = h[7], nOut = h[8];
+	std::vector<uint64_t> vs (nvs), cs (ncs); std::vector<uint32_t> vu (nvu), cu (ncu);
+	fread (vs.data (), 8, nvs, f); fread (cs.data (), 8, ncs, f); fread (vu.data (), 4, nvu, f); fread (cu.data (), 4, ncu, f);
+	std::vector<Pixel> vx (count), cx (count);
+	std::vector<std::vector<float> > want (count, std::vector<float> (nOut));
+	for (uint32_t k = 0; k < count; k++)
+	{
+		std::vector<float> row (stride);
+		fread (row.data (), 4, stride, f); fread (want[k].data (), 4, nOut, f);
+		for (uint32_t j = 0; j < stride; j++) { union { float f; uint32_t u; } q; q.f = row[j]; vx[k].vpmIn.push_back (q.u); cx[k].vpmIn.push_back (q.u); }
+		if (k < 3) { printf ("vertex %u given:", k); for (uint32_t j = 0; j < stride; j++) printf (" %g", (double) row[j]); printf ("\n"); }
+	}
+	float view[V_COUNT]; fread (view, 4, V_COUNT, f);
+	fclose (f);
+	printf ("%u + %u instructions, %u + %u uniforms, %u inputs (stride %u), %u vertices, %u outputs\n", nvs, ncs, nvu, ncu, nIn, stride, count, nOut);
+	char err[200];
+	if (qpu_check (vs.data (), (int) nvs, QPU_VERTEX, err, sizeof err) < 0) printf ("the vertex shader breaks a rule: %s\n", err);
+	if (qpu_check (cs.data (), (int) ncs, QPU_COORD, err, sizeof err) < 0) printf ("the coordinate shader breaks a rule: %s\n", err);
+	Run run; run.version = qpu::version (); run.uniforms = vu;
+	if (!runVertex (vs.data (), (int) nvs, vx, run)) { printf ("the vertex shader: %s\n", run.error.c_str ()); return 1; }
+	Run runc; runc.version = qpu::version (); runc.uniforms = cu;
+	if (!runVertex (cs.data (), (int) ncs, cx, runc)) { printf ("the coordinate shader: %s\n", runc.error.c_str ()); return 1; }
+	int bad = 0;
+	for (uint32_t k = 0; k < count; k++)
+	{
+		const float w = want[k][3];
+		float ref[64];
+		ref[0] = nearbyintf (want[k][0] / w * view[V_SX]); ref[1] = nearbyintf (want[k][1] / w * view[V_SY]); ref[2] = want[k][2] / w * 0.5f + 0.5f; ref[3] = 1.0f / w;
+		for (uint32_t j = 4; j < nOut; j++) ref[j] = want[k][j];
+		bool here = false;
+		for (uint32_t j = 0; j < nOut; j++)
+		{
+			union { float f; uint32_t u; } g; g.u = j < vx[k].vpmOut.size () ? vx[k].vpmOut[j] : 0;
+			const float got = j < 2 ? (float) (int) g.u : g.f;
+			if (!(fabsf (got - ref[j]) <= (j < 2 ? 4.0f : 2e-3f) * (1.0f + fabsf (ref[j])))) here = true;
+		}
+		if (here) bad++;
+		if (k < 4 || (here && bad <= 4))
+		{
+			printf ("vertex %u%s:\n  the simulator:", k, here ? " (DIFFERS)" : "");
+			for (uint32_t j = 0; j < nOut; j++) { union { float f; uint32_t u; } g; g.u = j < vx[k].vpmOut.size () ? vx[k].vpmOut[j] : 0; if (j < 2) printf (" %d", (int) g.u); else printf (" %g", (double) g.f); }
+			printf ("\n  the processor:");
+			for (uint32_t j = 0; j < nOut; j++) printf (" %g", (double) ref[j]);
+			printf ("\n  the coordinate shader:");
+			for (size_t j = 0; j < cx[k].vpmOut.size (); j++) { union { float f; uint32_t u; } g; g.u = cx[k].vpmOut[j]; if (j >= 4) printf (" %d", (int) g.u); else printf (" %g", (double) g.f); }
+			printf (" (the processor's clip position: %g %g %g %g)\n", (double) want[k][0], (double) want[k][1], (double) want[k][2], (double) want[k][3]);
+		}
+	}
+	printf ("%d of %u vertices differ\n", bad, count);
+	return bad ? 1 : 0;
+}
+
 int main (int argc, char **argv)
 {
+	if (getenv ("PICAVS_CASE")) { const int ver = getenv ("PICAVS_VER") ? atoi (getenv ("PICAVS_VER")) : 42; qpu::setVersion (ver); qpu_set_version (ver); return caseRun (getenv ("PICAVS_CASE")); }
 	if (getenv ("PICAVS_FILE")) { const int ver = getenv ("PICAVS_VER") ? atoi (getenv ("PICAVS_VER")) : 42; qpu::setVersion (ver); qpu_set_version (ver); return fileRun (getenv ("PICAVS_FILE")); }
 	const int count = argc > 1 ? atoi (argv[1]) : 400;
 	if (argc > 2) rs = (unsigned) atoi (argv[2]) | 1;
@@ -242,7 +306,7 @@ int main (int argc, char **argv)
 		std::vector<Write> raw, vs, cs;
 		for (int o = 0; o < 4; o++) for (int k = 0; k < 4; k++) { Write x = { W_RAW, (unsigned char) o, (unsigned char) k }; raw.push_back (x); }
 		{ const unsigned char K[] = { W_XS, W_YS, W_ZS, W_RW }; for (int k = 0; k < 4; k++) { Write x = { K[k], 0, 0 }; vs.push_back (x); } }
-		{ Write a = { W_RAW, 1, 0 }, b = { W_ONE_MINUS, 1, 1 }; vs.push_back (a); vs.push_back (b); }
+		{ Write a = { W_RAW, 1, 0 }, b = { W_ONE_MINUS, 1, 1 }, z = { W_ZERO, 0, 0 }, o = { W_ONE, 0, 0 }; vs.push_back (a); vs.push_back (b); vs.push_back (z); vs.push_back (o); }
 		{ const unsigned char K[] = { W_XC, W_YC, W_ZC, W_WC, W_XS, W_YS }; for (int k = 0; k < 6; k++) { Write x = { K[k], 0, 0 }; cs.push_back (x); } }
 		char name[64];
 		snprintf (name, sizeof name, "list %d (raw outputs)", n); check (name, c, raw, false, n == 0 && getenv ("PICAVS_DUMP"));

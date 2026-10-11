@@ -37,7 +37,7 @@ Machine::Machine ()
 	memset (&hid, 0, sizeof hid);
 	memset (&source, 0, sizeof source); romfsBase = 0; romfsSize = 0; memFile = 0; memSize = 0; trace = false; specDump = 0; specCheck = false; memset (&specStat, 0, sizeof specStat); shaderUse = 0; shaderNow = 0; shaderUses = 0; surveyShaders = false; memset (dbgLatch, 0, sizeof dbgLatch); drawNow = drawFirst = drawLast = 0; listsAside = false; traceAll = false; traceGpu = false; gpuSkip = 0; pica = 0;
 	title[0] = 0; productCode[0] = 0; cfgPage = 0; ldr = 0; fontFile = 0; fontFileSize = 0;
-	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0; skipDraw = false; shaderCheck = false;
+	parallelBegin = 0; parallelDone = 0; parallelEnd = 0; parallelUser = 0; helpers = 0; monoOnly = false; gpuDraw = 0; gpuUser = 0; gpuSoft = 0; skipDraw = false; shaderCheck = false; gpuVS = false; gpuIndexed = false; watchMade = false; gpuSubpixels = 256; vsDebug = 0; vsCheck = false; memset (&vsStat, 0, sizeof vsStat);
 	memset (&dsp, 0, sizeof dsp);
 	storage = 0; storageDirty = false; memset (archives, 0, sizeof archives);
 	memset (&user, 0, sizeof user); setUser ("Onyx", 1, 2);

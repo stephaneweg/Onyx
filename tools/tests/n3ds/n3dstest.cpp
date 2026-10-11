@@ -13,6 +13,7 @@
 #include <string.h>
 #include <sys/time.h>
 #include "n3ds/n3ds.h"
+#include "v3d/qpu.h"
 
 static void debugOut (void *, const char *text, n3ds::u32 len) { fwrite (text, 1, len, stdout); }
 
@@ -133,6 +134,17 @@ static int run (int argc, char **argv)
 	if (argc > 5) m->gpuSkip = (n3ds::u32) strtoul (argv[5], 0, 16);	// (a 5th argument: parts of the GPU left out, to time them)
 	m->trace = getenv ("N3DS_TRACE") != 0;
 	if (getenv ("N3DS_SPECDUMP")) { m->specDump = fopen (getenv ("N3DS_SPECDUMP"), "wb"); m->specCheck = true; }	// (N3DS_SPECDUMP=<file>: each new shape's list, for tools/tests/v3d/picavs_test)
+	// N3DS_VSCHECK=1  each draw's vertex program for the V3D made, and what it would write -- plain arithmetic --
+	// compared with what the processor's path gives the GPU (the frames themselves stay the software renderer's)
+	if (getenv ("N3DS_VSCHECK"))
+	{
+		qpu::setVersion (getenv ("N3DS_VSCHECK")[0] == '7' ? 71 : 42);
+		m->vsCheck = true;
+		if (!m->gpuDraw) m->gpuDraw = [] (void *, const n3ds::GpuFrame *, n3ds::u32 *) { return false; };
+		// (the draws of many vertices take the path of a host with other cores -- that never take the work here)
+		if (!m->parallelBegin) { m->parallelBegin = [] (void *, void (*) (void *, int), void *) { return false; }; m->parallelDone = [] (void *) { return true; }; m->parallelEnd = [] (void *, void (*) (void *, int), void *) {}; }
+	}
+	if ((argc > 11 && strchr (argv[11], 'w')) || getenv ("N3DS_WATCHMADE")) m->watchMade = true;	// (the stand-in archive's file: 64 KB of zeros, every access of the program to them said)
 	if (getenv ("N3DS_SPECCHECK")) m->specCheck = true;		// (N3DS_SPECCHECK=1: every draw's shader specialized, its list checked against the interpreter)
 	m->surveyShaders = getenv ("N3DS_SURVEY") != 0;	// (N3DS_SURVEY=1: the vertex shaders the program used, at the end)
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
@@ -203,6 +215,8 @@ static int run (int argc, char **argv)
 			m->gsp.usLists = m->gsp.usTransfers = m->gsp.usFills = m->gsp.usRaster = m->gsp.usRasterAside = 0;
 			m->gsp.hostTransfers = m->gsp.usHostTransfers = m->gsp.usGpu = m->gsp.gpuFrames = m->gsp.softFrames = 0; m->gsp.transfers = 0;
 			m->gsp.usRead = m->gsp.usShade = m->gsp.usAssemble = 0;
+			m->gsp.usGpuLoad = m->gsp.usGpuHash = m->gsp.usGpuCall = m->gsp.usGpuKeep = m->gsp.usGpuAfter = m->gsp.gpuCalls = 0;
+			m->gsp.vsVertices = m->gsp.vsChunks = m->gsp.usVsProgram = m->gsp.usVsRecord = m->gsp.vsKept = 0; m->gsp.vsNot[1] = m->gsp.vsNot[2] = m->gsp.vsNot[3] = 0;
 			m->gsp.vertices = m->gsp.trianglesDrawn = m->gsp.pixelsDrawn = m->gsp.shaderSteps = m->gsp.trianglesIn = 0;
 		}
 		unsigned b = 0; bool down = false; int tx = 0, ty = 0;
@@ -245,7 +259,17 @@ static int run (int argc, char **argv)
 		 m->exited ? "ended" : "still running", n, (unsigned long long) m->now, (unsigned long long) m->svcCount,
 		 (unsigned long long) m->switchCount, (unsigned) m->mem.faults);
 	if (m->gpuDraw) fprintf (stderr, "the targets' frames: %llu drawn by the GPU (%.2f s with their copies), %llu by the software renderer%c", (unsigned long long) m->gsp.gpuFrames, (double) m->gsp.usGpu / 1e6, (unsigned long long) m->gsp.softFrames, 10);
+	if (m->gpuDraw) fprintf (stderr, "of the GPU's frames' time: %.2f s reading the buffer, %.2f s comparing with the last frames, %.2f s in the host's %llu calls, %.2f s keeping the picture, %.2f s after%c", (double) m->gsp.usGpuLoad / 1e6, (double) m->gsp.usGpuHash / 1e6, (double) m->gsp.usGpuCall / 1e6, (unsigned long long) m->gsp.gpuCalls, (double) m->gsp.usGpuKeep / 1e6, (double) m->gsp.usGpuAfter / 1e6, 10);
 	if (m->shaderCheck) fprintf (stderr, "the compiled vertex shaders: %llu vertices checked against the interpreter, %llu differ%c", (unsigned long long) m->gsp.shaderChecked, (unsigned long long) m->gsp.shaderWrong, 10);
+	if (m->gsp.vsChunks || m->gsp.vsNot[1] || m->gsp.vsNot[2] || m->gsp.vsNot[3])
+		fprintf (stderr, "the vertex shaders on the GPU: %llu vertices in %llu chunks, %llu programs (%llu instructions); left to the processor: %llu not specialized, %llu refused by the generator, %llu for want of room; %.2f s finding the programs (%llu by a kept specialization), %.2f s recording%c",
+			 (unsigned long long) m->gsp.vsVertices, (unsigned long long) m->gsp.vsChunks, (unsigned long long) m->gsp.vsPrograms, (unsigned long long) m->gsp.vsInstructions,
+			 (unsigned long long) m->gsp.vsNot[1], (unsigned long long) m->gsp.vsNot[2], (unsigned long long) m->gsp.vsNot[3], (double) m->gsp.usVsProgram / 1e6, (unsigned long long) m->gsp.vsKept, (double) m->gsp.usVsRecord / 1e6, 10);
+	if (m->vsCheck)
+		fprintf (stderr, "the vertex programs against the processor's path: %llu vertices checked in %llu chunks (%.1f inputs, %.0f uniforms a chunk; %llu programs, %llu instructions), %llu differ, %llu by the lighting alone; not made: %llu vertices not specialized, %llu refused, %llu no room, %llu without a GPU state; the kept specializations followed again: %llu compared with the whole one, %llu differ%c",
+			 (unsigned long long) m->vsStat.checked, (unsigned long long) m->vsStat.chunks, m->vsStat.chunks ? (double) m->vsStat.inputs / (double) m->vsStat.chunks : 0.0, m->vsStat.chunks ? (double) m->vsStat.uniforms / (double) m->vsStat.chunks : 0.0,
+			 (unsigned long long) m->gsp.vsPrograms, (unsigned long long) m->gsp.vsInstructions, (unsigned long long) m->vsStat.wrong, (unsigned long long) m->vsStat.wrongLit,
+			 (unsigned long long) m->vsStat.notVerts[1], (unsigned long long) m->vsStat.notVerts[2], (unsigned long long) m->vsStat.notVerts[3], (unsigned long long) m->vsStat.noState, (unsigned long long) m->vsStat.tplChecked, (unsigned long long) m->vsStat.tplWrong, 10);
 	if (m->monoOnly) fprintf (stderr, "one picture a screen: %llu draws of the right eye left out%c", (unsigned long long) m->gsp.eyeDraws, 10);
 	if (m->helpers) fprintf (stderr, "the rasterizer has %d other core%s: %.2f s of its time while the program went on%c", m->helpers, m->helpers > 1 ? "s" : "", (double) m->gsp.usRasterAside / 1e6, 10);
 	fprintf (stderr, "the GPU's share: %.2f s in command lists, %.2f s in transfers, %.2f s in fills%c", (double) m->gsp.usLists / 1e6, (double) m->gsp.usTransfers / 1e6, (double) m->gsp.usFills / 1e6, 10);
@@ -272,6 +296,8 @@ static int run (int argc, char **argv)
 				fprintf (stderr, " type %d%s%s%s", o->type, o == m->gsp.irq ? " (the GPU's interrupts)" : "", o == m->apt.param ? " (APT's parameter)" : "", o == m->apt.signal ? " (APT's signal)" : "");
 				if (o->type == n3ds::OBJ_SESSION) fprintf (stderr, " %s", ((const n3ds::Session *) o)->name);
 			}
+			fprintf (stderr, "%c   the stack's words that point into the code (sp %08x):", 10, (unsigned) t->ctx.r[13]);	// (the calls it is in, roughly)
+			for (int k = 0, said = 0; k < 400 && said < 28; k++) { const n3ds::u32 w = m->mem.mapped (t->ctx.r[13] + (n3ds::u32) k * 4, 4) ? m->mem.r32 (t->ctx.r[13] + (n3ds::u32) k * 4) : 0; if (w >= 0x100000 && w < 0x700000 && !(w & 3)) { fprintf (stderr, " %08x", (unsigned) w); said++; } }
 			fprintf (stderr, "%c   r4 %08x:", 10, (unsigned) t->ctx.r[4]);
 			for (int k = 0; k < 32; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (t->ctx.r[4] + (n3ds::u32) k * 4));
 			fprintf (stderr, "%c", 10);
@@ -284,7 +310,9 @@ static int run (int argc, char **argv)
 		for (int i = 0; i < 15; i++) fprintf (stderr, " %08x", (unsigned) (q[0x820 + i * 0x20] | q[0x821 + i * 0x20] << 8 | q[0x822 + i * 0x20] << 16 | (unsigned) q[0x823 + i * 0x20] << 24));
 		fprintf (stderr, "%c", 10);
 	}
-	if (const char *cd = getenv ("N3DS_CODEDUMP"))				// the program's code, for a disassembler (from 0x100000)
+	(void) 0;
+	const char *cdArg = argc > 11 && strchr (argv[11], '#') ? strchr (argv[11], '#') + 1 : 0;	// ("<frame>#<file>" as the 11th argument, where there is no environment)
+	if (const char *cd = cdArg ? cdArg : getenv ("N3DS_CODEDUMP"))				// the program's code, for a disassembler (from 0x100000)
 	{
 		FILE *o = fopen (cd, "wb");
 		for (n3ds::u32 va = 0x100000; o && m->mem.mapped (va, 4096); va += 4096) { unsigned char pg[4096]; m->mem.read (va, pg, 4096); fwrite (pg, 1, 4096, o); }
@@ -371,7 +399,8 @@ int main (void)
 		while (*p && *p != ' ') p++;
 		if (*p) *p++ = 0;
 	}
-	if (argc > 8) g_useGpu = atoi (argv[8]);			// (an 8th argument 0: the software renderer alone)
+	if (argc > 8) { const int v = atoi (argv[8]); g_useGpu = v & 15; g_vsDebug = (unsigned) v >> 4; if (g_useGpu == 2) g_useVS = 0; if (g_useGpu == 3) g_useVS = 2; }	// (+ 16 x Machine::vsDebug)
+	//	// (an 8th argument 0: the software renderer alone; 2: the GPU, the vertex shaders on the processor; 3: on the GPU, not indexed)
 	if (argc > 6) g_parMain = atoi (argv[6]);			// (a 6th argument 0: the application cores alone rasterize)
 	const int r = run (argc, argv);
 	if (g_atEnd) g_atEnd ();

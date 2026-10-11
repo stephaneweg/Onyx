@@ -162,6 +162,7 @@ static void gxCommand (Machine *m, const u32 *c)
 				if (width == 4) { u32 *q = (u32 *) host; for (u32 i = 0; i < count; i++) q[i] = value; }
 				else if (width == 2) { u16 *q = (u16 *) host; const u16 v16 = (u16) value; for (u32 i = 0; i < count; i++) q[i] = v16; }
 				else for (u32 i = 0; i < count; i++) { host[i * 3] = (u8) value; host[i * 3 + 1] = (u8) (value >> 8); host[i * 3 + 2] = (u8) (value >> 16); }
+				picaAfterFill (m, Machine::virtToPhys (start), Machine::virtToPhys (start) + count * (u32) width, width);
 			}
 			else for (u32 a = start; a + (u32) width <= end && a >= start; a += (u32) width)
 				if (!m->mem.write (a, &value, (u32) width)) break;

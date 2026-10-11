@@ -19,7 +19,7 @@ namespace
 enum { K_IN, K_UNI, K_ZERO, K_ONES, K_ONE, K_ADD, K_MUL, K_MAX, K_MIN, K_FLR, K_NEG, K_RCP, K_RSQ, K_EX2, K_LG2,
        K_CMP, K_AND, K_OR, K_NOT, K_SEL, K_M2F, K_FTOIN, K_OUT };
 enum { C_EQ, C_NE, C_LT, C_GE };
-enum { NODES_MAX = 6144, REGS = 32 };
+enum { NODES_MAX = 6144, REGS = 64 };
 
 struct Node
 {
@@ -82,14 +82,14 @@ struct Gen
 static Gen G;
 }
 
-bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r, const Sem *pos, const Lighting *lit)
+bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r, const Sem *pos, const Lighting *lit, u32 inPre)
 {
 	Gen &g = G;
 	g.nn = 0; g.fail = false; g.why = 0; g.clipOf = -1; g.rw = -1;
 	for (int i = 0; i < 48; i++) for (int c = 0; c < 4; c++) g.cur[i][c] = -1;
 	g.flag[0] = g.flag[1] = -1;
 	for (int i = 0; i < 40; i++) g.guard[i] = -1;
-	r.nUni = 0; r.nIn = 0; r.ok = false; r.why = 0; r.values = 0; r.regsPeak = 0;
+	r.nUni = 0; r.nIn = inPre < inMax ? inPre : inMax; r.ok = false; r.why = 0; r.values = 0; r.regsPeak = 0;
 
 	// ---- 1. the list as scalar values
 	for (u32 k = 0; k < l.nOps && !g.fail; k++)
@@ -263,6 +263,8 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 		const int oreg = 32 + (x.reg & 15);
 		int v;
 		if (x.kind == W_RAW) v = g.val (oreg, x.comp & 3);
+		else if (x.kind == W_ZERO) v = g.add (K_ZERO);
+		else if (x.kind == W_ONE) v = g.add (K_ONE);
 		else if (x.kind == W_LITP || x.kind == W_LITS) { v = (x.kind == W_LITP ? litP : litS)[x.comp & 3]; if (v < 0) { g.fail = true; g.why = "the lighting's colour asked without the lighting"; v = 0; } }
 		else if (x.kind == W_ONE_MINUS) { const int one = g.add (K_M2F, g.add (K_ONES)); v = g.add (K_ADD, one, g.add (K_NEG, g.val (oreg, x.comp & 3))); }
 		else
@@ -316,7 +318,9 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 	for (int i = g.nn - 1; i >= 0; i--) if (g.n[i].k == K_OUT && g.n[i].a >= 0) { nextOut[i] = firstOut[g.n[i].a]; firstOut[g.n[i].a] = (short) i; }
 	// ---- 4. the program
 	bool used[REGS]; int ready[REGS], live = 0;
-	const int limit = rfLimit () < REGS ? rfLimit () : REGS;
+	// (a vertex or coordinate shader is run one thread a QPU -- KAPI_GPU_P_VS_1WAY --: the whole register file is its own)
+	struct Whole { int was; Whole () : was (regs ()) { if (version () >= 71) setVersion (71, 64); } ~Whole () { if (version () >= 71) setVersion (71, was); } } whole;
+	const int limit = version () >= 71 ? (rfLimit () < REGS ? rfLimit () : REGS) : REGS;
 	for (int i = 0; i < REGS; i++) { used[i] = false; ready[i] = 0; }
 	// a register read: not before what was put in it is there (a VPM read lands three instructions later)
 	auto wait = [&] (int a, int b = -1, int c = -1)
@@ -348,9 +352,14 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 			{
 			case K_IN:
 			{
-				if (r.nIn >= inMax) { r.why = "more inputs than there is room for"; return false; }
-				in[r.nIn].reg = (u8) x.u0; in[r.nIn].comp = x.code;
-				const R at = index (r.nIn++);
+				u32 where = r.nIn;				// (one of the given first inputs, or the next)
+				for (u32 q = 0; q < inPre && q < r.nIn; q++) if (in[q].reg == (u8) x.u0 && in[q].comp == x.code) { where = q; break; }
+				if (where == r.nIn)
+				{
+					if (r.nIn >= inMax) { r.why = "more inputs than there is room for"; return false; }
+					in[r.nIn].reg = (u8) x.u0; in[r.nIn].comp = x.code; r.nIn++;
+				}
+				const R at = index (where);
 				p << I ().a (V3D_QPU_A_LDVPMV_IN, D, at);
 				ready[d] = p.count () + 2;
 				break;

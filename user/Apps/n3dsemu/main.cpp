@@ -335,6 +335,8 @@ int main (void)
 			if (args[i + 2] == 'f' && args[i + 3] == 'u') wantFull = true;
 			if (args[i + 2] == 's' && args[i + 3] == 't') g_statsOut = true;
 			if (args[i + 2] == 's' && args[i + 3] == 'o') g_useGpu = 0;
+			if (args[i + 2] == 'n' && args[i + 3] == 'o' && args[i + 4] == 'v') g_useVS = 0;	// (--novs: the vertex shaders stay on the processor)
+			if (args[i + 2] == 'v' && args[i + 3] == 's') g_vsOn71 = 1;				// (--vs: on the GPU on a Pi 5 too -- not tried there yet)
 		}
 	{ int b = slen (g_rom_path); while (b > 0 && g_rom_path[b - 1] != '/' && g_rom_path[b - 1] != ':') b--; scpy (g_loadName, g_rom_path + b, sizeof g_loadName); }
 
@@ -409,7 +411,7 @@ int main (void)
 	const unsigned long long frameUs = 16715;			// 59.83 frames a second
 	unsigned long long next = now_us (), stT = next, emuUs = 0, drawUs = 0, lastSave = next;
 	unsigned stFrames = 0, stDrawn = 0, skipped = 0;
-	unsigned long long gpuBefore = 0, softBefore = 0, listsBefore = 0, transBefore = 0, fillsBefore = 0, skipBefore = 0;
+	unsigned long long gpuBefore = 0, softBefore = 0, listsBefore = 0, transBefore = 0, fillsBefore = 0, skipBefore = 0, vsBefore = 0;
 	while (!should_exit () && !g_m->exited)
 	{
 		pump_events ();
@@ -459,7 +461,8 @@ int main (void)
 				fmt_num (ln, &q, stFrames ? (unsigned) ((g_m->gsp.usTransfers - transBefore) / stFrames / 100) : 0, 1); cat (ln, &q, " fills ");
 				fmt_num (ln, &q, stFrames ? (unsigned) ((g_m->gsp.usFills - fillsBefore) / stFrames / 100) : 0, 1); cat (ln, &q, " ms, left out ");
 				fmt_num (ln, &q, (unsigned) (g_m->gsp.skippedFrames - skipBefore), 0); cat (ln, &q, ", helpers ");
-				fmt_num (ln, &q, (unsigned) g_m->helpers, 0); ln[q++] = 10;
+				fmt_num (ln, &q, (unsigned) g_m->helpers, 0); cat (ln, &q, ", vertices on the GPU ");
+				fmt_num (ln, &q, (unsigned) (g_m->gsp.vsVertices - vsBefore), 0); vsBefore = g_m->gsp.vsVertices; ln[q++] = 10;
 				kapi_stdout_write (ln, (unsigned) q);
 			}
 			listsBefore = g_m->gsp.usLists; transBefore = g_m->gsp.usTransfers; fillsBefore = g_m->gsp.usFills; skipBefore = g_m->gsp.skippedFrames;

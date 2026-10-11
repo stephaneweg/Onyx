@@ -39,6 +39,7 @@ typedef unsigned int u32;
 // the registers a thread of them has (32, or 16 for a 4-way fragment shader); -> false: not a version
 bool setVersion (int ver, int regs = 32);
 int version ();
+int regs ();				// (setVersion's)
 int rfLimit ();				// the program's registers are rf0 .. rfLimit () - 1 (32 on 4.2)
 struct R;
 int physical (const R &x);		// V3D 7.1: the rf register an accumulator / rf of the program is (-1: none); 4.2: rf n's n, -1 for r0..r5

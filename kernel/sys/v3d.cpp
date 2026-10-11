@@ -1558,7 +1558,8 @@ static boolean ClipFrame2 (const float *pV, unsigned nV, unsigned nStride, const
 static boolean ClipFrame3 (const float *pV, const kapi_gpu_batch3 *pB, unsigned nB, const float *pView, unsigned *pOutFloats)
 {
 	u64 nIn = 0;
-	for (unsigned i = 0; i < nB; i++) nIn += (u64) pB[i].b.count * pB[i].stride;
+	for (unsigned i = 0; i < nB; i++)
+		nIn += (pB[i].b.flags & KAPI_GPU_B_INDEXED) ? (u64) pB[i].b.first * pB[i].stride + pB[i].b.count : (u64) pB[i].b.count * pB[i].stride;
 	u64 nCap = nIn * 2 + 21 * CLIP_MAX_FLOATS;			// (floats; a batch's triangles beyond: dropped)
 	if (nCap > (u64) KAPI_GPU_MAX_VERTS * 32) nCap = (u64) KAPI_GPU_MAX_VERTS * 32;	// (25 MB: 196k vertices of 32 floats)
 	if (!ClipBatches (nB) || !Alloc (s_Verts2, (u32) nCap * 4)) return FALSE;
@@ -1575,6 +1576,18 @@ static boolean ClipFrame3 (const float *pV, const kapi_gpu_batch3 *pB, unsigned 
 		unsigned nIn = s_Prog[o.program].nInputs, nStride = b3.stride, nRest = (nIn - 4) * 4;
 		u32 nStart = n;
 		const float *pT = pV + b3.off;
+		if (b3.b.flags & KAPI_GPU_B_INDEXED)				// (its vertices, then its indices -- each brought among them)
+		{
+			u32 nVerts = b3.b.first, nAll = nVerts * nStride, nIdx = b3.b.count;
+			if (n + nAll + nIdx > nCap) { nAll = 0; nIdx = 0; }
+			memcpy (pOut + n, pT, (u64) nAll * 4);
+			const u32 *pI = (const u32 *) (pT + nAll); u32 *pO = (u32 *) (pOut + n + nAll);
+			for (u32 k = 0; k < nIdx; k++) pO[k] = pI[k] < nVerts ? pI[k] : nVerts - 1;
+			n += nAll + nIdx;
+			o.count = nIdx; o.first = nVerts;
+			s_pOutOff[i] = nStart; s_pOutStride[i] = nStride;
+			continue;
+		}
 		if (b3.b.flags & KAPI_GPU_B_NOCLIP)				// (its own vertex shader: the vertices as they are)
 		{
 			u32 nAll = b3.b.count * nStride;
@@ -1681,7 +1694,7 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 		nUniBytes += (pB[i].vsNUni + pB[i].csNUni + pB[i].fsNUni) * 4 + 8 * 32 + 64;
 	if (!Alloc (s_Target, (u32) (w * h * 4))
 	    || !Alloc (s_TileAlloc, nAllocSize) || !Alloc (s_TileState, nTiles * 256)
-	    || !Alloc (s_BCL, 1024 + nB * 96 + s_nRuns * 16) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
+	    || !Alloc (s_BCL, 1024 + nB * 128 + s_nRuns * 16) || !Alloc (s_Ind, 4096 + nB * 512 + nUniBytes))
 		return -2;
 	boolean bKeep = (F.flags & KAPI_GPU_F_KEEP) != 0;
 	TTarget T; ResolveTarget (F.pixels, w, h, F.stride, T, (F.flags & KAPI_GPU_F_ALPHA) != 0);
@@ -1783,12 +1796,16 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 		Rec.fragment_shader_propagate_nans = true;
 		Rec.vertex_shader_code_address = P.Mem.Bus (P.nVS) >> 3;
 		Rec.vertex_shader_uniforms_address = nVtxUnif;
-		Rec.vertex_shader_4_way_threadable = true;
+		// (a generated vertex shader writes its outputs as they are made, before its last inputs are read: the two
+		// must not share a VPM block)
+		Rec.vertex_shader_has_separate_input_and_output_vpm_blocks = (P.nFlags & KAPI_GPU_P_VS_1WAY) != 0;
+		Rec.coordinate_shader_has_separate_input_and_output_vpm_blocks = (P.nFlags & KAPI_GPU_P_VS_1WAY) != 0;
+		Rec.vertex_shader_4_way_threadable = !(P.nFlags & KAPI_GPU_P_VS_1WAY);
 		Rec.vertex_shader_start_in_final_thread_section = true;
 		Rec.vertex_shader_propagate_nans = true;
 		Rec.coordinate_shader_code_address = P.Mem.Bus (P.nCS) >> 3;
 		Rec.coordinate_shader_uniforms_address = nCoordUnif;
-		Rec.coordinate_shader_4_way_threadable = true;
+		Rec.coordinate_shader_4_way_threadable = !(P.nFlags & KAPI_GPU_P_VS_1WAY);
 		Rec.coordinate_shader_start_in_final_thread_section = true;
 		Rec.coordinate_shader_propagate_nans = true;
 #if RASPPI >= 5
@@ -1806,7 +1823,7 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 			A.number_of_values_read_by_vertex_shader = nVals;
 			A.number_of_values_read_by_coordinate_shader = nCS;
 			A.stride = s_pOutStride[i] * 4;
-			A.maximum_index = 0xFFFFFF;
+			A.maximum_index = (b.flags & KAPI_GPU_B_INDEXED) ? b.first - 1 : 0xFFFFFF;
 			A.vec_size = nVals & 3;						// (0: 4)
 			A.type = 2;							// float
 			Ind << A;
@@ -1855,6 +1872,16 @@ static int Render2 (const kapi_gpu_frame &F, const kapi_gpu_batch2 *pB, unsigned
 			for (int k = 0; k < 4; k++) PrevClip[k] = C[k];
 		}
 		B << (u8) OP_GL_SHADER_STATE << (u32) (nShaderRec | nAttr);	// (5 bits of arrays: up to 16)
+		if (b.flags & KAPI_GPU_B_INDEXED)				// its indices: 32 bits each, after its b.first vertices
+		{
+			u32 nIdxBus = s_pOutBus[i] + b.first * s_pOutStride[i] * 4, nBytes = b.count * 4;
+			// (Index Buffer Setup, 44: the address, the size; Indexed Prim List, 32: triangles (4), 32-bit indices (2 << 6),
+			// how many, the offset -- the same packets on V3D 4.2 and 7.1)
+			u8 S[9] = { 44, (u8) nIdxBus, (u8) (nIdxBus >> 8), (u8) (nIdxBus >> 16), (u8) (nIdxBus >> 24), (u8) nBytes, (u8) (nBytes >> 8), (u8) (nBytes >> 16), (u8) (nBytes >> 24) };
+			u8 L[10] = { 32, (u8) (4 | 2 << 6), (u8) b.count, (u8) (b.count >> 8), (u8) (b.count >> 16), (u8) (b.count >> 24 & 0x7F), 0, 0, 0, 0 };
+			B.Bytes (S, sizeof S); B.Bytes (L, sizeof L);
+		}
+		else
 		for (u32 r = s_pRunAt[i]; r < s_pRunAt[i + 1]; r++)		// triangles: the batch's runs of its vertices
 			B << VertexArrayPrims (4, s_pRun[r][1], s_pRun[r][0]);
 	}
@@ -1980,12 +2007,19 @@ extern "C" int kapi_gpu_render3 (const kapi_gpu_frame *pUserF, const float *pV, 
 	    || !UserReadable (pUni, (u64) nUni * sizeof *pUni))
 		return -2;
 	CAddressSpace *pAS = CurrentAS ();
+	boolean bIndexed = FALSE;
 	for (unsigned i = 0; i < nB; i++)				// each batch: its vertices, program, uniforms, textures
 	{
 		const kapi_gpu_batch2 &b = pB[i].b;
 		unsigned nStride = pB[i].stride;
-		if (b.count % 3 != 0 || nStride < 4 || nStride > CLIP_MAX_FLOATS
-		    || (u64) pB[i].off + (u64) b.count * nStride > nFloats || b.count > KAPI_GPU_MAX_VERTS) return -2;
+		if (b.count % 3 != 0 || nStride < 4 || nStride > CLIP_MAX_FLOATS || b.count > KAPI_GPU_MAX_VERTS) return -2;
+		if (b.flags & KAPI_GPU_B_INDEXED)			// (b.first vertices, then b.count indices)
+		{
+			if (!(b.flags & KAPI_GPU_B_NOCLIP) || b.first == 0 || b.first > KAPI_GPU_MAX_VERTS
+			    || (u64) pB[i].off + (u64) b.first * nStride + b.count > nFloats) return -2;
+			bIndexed = TRUE;
+		}
+		else if ((u64) pB[i].off + (u64) b.count * nStride > nFloats) return -2;
 		if (b.program < 0 || b.program >= KAPI_GPU_MAX_PROGRAMS || s_Prog[b.program].pOwner != pAS
 		    || s_Prog[b.program].nInputs > nStride)
 			return -2;
@@ -2008,7 +2042,8 @@ extern "C" int kapi_gpu_render3 (const kapi_gpu_frame *pUserF, const float *pV, 
 	unsigned tClip = CTimer::Get ()->GetClockTicks ();
 	int vb = s_nState > 0 ? FindVBuf (pAS, pV, nFloats) : -1;	// (a vbuf's: drawn in place)
 	boolean bClipped = FALSE;
-	if (vb >= 0)
+	if (vb >= 0 && bIndexed) ;					// (refused: -4)
+	else if (vb >= 0)
 	{
 		float *pK = (float *) (s_VBuf[vb].p + ((u64) (uintptr) pV - s_VBuf[vb].ulVA));
 		u32 nFirst = 0, nEnd = 0;

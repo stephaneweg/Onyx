@@ -119,6 +119,11 @@ struct Memory
 	bool fill (u32 va, u8 v, u32 n);
 	// a page is not there: the host may put it back (a buffer the renderer kept from the program: n3ds_pica.cpp) -> true
 	bool (*missing) (void *user, u32 va); void *missingUser;
+	// (to study a program: pages taken out of its table -- every access to them comes to the processor's slow path,
+	// which says it (n3ds_cpu.cpp) and reads or writes them here)
+	u8 *watchPg[64]; u32 watchP0, watchN, watchBase, watchSaid;
+	u8 *watched (u32 va) const { const u32 p = va >> PAGE_BITS; return watchN && p - watchP0 < watchN ? watchPg[p - watchP0] + (va & (PAGE_SIZE - 1)) : 0; }
+	void watch (u32 va, u32 n);
 	u32 faults;				// accesses outside the mapped pages (read as 0, writes dropped)
 	u32 faultAddr;
 };
@@ -253,8 +258,13 @@ struct Thread : Object
 // gpu_program, gpu_texture): a program is a V3D fragment shader of `nVary` varyings (user/Libs/v3d/picatev; the
 // vertex and coordinate shaders are the stock ones for 4 + nVary floats a vertex), a texture is pixels r g b a
 // (bytes, the first row at the top) that changed when its serial did.
+// A batch with a vertex program (vprog >= 0; Machine::gpuVS) has its own vertex and coordinate shaders (user/Libs/v3d/
+// picavs: a draw's PICA shader, its lighting) with their uniforms: its vertices are the `inputs` floats they read (the
+// coordinate shader the first `csInputs`), not clip positions -- the GPU clips them (KAPI_GPU_B_NOCLIP is in its flags).
+// Machine::gpuIndexed: such a batch may be indexed (GpuBatch::nVerts).
 struct GpuProgramInfo { const unsigned long long *words; u32 nWords, nVary, flags; };
 struct GpuTextureInfo { const u32 *px; u32 w, h, serial; };
+struct GpuVProgramInfo { const unsigned long long *vs, *cs; u32 nvs, ncs, inputs, csInputs; };
 struct GpuBatch
 {
 	u32 program;				// an index in GpuFrame::programs
@@ -263,6 +273,9 @@ struct GpuBatch
 	int scissor[4];				// x, y (from the top), w, h
 	u32 uni, nUni;				// its fragment uniforms in GpuFrame::u
 	int tex[3]; u32 texFlags[3]; int texUni[3];	// each lookup's texture (an index in GpuFrame::textures), its wrapping, where its two words go (-1: none)
+	int vprog;				// an index in GpuFrame::vprograms, -1: the stock vertex shaders
+	u32 vsUni, vsNUni, csUni, csNUni;	// (vprog >= 0) its vertex and coordinate shaders' uniforms in GpuFrame::u
+	u32 nVerts;				// (vprog >= 0) not 0: indexed (KAPI_GPU_B_INDEXED is in its flags) -- nVerts vertices from `off`, then `count` 32-bit indices
 };
 struct GpuFrame
 {
@@ -272,6 +285,7 @@ struct GpuFrame
 	const u32 *u; u32 nu;
 	const GpuProgramInfo *programs; u32 nPrograms;
 	const GpuTextureInfo *textures; u32 nTextures;
+	const GpuVProgramInfo *vprograms; u32 nVPrograms;
 };
 
 struct Machine
@@ -316,6 +330,12 @@ struct Machine
 		u64 usRead, usShade, usAssemble;	// (of the lists' time, in the draws of many vertices: their attributes read, shaded, their triangles assembled)
 		u64 shaderChecked, shaderWrong;		// (shaderCheck: vertices run by both the compiled shader and the interpreter; the ones that differed)
 		u64 sameFrames;				// ... of the GPU's, those found the same as an earlier one (not drawn again)
+		// the vertex shaders on the host's GPU (gpuVS): vertices given raw, the chunks of draws they came in, the programs
+		// made and their instructions; vertices left to the processor (1 the shader not specialized, 2 its program refused, 3 no room)
+		u64 vsVertices, vsChunks, vsPrograms, vsInstructions, vsNot[4];
+		u64 vsKept;				// ... chunks whose program was found by a kept specialization
+		u64 usVsProgram, usVsRecord;		// ... the host's time finding a chunk's program (its shader specialized), recording it
+		u64 usGpuLoad, usGpuHash, usGpuCall, usGpuKeep, usGpuAfter, gpuCalls;	// of usGpu: the buffer read into the host's pixels, the frame compared with the last ones, the host's call (how many), the picture kept, the queue and the guard after
 		u64 gpuFrames, softFrames, usGpu, skippedFrames;	// the targets' frames drawn by the host's GPU, by the software renderer; the host's time
 		u64 vertices, trianglesDrawn, pixelsDrawn, shaderSteps, trianglesIn;	// (shaderSteps: the vertex shader's instructions run; trianglesIn: before clipping and culling)
 	} gsp;
@@ -381,6 +401,13 @@ struct Machine
 	void (*gpuSoft) (void *user, const u32 *pixels, int w, int h);	// (tests: a frame gpuDraw refused, as the software renderer drew it)
 	void gpuSync ();			// the GPU's work under way is ended (call it before reading a screen)
 	bool shaderCheck;			// (tests: every vertex through the compiled shader and the interpreter, compared)
+	bool gpuVS;				// the host's gpuDraw takes batches with vertex programs (GpuBatch::vprog)
+	bool gpuIndexed;			// ... and indexed ones (GpuBatch::nVerts)
+	u32 gpuSubpixels;			// ... and its screen positions' unit: 256 a pixel (V3D 4.2), 64 (V3D 7.1)
+	u32 vsDebug;				// (to find a fault: kinds of draws kept on the processor -- n3ds_pica.cpp, vsChunk)
+	bool watchMade;				// (to study a program: the stand-in archive's file, once read by the program, is watched)
+	bool vsCheck;				// (tests: what each draw's vertex program would give, beside the processor's path)
+	struct { u64 noState, notVerts[4], chunks, inputs, uniforms, checked, wrong, wrongLit, tplChecked, tplWrong; u32 said; } vsStat;
 	bool trace;				// the system calls and the requests, on stderr (tests)
 	bool traceGpu;				// ... each draw and transfer of the GPU
 	bool listsAside;			// a list's triangles drawn while the program goes on, its interrupt late (off: see n3ds_gsp.cpp)
@@ -472,6 +499,7 @@ ShaderCode shaderCompile (ShaderJit **jit, const u32 *code, const u32 *opdesc, u
 void shaderJitReset (ShaderJit *jit);
 const void *shaderJitConsts (const ShaderJit *jit);
 void picaBeforeFill (Machine *m, u32 physStart, u32 physEnd);	// memory is about to be filled: what is queued for it is drawn first
+void picaAfterFill (Machine *m, u32 physStart, u32 physEnd, int width);
 bool picaBusy (const Machine *m);		// a list's triangles are being drawn aside
 bool picaDone (Machine *m);			// ... and the helpers have finished them
 bool picaGuestTouch (Machine *m, u32 va);	// the program reaches a buffer kept from it: finished, given back -> true

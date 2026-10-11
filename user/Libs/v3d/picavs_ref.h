@@ -145,13 +145,17 @@ inline void refLight (const Lighting &L, const float *lv, const float out[16][4]
 	}
 }
 // What write x gives for the outputs: a float, or (isInt) the screen's fixed-point integer.
-inline float refWrite (const Write &x, const float out[16][4], const float view[V_COUNT], bool &isInt, const float *litP = 0, const float *litS = 0)
+inline float refWrite (const Write &x, const float out[16][4], const float view[V_COUNT], bool &isInt, const float *litP = 0, const float *litS = 0, const Sem *pos = 0)
 {
-	const float *q = out[x.reg & 15];
+	float at[4];
+	if (pos) for (int c = 0; c < 4; c++) at[c] = pos[c].reg == 0xFF ? (c == 3 ? 1.0f : 0.0f) : out[pos[c].reg & 15][pos[c].comp & 3];
+	const float *q = pos && x.kind >= W_XS && x.kind <= W_WC ? at : out[x.reg & 15];
 	isInt = false;
 	if (x.kind == W_LITP) return litP ? litP[x.comp & 3] : 0.0f;
 	if (x.kind == W_LITS) return litS ? litS[x.comp & 3] : 0.0f;
 	if (x.kind == W_RAW) return q[x.comp & 3];
+	if (x.kind == W_ZERO) return 0.0f;
+	if (x.kind == W_ONE) return 1.0f;
 	if (x.kind == W_ONE_MINUS) return 1.0f + -q[x.comp & 3];
 	const float xc = q[0] * view[V_KX] + q[3] * view[V_CX], yc = q[1] * view[V_KY] + q[3] * view[V_CY], zc = q[2] * view[V_KZ] + q[3] * view[V_CZ];
 	const float rw = 1.0f / q[3];
