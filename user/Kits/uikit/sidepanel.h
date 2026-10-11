@@ -47,7 +47,8 @@ namespace uikit {
 enum { UK_SP_LEFT = 0, UK_SP_RIGHT = 1 };				// the side
 enum { UK_SP_NAVIGATION = 0, UK_SP_INSPECTOR = 1 };			// the role
 enum { UK_SP_FULL = 0, UK_SP_RAIL, UK_SP_DRAWER, UK_SP_SLIDEOVER, UK_SP_SHEET, UK_SP_COLUMN, UK_SP_HIDDEN };	// presentation ()
-enum { UK_SPI_HEADING = 1, UK_SPI_FOLDABLE = 2, UK_SPI_DISABLED = 4, UK_SPI_SEPARATOR = 8, UK_SPI_FOLDED = 16 };	// an item's flags
+enum { UK_SPI_HEADING = 1, UK_SPI_FOLDABLE = 2, UK_SPI_DISABLED = 4, UK_SPI_SEPARATOR = 8, UK_SPI_FOLDED = 16,
+       UK_SPI_ACTION = 32 };		// (an action, not a place -- "Add Folder...": a click only, Prev / Next pass it)	// an item's flags
 enum { UK_SP_TOGGLE_ON = -2, UK_SP_TOGGLE_OFF = -3 };		// the icon ids an icon function gets for a toggle
 
 // The app's icons: icon `id` drawn in the size x size box at (x, y) in ink (selected: on the accent).

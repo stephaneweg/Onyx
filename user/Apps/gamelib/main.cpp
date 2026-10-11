@@ -435,11 +435,13 @@ static void refilter (void)
 	if (g_sel >= g_nvis) g_sel = g_nvis - 1;
 	if (g_sel < 0) g_sel = 0;
 }
+static void sp_mark (void);
 static void set_filter (int f)
 {
 	if (f == g_filter) return;
 	g_filter = f; g_sel = 0; g_scroll = 0; g_hover = -1;
 	refilter ();
+	sp_mark ();					// (the pad's L / R, Tab: the SidePanel's mark follows)
 	if (g_root) g_root->invalidate (true);
 }
 static const char *filter_name (void)
@@ -535,6 +537,7 @@ static void side_rows (void)
 // (P7) In pocket and console the sidebar is a navigation SidePanel (uikit/sidepanel.h: a rail of the systems' icons in
 // landscape, a drawer in portrait, the d-pad's column in console); 0 on the desktop -- its own sidebar, as always.
 static SidePanel *g_sp;
+static void sp_mark (void) { if (g_sp) g_sp->select (g_filter); }
 enum { SP_ADD = 9000, SPI_ALL = 0, SPI_SYS = 1, SPI_FOLDER = 500, SPI_PLUS = 501 };	// (an item's id: its filter; its icon)
 static void sp_build (void);
 static int side_at (int mx, int my)
@@ -643,6 +646,7 @@ static void sp_build (void)			// the groups as headings (they fold), the places 
 		{
 			for (int f = 0; f < g_nf; f++) { g_sp->addItem (F_FOLDER + f, g_folder[f], SPI_FOLDER, 0, h); count (F_FOLDER + f, g_nfold[f]); }
 			g_sp->addItem (SP_ADD, TR ("Add Folder..."), SPI_PLUS, 0, h);
+			g_sp->setFlags (SP_ADD, UK_SPI_ACTION);		// (an action, not a place: L / R pass it)
 		}
 	}
 	g_sp->select (g_filter);

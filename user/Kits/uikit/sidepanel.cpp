@@ -36,6 +36,7 @@ struct SpItem
 struct SpPage { char label[32]; int icon; Widget *w; };
 struct SpExt : internal::ExtHead
 {
+	bool reveal = false;			// the chosen item brought into view at the next drawing (select: the keys' step, L / R)
 	SpItem	*items = 0; int n = 0, cap = 0;
 	int	 nextId = 1000000;
 	int	 sel = -1, hot = -1, cursor = -1;	// the chosen item (its id); under the pointer, the keys' (indexes)
@@ -238,7 +239,7 @@ void SidePanel::select (int id, bool fire)
 {
 	SpExt *e = sp (this);
 	if (e->sel == id) return;
-	e->sel = id;
+	e->sel = id; e->reveal = true;
 	int i = sp_index (e, id);
 	if (i >= 0) e->cursor = i;
 	invalidate (true);
@@ -246,32 +247,26 @@ void SidePanel::select (int id, bool fire)
 }
 int SidePanel::selected () { return sp (this)->sel; }
 
-namespace { bool sp_step (Widget *w, int dir)	// (the console's L1 / R1: the next / previous section's first item)
+namespace { bool sp_step (Widget *w, int dir)	// (Prev / Next -- L / R, Ctrl + Page Up / Down: the place before / after)
 {
+	// One place at a time, whatever its section, round and round: the headings, the items off and the actions
+	// (UK_SPI_ACTION) passed. (It was "the next section's first item": with a section of one item -- All Games -- and
+	// another of many, L / R jumped over every system and stopped at the last section.)
 	SidePanel *p = (SidePanel *) w;
 	SpExt *e = sp (p);
-	int starts[64], ns = 0;
-	bool fresh = true;
-	for (int i = 0; i < e->n && ns < 64; i++)
+	if (e->n <= 0) return false;
+	int cur = sp_index (e, e->sel);
+	int from = cur >= 0 ? cur : dir > 0 ? -1 : 0;
+	for (int k = 1; k <= e->n; k++)
 	{
-		if (sp_heading (e->items[i])) { fresh = true; continue; }
-		if (fresh && sp_pickable (e->items[i])) { starts[ns++] = i; fresh = false; }
+		int j = ((from + dir * k) % e->n + e->n) % e->n;
+		const SpItem &it = e->items[j];
+		if (!sp_pickable (it) || (it.flags & (UK_SPI_ACTION | UK_SPI_SEPARATOR))) continue;
+		if (j == cur) return false;
+		p->select (it.id, true);
+		return true;
 	}
-	if (ns <= 1)						// (one section: the items one by one)
-	{
-		int i = sp_index (e, e->sel);
-		for (int k = i + dir; k >= 0 && k < e->n; k += dir) if (sp_pickable (e->items[k])) { p->select (e->items[k].id, true); return true; }
-		if (i < 0) for (int k = 0; k < e->n; k++) if (sp_pickable (e->items[k])) { p->select (e->items[k].id, true); return true; }
-		return false;
-	}
-	int cur = sp_index (e, e->sel), s = -1;
-	for (int k = 0; k < ns; k++) if (starts[k] <= cur) s = k;
-	int t;
-	if (dir > 0) t = s + 1;
-	else t = s < 0 ? 0 : cur == starts[s] ? s - 1 : s;
-	if (t < 0 || t >= ns) return false;
-	p->select (e->items[starts[t]].id, true);
-	return true;
+	return false;
 } }
 
 // ---- the free content ------------------------------------------------------------------------------------------------
@@ -555,6 +550,18 @@ static void sp_draw_items (SidePanel *p, SpExt *e, int pres, int bx, int by, int
 	unsigned bg = sp_bg (e), ink = sp_ink (e), dim = sp_dim (e);
 	int ry[512], rh[512];
 	int n = e->n < 512 ? e->n : 512;
+	if (e->reveal)						// (the chosen item scrolled into the box: a rail of more systems than fit)
+	{
+		e->reveal = false;
+		int total = sp_rows (e, pres, 0, ry, rh) + 8, i = sp_index (e, e->sel);
+		if (i >= 0 && i < n && ry[i] >= 0 && rh[i] > 0)
+		{
+			if (ry[i] - 4 < e->top) e->top = ry[i] - 4;
+			else if (ry[i] + rh[i] + 4 > e->top + bh) e->top = ry[i] + rh[i] + 4 - bh;
+			if (e->top > total - bh) e->top = total - bh;
+			if (e->top < 0) e->top = 0;
+		}
+	}
 	sp_rows (e, pres, by - e->top, ry, rh);
 	int limit = by + bh;
 	for (int i = 0; i < n; i++)
