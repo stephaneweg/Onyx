@@ -320,7 +320,7 @@ static bool tab_keys (long k)
 	unsigned m = kapi_get_modifiers ();
 	// F12 / F11 alone: a new tab / this one closed -- on a thumb keyboard (the PocketTerm35's) Fn with "=" (the "+"
 	// key) and Fn with "-"
-	if (!(m & (MOD_CTRL | MOD_SHIFT | MOD_ALT)))
+	if (uk_size_class () != UK_SC_REGULAR && !(m & (MOD_CTRL | MOD_SHIFT | MOD_ALT)))	// (pocket and console: the desktop's keys stay as they are)
 	{
 		if (k == KEY_F12) { new_tab (); return true; }
 		if (k == KEY_F12 - 1) { m_close (); return true; }

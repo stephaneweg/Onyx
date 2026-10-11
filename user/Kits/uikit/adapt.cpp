@@ -369,6 +369,7 @@ bool key_fallback (Root *r, long k)
 static void pad_turn (Root *r)
 {
 	static int own = -1;
+	if (!ring_on ()) return;				// (the desktop stays as it is: a pad drives the apps in pocket and console only)
 	if (r == 0 || r != Root::current () || !in_ready ()) return;
 	if (own < 0) own = in_app_owns_pad (0);
 	if (own || in_claimed ()) return;
