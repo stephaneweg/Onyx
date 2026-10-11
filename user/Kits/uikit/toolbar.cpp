@@ -236,7 +236,8 @@ bool ToolButton::onMouse (int mx, int my, int bl, int, int, int)
 namespace {
 enum { TB_MAX = 64, MORE_W = 28 };
 struct TbRec { Widget *w; ToolBar *home; int left, top, homeW, gap, prio, rank, group, pad; bool sepBefore, right; const char *label;
-	       int natW, minW, foldW; };	// (setFlex) its own width, its least one, its folded one (0: it does not fold)
+	       int natW, minW, foldW;	// (setFlex) its own width, its least one, its folded one (0: it does not fold)
+	       bool gone; };		// (setShown (w, false)) the app took it off the bar: in no row, in no panel
 struct TbExt : internal::ExtHead
 {
 	TbRec rec[TB_MAX]; int n = 0;
@@ -406,7 +407,7 @@ static void tb_record (ToolBar *t, Widget *w, int gap, bool right)
 	TbRec &r = e->rec[e->n++];
 	r.w = w; r.home = t; r.left = w->left; r.top = w->top; r.homeW = t->width; r.gap = gap; r.prio = UK_TB_ALWAYS; r.rank = 0;
 	r.group = e->seps; r.pad = 0; r.sepBefore = e->sepPending && !right; r.right = right; r.label = 0;
-	r.natW = w->width; r.minW = r.foldW = 0;
+	r.natW = w->width; r.minW = r.foldW = 0; r.gone = false;
 	if (!right) e->sepPending = false;
 }
 
@@ -453,6 +454,17 @@ void ToolBar::setFlex (Widget *w, int minW, int foldW)
 	if (uk_size_class () != UK_SC_REGULAR) { layout (); invalidate (true); }
 }
 void ToolBar::setShortcut (Widget *w, int padButton) { TbRec *r = tb_find (tb_ext (this), w); if (r) r->pad = padButton; }
+void ToolBar::setShown (Widget *w, bool shown)
+{
+	if (w == 0) return;
+	TbRec *r = tb_find (tb_ext (this), w);
+	bool compact = uk_size_class () != UK_SC_REGULAR;
+	if (r == 0 || !compact) { w->hidden = !shown; if (r) r->gone = !shown; return; }	// (the desktop: hidden, as the app did itself)
+	if (r->gone == !shown) return;
+	r->gone = !shown;
+	if (!shown) w->hidden = true;
+	layout (); invalidate (true);
+}
 
 void ToolBar::foldInto (ToolBar *first)
 {
@@ -476,11 +488,11 @@ static int tb_all (ToolBar *t, TbRec **out)
 {
 	TbExt *e = tb_ext (t);
 	int k = 0;
-	for (int i = 0; i < e->n && k < TB_MAX * 2; i++) out[k++] = &e->rec[i];
+	for (int i = 0; i < e->n && k < TB_MAX * 2; i++) if (!e->rec[i].gone) out[k++] = &e->rec[i];
 	for (int f = 0; f < e->nfolded; f++)
 	{
 		TbExt *g = tb_ext (e->folded[f]);
-		for (int i = 0; i < g->n && k < TB_MAX * 2; i++) out[k++] = &g->rec[i];
+		for (int i = 0; i < g->n && k < TB_MAX * 2; i++) if (!g->rec[i].gone) out[k++] = &g->rec[i];
 	}
 	return k;
 }

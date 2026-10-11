@@ -33,6 +33,23 @@ static char g_note[300]; static unsigned g_noteT;
 static bool g_emlMode;			// a .eml file shown alone ("mail SD:/x.eml"): read only
 static void status_note (const char *s) { scpy (g_note, s, sizeof g_note); g_noteT = kapi_get_ticks (); refresh_all (); }
 
+// ---- pocket's three screens (app.h: g_three, g_level) -------------------------------------------------------------------
+// What the window shows there, one thing at a time: a screen of the three, or -- over it -- the message being written,
+// the contacts, the welcome of a Mail without account.
+enum { SC_FOLDERS, SC_LIST, SC_MESSAGE, SC_COMPOSE, SC_CONTACTS, SC_WELCOME };
+static int three_screen ()
+{
+	if (g_compose && !g_compose->hidden) return SC_COMPOSE;
+	if (g_showContacts) return SC_CONTACTS;
+	if (!g_m.accts.n) return SC_WELCOME;
+	return g_level;
+}
+static const char *three_name (int level);	// a screen's name for the bar: Mail, the folder, whom the message is from
+static void three_go (int level);		// that screen shown, the keys given to it
+static void three_back ();			// Esc, B, the bar's "<": one screen back
+static void three_focus ();
+static void compose_discard ();
+
 // ---- the tool bar ------------------------------------------------------------------------------------------------------------
 static void search_changed ();
 class SearchBox : public HintBox
@@ -52,14 +69,88 @@ public:
 	SearchBox *search;
 	HitList hits;
 	int hot;
-	enum { T_NEW = 1, T_REPLY, T_REPLYALL, T_FORWARD, T_ARCHIVE, T_DELETE, T_JUNK, T_STAR, T_CHECK, T_BACK };
+	enum { T_NEW = 1, T_REPLY, T_REPLYALL, T_FORWARD, T_ARCHIVE, T_DELETE, T_JUNK, T_STAR, T_CHECK, T_BACK, T_ALL, T_UNREAD };
 	ToolBar (int l, int t, int w, int h) : Widget (l, t, w, h), hot (0)
 	{
 		search = new SearchBox (w - 300, 10, 240, 30); addChild (search);
 	}
-	void place () { int sw = width > 900 ? 260 : width < 600 ? 110 : 180; search->left = width - sw - 54; search->resizeTo (sw, 30); }
+	void place ()
+	{
+		if (g_three)				// (the search: on the folders' and the list's screens only)
+		{
+			int s = three_screen (), sw = s == SC_LIST ? 110 : 200;
+			((Widget *) search)->hidden = s != SC_FOLDERS && s != SC_LIST;
+			search->left = width - sw - 54; search->resizeTo (sw, 30);
+			return;
+		}
+		if (((Widget *) search)->hidden) ((Widget *) search)->hidden = false;
+		int sw = width > 900 ? 260 : width < 600 ? 110 : 180; search->left = width - sw - 54; search->resizeTo (sw, 30);
+	}
+	// Pocket's three screens: the bar says where one is. At its left "<" and the screen Esc goes back to (the folders'
+	// screen, the first: New message instead), then this screen's title; at its right this screen's tools -- the list's:
+	// All / Unread, a new message, the search, Check now; the message's: reply, reply all, forward, archive, delete,
+	// junk, the star. (A pointer's or a finger's: by the keys the Menu has them all.)
+	void drawThree ()
+	{
+		canvas.clear (C_BG);
+		hits.clear ();
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
+		int s = three_screen (), x = 8, right = width - 8;
+		bool busy = g_m.worker.busy || g_m.worker.head;
+		auto tool = [&] (int kind, int ic, unsigned col)
+		{
+			right -= 34;
+			if (hot == kind) uk_fill_round (canvas, right, 8, 34, 34, 6, uk_mix (C_BG, C_TEXT, 25));
+			icon (canvas, ic, right + 7, 15, 20, col);
+			hits.add (right, 8, 34, 34, kind);
+			right -= 4;
+		};
+		if (s == SC_FOLDERS || s == SC_LIST || s == SC_WELCOME) tool (T_CHECK, I_REFRESH, busy ? C_ACCENT : C_TEXT);
+		if (s == SC_FOLDERS || s == SC_LIST) { icon (canvas, I_SEARCH, search->left - 24, 16, 18, uk_mix (C_BG, C_TEXT, 150)); right = search->left - 30; }
+		if (s == SC_LIST)
+		{
+			tool (T_NEW, I_PEN, C_ACCENT);
+			int segW = 120, half = 60, sx = right - segW, syy = 13;
+			uk_fill_round (canvas, sx, syy, segW, 24, 6, C_ACCENT);
+			uk_fill_round (canvas, sx + 1, syy + 1, segW - 2, 22, 5, C_BG);
+			uk_fill_round (canvas, g_m.unreadOnly ? sx + half : sx, syy, half, 24, 6, C_ACCENT);
+			text_c (canvas, sx, syy, half, 24, TR ("All"), g_m.unreadOnly ? C_TEXT : C_SEL_TEXT, F_SMALL, 1);
+			text_c (canvas, sx + half, syy, half, 24, TR ("Unread"), g_m.unreadOnly ? C_SEL_TEXT : C_TEXT, F_SMALL, 1);
+			hits.add (sx, syy, half, 24, T_ALL); hits.add (sx + half, syy, half, 24, T_UNREAD);
+			right = sx - 8;
+		}
+		if (s == SC_MESSAGE)
+		{
+			bool st = false; { Ref r[60]; int n = conv_refs (r, 60); for (int k = 0; k < n; k++) if (g_m.msg (r[k]).flags & F_FLAGGED) st = true; }
+			tool (T_STAR, st ? I_STAR : I_STAR_O, st ? 0xF2A600 : C_TEXT);
+			tool (T_JUNK, I_JUNK, C_TEXT); tool (T_DELETE, I_TRASH, C_TEXT); tool (T_ARCHIVE, I_ARCHIVE, C_TEXT);
+			canvas.fillRect (right - 3, 12, 1, 26, uk_mix (C_BG, C_TEXT, 50)); right -= 10;
+			tool (T_FORWARD, I_FORWARD, C_TEXT); tool (T_REPLYALL, I_REPLYALL, C_TEXT); tool (T_REPLY, I_REPLY, C_TEXT);
+		}
+		if (s == SC_FOLDERS || s == SC_WELCOME)		// the first screen: nowhere to go back to -- New message
+		{
+			const char *l = TR ("New message"); int w = tw (l, F_UI, 1) + 50;
+			uk_fill_round (canvas, x + 4, 8, w, 34, 6, hot == T_NEW ? uk_mix (C_ACCENT, 0xFFFFFF, 30) : C_ACCENT);
+			icon (canvas, I_PEN, x + 16, 15, 20, C_SEL_TEXT);
+			text_v (canvas, x + 42, 8, 34, l, C_SEL_TEXT, F_UI, 1);
+			hits.add (x + 4, 8, w, 34, T_NEW);
+			return;
+		}
+		// "<" and where back goes
+		const char *back = three_name (s == SC_LIST ? 0 : s == SC_MESSAGE ? 1 : g_level);
+		int room = right - x - 12, bw = tw (back);
+		if (bw > room * 2 / 5) bw = room * 2 / 5;
+		if (hot == T_BACK) uk_fill_round (canvas, x, 8, 30 + bw, 34, 6, uk_mix (C_BG, C_TEXT, 25));
+		uk_glyph (canvas, WKG_CHEV_LEFT, x + 12, 25, 12, C_ACCENT);
+		text_v (canvas, x + 24, 8, 34, back, C_ACCENT, F_UI, 0, bw);
+		hits.add (x, 8, 30 + bw, 34, T_BACK);
+		x += 30 + bw + 14;
+		const char *title = s == SC_LIST ? three_name (1) : s == SC_MESSAGE ? three_name (2) : s == SC_CONTACTS ? TR ("Contacts") : g_compose->title;
+		if (right - x > 20) text_v (canvas, x, 8, 34, title, C_TEXT, F_MID, 1, right - x - 8);
+	}
 	void onDraw () override
 	{
+		if (g_three) { drawThree (); return; }
 		canvas.clear (C_BG);
 		hits.clear ();
 		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 40));
@@ -122,7 +213,8 @@ public:
 		{
 		case T_NEW: compose_new (0); break;
 		case T_CHECK: act_check (); break;
-		case T_BACK: g_conv = -1; g_read->clear (); refresh_all (); break;
+		case T_BACK: if (g_three) { three_back (); break; } g_conv = -1; g_read->clear (); refresh_all (); break;
+		case T_ALL: case T_UNREAD: g_m.unreadOnly = h->kind == T_UNREAD; select_view (g_m.sel.kind, g_m.sel.acct, g_m.sel.folder); break;
 		default:
 			if (composing || g_conv < 0) break;
 			{
@@ -213,10 +305,11 @@ static void side_build ()			// the items: made again when the accounts, the fold
 static void side_chosen (SidePanel &, int id)
 {
 	if (id >= S_FOLDER) { show_contacts (false); select_view (SEL_FOLDER, (id - S_FOLDER) / S_PER_ACCT, (id - S_FOLDER) % S_PER_ACCT); }
-	else if (id >= S_ACCOUNT) { int a = id - S_ACCOUNT; g_open[a] = !g_open[a]; side_build (); g_side->invalidate (true); }	// (its folders folded, shown)
+	else if (id >= S_ACCOUNT) { int a = id - S_ACCOUNT; g_open[a] = !g_open[a]; side_build (); g_side->invalidate (true); return; }	// (its folders folded, shown)
 	else if (id == S_UNIFIED) { show_contacts (false); select_view (SEL_UNIFIED); }
 	else if (id == S_STARRED) { show_contacts (false); select_view (SEL_STARRED); }
-	else if (id == S_ADD) { side_select (); open_wizard (); }
+	else if (id == S_ADD) { side_select (); open_wizard (); return; }
+	if (g_three) three_go (SC_LIST);			// (pocket's three screens: a folder chosen -- its messages)
 }
 class SideFoot : public Widget
 {
@@ -278,7 +371,8 @@ class ListPane : public Widget
 public:
 	HitList hits; int sy, contentH, hot; bool barDrag;
 	enum { L_ROW = 1, L_ALL, L_UNREAD, L_STAR, L_MORE };
-	static const int HEAD = 54, ROW_H = 78;
+	static const int HEAD0 = 54, ROW_H = 78;
+	int head () const { return g_three ? 0 : HEAD0; }	// (pocket's three screens: the title and All / Unread are in the bar)
 	ListPane (int l, int t, int w, int h) : Widget (l, t, w, h), sy (0), contentH (0), hot (-1), barDrag (false) {}
 	unsigned bgColor () override { return col_list (); }
 	const char *title ()
@@ -308,13 +402,13 @@ public:
 		View &v = g_m.view;
 		// the rows
 		static const char *const GROUPS[5] = { TR ("TODAY"), TR ("YESTERDAY"), TR ("THIS WEEK"), TR ("THIS MONTH"), TR ("OLDER") };
-		int y = HEAD - sy, lastG = -1;
+		int y = head () - sy, lastG = -1;
 		for (int i = 0; i < v.convs.n; i++)
 		{
 			const Conv &c = v.convs[i];
 			int g = day_group (c.date);
-			if (g != lastG) { lastG = g; if (y > HEAD - 30 && y < height) text (canvas, 16, y + 10, GROUPS[g], col_dim (), F_TINY, 1); y += 30; }
-			if (y + ROW_H > HEAD && y < height) draw_row (i, y, W);
+			if (g != lastG) { lastG = g; if (y > head () - 30 && y < height) text (canvas, 16, y + 10, GROUPS[g], col_dim (), F_TINY, 1); y += 30; }
+			if (y + ROW_H > head () && y < height) draw_row (i, y, W);
 			hits.add (0, y, W, ROW_H, L_ROW, i);
 			y += ROW_H + 2;
 		}
@@ -322,10 +416,12 @@ public:
 		if (!v.convs.n)
 		{
 			const char *t = g_m.accts.n == 0 ? TR ("No account yet.") : g_m.search[0] ? TR ("Nothing found.") : g_m.unreadOnly ? TR ("Nothing unread.") : (g_m.worker.busy ? TR ("Getting the mail...") : TR ("No messages."));
-			text_c (canvas, 0, HEAD + 60, W, 24, t, col_dim (), F_MID);
+			text_c (canvas, 0, head () + 60, W, 24, t, col_dim (), F_MID);
 		}
 		// the head: the title, All / Unread
-		canvas.fillRect (0, 0, width - 1, HEAD, col_list ());
+		if (!g_three)
+		{
+		canvas.fillRect (0, 0, width - 1, head (), col_list ());
 		int segW = 120;
 		text_v (canvas, 16, 6, 44, title (), C_FIELD_TEXT, F_H2, 1, W - segW - 30);
 		int sx = W - segW - 6, syy = 16;
@@ -336,17 +432,18 @@ public:
 		text_c (canvas, sx, syy, half, 24, TR ("All"), g_m.unreadOnly ? C_FIELD_TEXT : C_SEL_TEXT, F_SMALL, 1);
 		text_c (canvas, sx + half, syy, half, 24, TR ("Unread"), g_m.unreadOnly ? C_SEL_TEXT : C_FIELD_TEXT, F_SMALL, 1);
 		hits.add (sx, syy, half, 24, L_ALL); hits.add (sx + half, syy, half, 24, L_UNREAD);
+		}
 		// the scroll bar
-		int vh = height - HEAD;
-		UkThumb t = uk_thumb (contentH - HEAD, vh, sy, vh);
-		if (t.show) uk_draw_vscroll (canvas, width - UK_SBW - 1, HEAD, UK_SBW, vh, t, col_list (), barDrag);
+		int vh = height - head ();
+		UkThumb t = uk_thumb (contentH - head (), vh, sy, vh);
+		if (t.show) uk_draw_vscroll (canvas, width - UK_SBW - 1, head (), UK_SBW, vh, t, col_list (), barDrag);
 	}
 	void draw_row (int i, int y, int W)
 	{
 		const Conv &c = g_m.view.convs[i];
 		const Ref &last = g_m.view.refs[c.first + c.n - 1];
 		const Msg &m = g_m.msg (last);
-		bool sel = i == g_conv && !g_showContacts;
+		bool sel = (g_three ? i == g_cur : i == g_conv) && !g_showContacts;	// (pocket's three screens: the row the keys are on)
 		int x = 6;
 		if (sel) uk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_sel ());
 		else if (hot == i) uk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_hover ());
@@ -396,7 +493,7 @@ public:
 		int y = 0, lastG = -1;
 		for (int k = 0; k <= i && k < g_m.view.convs.n; k++) { int g = day_group (g_m.view.convs[k].date); if (g != lastG) { lastG = g; y += 30; } if (k < i) y += ROW_H + 2; }
 		if (y < sy) scroll_to (y - 30);
-		else if (y + ROW_H > sy + height - HEAD) scroll_to (y + ROW_H - (height - HEAD) + 6);
+		else if (y + ROW_H > sy + height - head ()) scroll_to (y + ROW_H - (height - head ()) + 6);
 	}
 	bool onMouse (int mx, int my, int bl, int br, int, int wheel) override
 	{
@@ -405,13 +502,13 @@ public:
 		if (barDrag)
 		{
 			if (!bl) { barDrag = false; invalidate (true); return true; }
-			int vh = height - HEAD; UkThumb t = uk_thumb (contentH - HEAD, vh, sy, vh);
-			scroll_to ((int) uk_thumb_pos (my - HEAD, vh, contentH - HEAD, vh, t.h)); return true;
+			int vh = height - head (); UkThumb t = uk_thumb (contentH - head (), vh, sy, vh);
+			scroll_to ((int) uk_thumb_pos (my - head (), vh, contentH - head (), vh, t.h)); return true;
 		}
 		const Hit *h = hits.at (mx, my);
 		int nh = h && h->kind == L_ROW ? h->a : -1;
 		if (nh != hot) { hot = nh; invalidate (true); }
-		if (down && mx >= width - UK_SBW - 2 && my > HEAD) { barDrag = true; return true; }
+		if (down && mx >= width - UK_SBW - 2 && my > head ()) { barDrag = true; return true; }
 		if (!h || (!down && !rdown)) return true;
 		switch (h->kind)
 		{
@@ -454,6 +551,19 @@ public:
 	bool onKey (long k) override
 	{
 		int n = g_m.view.convs.n;
+		if (g_three)				// pocket's three screens: the arrows walk the rows, Enter (A) opens the one they are on
+		{
+			if (k == KEY_DOWN || k == KEY_UP || k == KEY_PGDN || k == KEY_PGUP || k == KEY_HOME || k == KEY_END)
+			{
+				int c = k == KEY_HOME ? 0 : k == KEY_END ? n - 1 : g_cur + (k == KEY_DOWN ? 1 : k == KEY_UP ? -1 : k == KEY_PGDN ? 4 : -4);
+				if (c >= n) c = n - 1;
+				if (c < 0) c = n ? 0 : -1;
+				if (c != g_cur) { g_cur = c; if (c >= 0) reveal (c); invalidate (true); }
+				return true;
+			}
+			if (k == KEY_ENTER && g_cur >= 0 && g_cur < n) { open_conv (g_cur); return true; }
+			return false;
+		}
 		if (k == KEY_DOWN && g_conv < n - 1) { open_conv (g_conv + 1); reveal (g_conv); return true; }
 		if (k == KEY_UP && g_conv > 0) { open_conv (g_conv - 1); reveal (g_conv); return true; }
 		if (k == KEY_DEL) { act_delete (); return true; }
@@ -488,10 +598,36 @@ public:
 };
 
 // ---- what the parts call --------------------------------------------------------------------------------------------------------
+// Pocket's three screens laid out: every part takes the window under the bar, ONE is shown. The folders' screen is
+// the SidePanel itself, whole across the window (no rail: its labels are the screen); behind the list it stays "shown"
+// beside the window, out of sight and off, so that L / R (Prev / Next) still step the folders from the list.
+static void layout_three (int W, int H)
+{
+	int s = three_screen ();
+	if (s == SC_MESSAGE && g_conv < 0) s = g_level = SC_LIST;	// (the message is gone: its list)
+	g_onePane = g_oneConv = false;
+	g_tb->resizeTo (W, TB_H); g_tb->place ();
+	g_side->setRail (false);
+	g_side->place (s == SC_FOLDERS ? 0 : W, TB_H, W, H - TB_H);
+	((Widget *) g_side)->hidden = s != SC_FOLDERS && s != SC_LIST;
+	((Widget *) g_side)->disabled = s != SC_FOLDERS;
+	Widget *part[5] = { g_list, g_read, g_compose, g_contacts, g_welcome };
+	static const int of[5] = { SC_LIST, SC_MESSAGE, SC_COMPOSE, SC_CONTACTS, SC_WELCOME };
+	for (int i = 0; i < 5; i++) { part[i]->left = 0; part[i]->top = TB_H; part[i]->resizeTo (W, H - TB_H); part[i]->hidden = s != of[i]; }
+	g_read->place (); g_compose->place ();
+	g_read->relayout ();
+}
 static void layout_parts ()
 {
 	if (!g_root) return;
 	int W = g_root->width, H = g_root->height;
+	{
+		bool three = uk_mode () == UK_MODE_POCKET && uk_size_class () == UK_SC_COMPACT && W < 800;
+		if (g_three && !three) { g_side->setRail (true); ((Widget *) g_side)->hidden = false; ((Widget *) g_side)->disabled = false; }
+		bool first = three && !g_three;
+		g_three = three;
+		if (three) { side_build (); layout_three (W, H); if (first) three_focus (); return; }
+	}
 	int side = W < 860 ? 180 : SIDE_W, list = W < 860 ? 260 : (W > 1300 ? 380 : LIST_W);
 	side_build ();
 	g_side->place (0, TB_H, side, H - TB_H);				// (whole, a rail, a drawer: what it takes at its side)
@@ -516,6 +652,7 @@ static void refresh_all ()
 {
 	if (!g_root) return;
 	if (g_onePane && g_oneConv != (g_conv >= 0) && g_compose->hidden) layout_parts ();	// (the list <-> the conversation)
+	if (g_three && g_level == SC_MESSAGE && g_conv < 0 && three_screen () == SC_MESSAGE) { three_go (SC_LIST); return; }	// (the message moved away, deleted: its list)
 	side_build ();
 	g_foot->invalidate (true);
 	g_tb->invalidate (true); g_side->invalidate (true); g_list->invalidate (true); g_read->invalidate (true);
@@ -534,7 +671,8 @@ static void select_view (int kind, int acct, int folder)
 		if (first || !same) g_m.sync (acct, false, folder);
 	}
 	g_m.build ();
-	if (!same) { g_conv = -1; g_read->clear (); g_list->sy = 0; }
+	if (!same) { g_conv = -1; g_read->clear (); g_list->sy = 0; g_cur = g_m.view.convs.n ? 0 : -1; }
+	if (g_cur >= g_m.view.convs.n) g_cur = g_m.view.convs.n - 1;
 	if (g_compose->hidden) layout_parts ();
 	refresh_all ();
 }
@@ -565,9 +703,10 @@ static void open_conv (int k)
 {
 	if (k < 0 || k >= g_m.view.convs.n) return;
 	if (!g_compose->hidden) return;
-	g_conv = k;
+	g_conv = k; g_cur = k;
 	Ref r[60]; int n = conv_refs (r, 60);
 	g_read->load (r, n);
+	if (g_three && g_level != SC_MESSAGE) { g_level = SC_MESSAGE; layout_parts (); three_focus (); }	// (pocket's three screens: the message's)
 	// read: its unread messages marked
 	Ref un[60]; int nu = 0; for (int i = 0; i < n; i++) if (!(g_m.msg (r[i]).flags & F_SEEN)) un[nu++] = r[i];
 	if (nu) { g_m.set_flag (un, nu, F_SEEN, true); g_m.view.convs[k].unread = false; }
@@ -631,6 +770,7 @@ static void show_contacts (bool on)
 	g_showContacts = on;
 	if (on) { g_m.contacts.load (); g_contacts->reload (); }
 	layout_parts (); refresh_all ();
+	if (g_three) three_focus ();
 }
 static void search_changed ()
 {
@@ -642,7 +782,10 @@ static void search_changed ()
 	if (q[0]) { show_contacts (false); g_m.sel.kind = SEL_SEARCH; }
 	else if (searching) { g_m.sel = before; searching = false; }
 	g_conv = -1; g_read->clear (); g_list->sy = 0;
-	g_m.build (); refresh_all ();
+	g_m.build ();
+	g_cur = g_m.view.convs.n ? 0 : -1;
+	if (g_three && q[0] && g_level != SC_LIST) { g_level = SC_LIST; layout_parts (); }	// (pocket: what is found is a list -- the field keeps the keys)
+	refresh_all ();
 }
 
 // ---- writing -----------------------------------------------------------------------------------------------------------------------
@@ -772,7 +915,7 @@ static void compose_to (const char *name, const char *email)
 	g_compose->to->setText (t);
 	g_compose->subject->setFocus ();
 }
-static void compose_close () { g_compose->reset (); g_compose->hidden = true; layout_parts (); refresh_all (); }
+static void compose_close () { g_compose->reset (); g_compose->hidden = true; layout_parts (); refresh_all (); if (g_three) three_focus (); }
 static void compose_discard ()
 {
 	if (!g_compose->empty () && uk_messagebox (TR ("Mail"), TR ("Throw away this message?"), MB_YESNO) != 1) return;
@@ -968,6 +1111,48 @@ static void on_result (void *ctx, long)
 }
 
 
+// ---- pocket's three screens: their names, the way in and the way back ----------------------------------------------------------
+static const char *three_name (int level)
+{
+	static char who_[160];
+	if (level <= SC_FOLDERS) return TR ("Mail");
+	if (level == SC_LIST) return g_list->title ();
+	Ref r[60]; int n = conv_refs (r, 60);
+	who_[0] = 0;
+	if (n) { const Msg &m = g_m.msg (r[0]); who (m.from, who_, sizeof who_); }
+	return who_[0] ? who_ : TR ("Message");
+}
+static void three_focus ()			// the keys to the screen shown (a field that has them keeps them)
+{
+	switch (three_screen ())
+	{
+	case SC_FOLDERS: g_side->setFocus (); break;
+	case SC_LIST: if (!g_tb->search->hasFocus) g_list->setFocus (); break;
+	case SC_MESSAGE: if (!g_read->quick->hasFocus) g_read->setFocus (); break;
+	case SC_CONTACTS: g_contacts->setFocus (); break;
+	case SC_WELCOME: g_welcome->setFocus (); break;
+	}
+}
+static void three_go (int level)
+{
+	if (level == SC_LIST && g_level == SC_MESSAGE) { g_conv = -1; g_read->clear (); }
+	if (level == SC_LIST && g_cur < 0 && g_m.view.convs.n) g_cur = 0;
+	g_level = level;
+	layout_parts (); refresh_all ();
+	if (level == SC_LIST && g_cur >= 0) g_list->reveal (g_cur);
+	three_focus ();
+}
+static void three_back ()
+{
+	switch (three_screen ())
+	{
+	case SC_COMPOSE: compose_discard (); break;			// (asked first when something is written)
+	case SC_CONTACTS: show_contacts (false); break;
+	case SC_MESSAGE: three_go (SC_LIST); break;
+	case SC_LIST: if (g_tb->search->text[0]) { g_tb->search->setText (""); search_changed (); } three_go (SC_FOLDERS); break;
+	}
+}
+
 // ---- the window --------------------------------------------------------------------------------------------------------------------
 class MailRoot : public Root
 {
@@ -978,6 +1163,14 @@ public:
 	bool onKey (long k) override
 	{
 		if (k == 27 && g_onePane && g_conv >= 0 && g_compose->hidden) { g_conv = -1; g_read->clear (); refresh_all (); return true; }	// (back to the list)
+		if (g_three)
+		{
+			int s = three_screen ();
+			if (k == 27 && s != SC_FOLDERS && s != SC_WELCOME) { three_back (); return true; }	// Esc, B: one screen back
+			if (k == KEY_ENTER && s == SC_WELCOME) { open_wizard (); return true; }
+			// the keys while a field has them (the search over the list it found): the arrows and Enter are the list's
+			if (s == SC_LIST && !g_list->hasFocus && (k == KEY_DOWN || k == KEY_UP || k == KEY_ENTER)) { g_list->setFocus (); return g_list->onKey (k); }
+		}
 		return false;
 	}
 	void onTick () override
@@ -1003,6 +1196,9 @@ static void m_reply () { Ref r[60]; int n = conv_refs (r, 60); if (n) compose_ne
 static void m_replyall () { Ref r[60]; int n = conv_refs (r, 60); if (n) compose_new (2, &r[n - 1]); }
 static void m_forward () { Ref r[60]; int n = conv_refs (r, 60); if (n) compose_new (3, &r[n - 1]); }
 static void m_send () { compose_send (); }
+static void m_attach () { if (!g_compose->hidden) compose_attach (); }
+static void m_ccbcc () { if (!g_compose->hidden) compose_ccbcc (); }
+static void m_draft () { compose_draft (); }
 static void m_find () { g_tb->search->setFocus (); }
 static void m_conv () { g_m.grouped = !g_m.grouped; g_conv = -1; g_read->clear (); g_m.build (); refresh_all (); }
 static void m_unread () { g_m.unreadOnly = !g_m.unreadOnly; select_view (g_m.sel.kind, g_m.sel.acct, g_m.sel.folder); }
@@ -1096,6 +1292,12 @@ int main (void)
 	menu.item (TR ("Reply All"), "", 0, m_replyall);
 	menu.item (TR ("Forward"), "^L", UK_CTRL ('L'), m_forward);
 	menu.item (TR ("Send"), "Ctrl+Enter", 0, m_send);
+	if (uk_mode () == UK_MODE_POCKET)			// (pocket, no mouse: what the writing pane's buttons and its "Cc Bcc" do)
+	{
+		menu.item (TR ("Attach a File..."), "", 0, m_attach);
+		menu.item (TR ("Show Cc and Bcc"), "", 0, m_ccbcc);
+		menu.item (TR ("Save the Draft"), "", 0, m_draft);
+	}
 	menu.separator ();
 	menu.item (TR ("Archive"), "", 0, act_archive);
 	menu.item (TR ("Delete"), "Del", 0, act_delete);
@@ -1113,7 +1315,10 @@ int main (void)
 	if (g_emlMode) { g_m.sel.kind = SEL_FOLDER; g_m.sel.acct = 0; g_m.sel.folder = 0; g_m.build (); open_conv (0); }
 	else
 	{
-		if (g_m.view.convs.n) open_conv (0);
+		// (pocket on a small screen: three screens, the folders first -- no conversation opened, none marked read, behind it)
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		bool small = uk_mode () == UK_MODE_POCKET && uk_size_class () == UK_SC_COMPACT && sw > 0 && sw < 800;
+		if (g_m.view.convs.n && !small) open_conv (0);
 		if (g_m.accts.n) g_m.sync_all ();
 		if (attachList[0]) compose_with_files (attachList);
 	}

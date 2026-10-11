@@ -163,7 +163,7 @@ build () {
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
-	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock ndsemu " in
+	case " disks letters sheet calendar control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf preloadconf gamelib setup menubar screenshot fileviewer photos ledger fmtracker taskman notes stickies circuits pinball critters clock ndsemu terminal " in
 	*" $1 "*)				# (FreeType's text: user/Makefile's FT_APPS)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -o "$OUT/$1" "$OUT/fakekapi.o" user/Apps/$1/main.cpp $extra "$OUT/libuikit.a" "$OUT/libft.a" $AK; return ;;
 	esac

@@ -22,6 +22,12 @@ static const int TB_H = 50, SIDE_W = 214, LIST_W = 316;
 static Model g_m;
 static Root *g_root;
 static bool g_onePane, g_oneConv;		// a narrow window: one pane shown; the conversation's (else the list)
+// POCKET ON A SMALL LANDSCAPE SCREEN (the PocketTerm35's 640 x 480; no mouse): THREE SCREENS, one at a time -- the
+// accounts and their folders, the folder's messages, the message -- each under a bar that says where one is and, at
+// its left, "<" and where Esc (B) goes back to. Enter (A) goes in. main.cpp: layout_parts, three_go, three_back.
+static bool g_three;				// that layout is on (layout_parts decides: the mode, the window's width)
+static int g_level;				// its screen: 0 the folders, 1 the list, 2 the message
+static int g_cur = -1;				// the list's row the keys are on (view.convs index)
 class ToolBar; class ListPane; class ReadPane; class ComposePane; class ContactsPane; class Welcome;
 static ToolBar *g_tb; static SidePanel *g_side; static ListPane *g_list; static ReadPane *g_read; static ComposePane *g_compose; static ContactsPane *g_contacts; static Welcome *g_welcome;
 static int g_conv = -1;				// the conversation shown (view.convs index), -1 none

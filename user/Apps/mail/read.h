@@ -136,6 +136,7 @@ public:
 	HintBox *quick; Button *qsend;
 	bool barDrag; int pressY, pressSy;
 	int hint; char hintText[220];
+	int kring = -1;			// pocket's three screens, no mouse: the pane's button the keys are on (hits index; -1 none)
 	static const int PAD = 24, QR_H = 58;
 
 	ReadPane (int l, int t, int w, int h) : Widget (l, t, w, h), nsh (0), sy (0), contentH (0), barDrag (false), hint (0)
@@ -147,7 +148,7 @@ public:
 		addChild (qsend);
 	}
 	unsigned bgColor () override { return C_FIELD; }
-	void clear () { for (int i = 0; i < nsh; i++) shown_free (sh[i]); nsh = 0; sy = 0; }
+	void clear () { for (int i = 0; i < nsh; i++) shown_free (sh[i]); nsh = 0; sy = 0; kring = -1; }
 	void place ()
 	{
 		quick->left = PAD; quick->top = height - QR_H + 12; quick->resizeTo (width - 2 * PAD - 78, 34);
@@ -356,6 +357,12 @@ public:
 			s.h = y + sy - s.y;
 		}
 		contentH = y + sy + 20;
+		if (g_three && hasFocus && !quick->hasFocus && kring >= 0 && kring < hits.n)	// (pocket, the keys: the button they are on)
+		{
+			const Hit &h = hits.h[kring];
+			uk_rline (canvas, h.x - 2, h.y - 2, h.w + 4, h.h + 4, 6, C_ACCENT, 255);
+			uk_rline (canvas, h.x - 1, h.y - 1, h.w + 2, h.h + 2, 5, C_ACCENT, 140);
+		}
 		// the scroll bar
 		int vh = viewH ();
 		UkThumb t = uk_thumb (contentH, vh, sy, vh);
@@ -586,6 +593,27 @@ public:
 	bool onKey (long k) override
 	{
 		if (wv_key (k)) return true;			// (the web view was clicked last: its page's)
+		// Pocket's three screens, no mouse: Up / Down scroll the message (at its end Down goes on to the quick reply);
+		// Left / Right walk the pane's buttons -- a folded message, the sender, reply / reply all / forward / star, the
+		// pictures, an attachment -- with a ring, Enter (A) uses the one ringed.
+		if (g_three)
+		{
+			if (k == KEY_DOWN || k == KEY_UP)
+			{
+				int was = sy; scroll_to (sy + (k == KEY_DOWN ? 48 : -48));
+				if (sy != was && kring >= 0) { kring = -1; invalidate (true); }
+				return sy != was || k == KEY_UP;
+			}
+			if ((k == KEY_RIGHT || k == KEY_LEFT) && hits.n > 0)
+			{
+				kring = kring < 0 ? (k == KEY_RIGHT ? 0 : hits.n - 1) : (kring + (k == KEY_RIGHT ? 1 : hits.n - 1)) % hits.n;
+				const Hit &h = hits.h[kring];
+				if (h.y < 8 || h.y + h.h > viewH () - 8) scroll_to (sy + h.y - viewH () / 3);
+				invalidate (true);
+				return true;
+			}
+			if (k == KEY_ENTER && kring >= 0 && kring < hits.n) { Hit h = hits.h[kring]; act (h, h.x + 4, h.y + 4); return true; }
+		}
 		if (k == KEY_PGDN || k == ' ') { scroll_to (sy + viewH () - 40); return true; }
 		if (k == KEY_PGUP) { scroll_to (sy - viewH () + 40); return true; }
 		return false;

@@ -91,6 +91,22 @@ bool uk_nav_key (Root *root, long key);
 // as Root::step does.
 void uk_input_turn (Root *root);
 
+// ---- the keys' pointer (pocket, console: no mouse) ---------------------------------------------------------------
+// A view worked with the pointer -- a board where parts are put and wired, a header's pins, a drawing -- gets a
+// pointer of its own that the ARROWS move while the view has the keys (Shift: four steps at a time) and that Enter (a
+// pad's A) presses: the view's onKey calls uk_keypointer_move, then gives itself the pointer's place as it would a
+// mouse's (its own onMouse: Enter = the button down then up -- or held while it says a drag goes on), and its onDraw
+// ends with uk_keypointer_draw. Used where there is no mouse (uk_keys_drive ()); the desktop never shows it.
+//   bool Board::onKey (long k) {
+//     if (!uk_keys_drive ()) return false;
+//     if (uk_keypointer_move (kp, k, cell, 0, 0, width - 1, height - 1)) { onMouse (kp.x, kp.y, kp.held, 0, 0, 0); return true; }
+//     if (k == KEY_ENTER) { ...press at (kp.x, kp.y), release at once unless a drag began: kp.held = true... }
+struct UkKeyPointer { int x = -1, y = -1; bool held = false; };
+bool uk_keys_drive ();			// pocket and console: the keys (a d-pad) may be all there is -> true
+// An arrow moved the pointer by `step` px inside (x0, y0)-(x1, y1) -> true (the first time: put at the middle).
+bool uk_keypointer_move (UkKeyPointer &p, long key, int step, int x0, int y0, int x1, int y1);
+void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p);	// a ring and a cross at its place (held: filled)
+
 // ---- the console's shoulders -------------------------------------------------------------------------------------
 // L1 / R1 (on a keyboard: Ctrl+Page Up / Ctrl+Page Down) step through the window's tabs, else through its navigation
 // SidePanel's sections; L2 / R2 (Page Up / Page Down) page a list. The pad's buttons are given these keys by the

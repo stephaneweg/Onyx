@@ -37,6 +37,9 @@ struct SpPage { char label[32]; int icon; Widget *w; };
 struct SpExt : internal::ExtHead
 {
 	bool reveal = false;			// the chosen item brought into view at the next drawing (select: the keys' step, L / R)
+	int	 revealAt = -1;			// ... or this item: the one the arrows are on (pocket, console: no wheel to scroll with)
+	int	 side = UK_SP_LEFT, role = UK_SP_NAVIGATION;	// (the panel's: for sp_step, which is not a member)
+	Widget	*before = 0;			// what had the keys when the keys opened it: given them back when it closes
 	SpItem	*items = 0; int n = 0, cap = 0;
 	int	 nextId = 1000000;
 	int	 sel = -1, hot = -1, cursor = -1;	// the chosen item (its id); under the pointer, the keys' (indexes)
@@ -116,7 +119,8 @@ SidePanel::SidePanel (int l, int t, int w, int h, int side, int role)
 		delete s;
 	};
 	internal::adaptive_add (e);
-	if (m_role == UK_SP_NAVIGATION) internal::nav_register (this, 1, sp_step);
+	e->side = m_side; e->role = m_role;
+	internal::nav_register (this, m_role == UK_SP_NAVIGATION ? 1 : 0, sp_step);	// (an inspector: after the tabs and the places)
 	canFocus = true;
 }
 
@@ -254,7 +258,22 @@ namespace { bool sp_step (Widget *w, int dir)	// (Prev / Next -- L / R, Ctrl + P
 	// another of many, L / R jumped over every system and stopped at the last section.)
 	SidePanel *p = (SidePanel *) w;
 	SpExt *e = sp (p);
-	if (e->n <= 0) return false;
+	bool again = dir == 2 || dir == -2;			// (asked a second time: no other owner took the key)
+	dir = dir > 0 ? 1 : -1;
+	int places = 0;
+	for (int i = 0; i < e->n; i++) if (sp_pickable (e->items[i]) && !(e->items[i].flags & (UK_SPI_ACTION | UK_SPI_SEPARATOR))) places++;
+	if (places == 0 || e->role == UK_SP_INSPECTOR)
+	{
+		// NO PLACE TO STEP -- a drawer of free content (a month, a tree, the levels of a game), an inspector: the key
+		// of its side opens it and closes it (L the left one, R the right one; the window's only panel: either).
+		// Without this such a panel was reached by its tab at the edge only: by a pointer.
+		int pres = p->presentation ();
+		if (pres != UK_SP_DRAWER && pres != UK_SP_SLIDEOVER && pres != UK_SP_SHEET) return false;
+		if (((e->side == UK_SP_LEFT) != (dir < 0)) && !again) return false;
+		p->open (!p->isOpen ());
+		return true;
+	}
+	if (again) return false;
 	int cur = sp_index (e, e->sel);
 	int from = cur >= 0 ? cur : dir > 0 ? -1 : 0;
 	for (int k = 1; k <= e->n; k++)
@@ -268,6 +287,21 @@ namespace { bool sp_step (Widget *w, int dir)	// (Prev / Next -- L / R, Ctrl + P
 	}
 	return false;
 } }
+
+// (the keys' way in and out of an overlay: the deepest widget that has the focus; whether w is still in a tree)
+static Widget *sp_focus_leaf (Widget *w)
+{
+	if (w == 0) return 0;
+	for (Widget *c = w->firstChild; c; c = c->nextSib) if (c->hasFocus && !c->hidden) return sp_focus_leaf (c);
+	return w;
+}
+static bool sp_under (Widget *top, Widget *w)
+{
+	if (top == 0 || w == 0) return false;
+	if (top == w) return true;
+	for (Widget *c = top->firstChild; c; c = c->nextSib) if (sp_under (c, w)) return true;
+	return false;
+}
 
 // ---- the free content ------------------------------------------------------------------------------------------------
 int SidePanel::addPage (const char *label, int icon, Widget *content)
@@ -459,8 +493,21 @@ void SidePanel::open (bool on)
 	}
 	if (!on) { delete [] e->scrim; e->scrim = 0; e->sheetFull = false; }
 	e->hot = -1;
+	// (pocket, console: the keys go to what it shows -- its content, its page -- and back, when it closes, to what
+	// had them: without this a closed drawer kept them, and the arrows did nothing more in the window)
+	if (on && overlay (pres) && internal::ring_on ()) { e->before = sp_focus_leaf (internal::root_of (this)); if (e->before == this || sp_under (this, e->before)) e->before = 0; }
 	sp_apply (this, e, pres, m_side);
-	if (on && pres != UK_SP_RAIL && internal::ring_on ()) setFocus ();
+	if (on && pres != UK_SP_RAIL && internal::ring_on ())
+	{
+		Widget *in = e->npages > 0 ? e->pages[e->page].w : e->n == 0 ? e->content : 0;
+		if (in) in->setFocus (); else setFocus ();
+	}
+	if (!on && overlay (pres) && internal::ring_on () && hasFocus)
+	{
+		Widget *r = internal::root_of (this), *b = e->before;
+		e->before = 0;
+		if (b && r && sp_under (r, b) && !b->hidden) b->setFocus (); else if (r) r->setFocus ();
+	}
 	if (e->toggle) e->toggle->invalidate (true);
 	invalidate (true);
 }
@@ -550,10 +597,10 @@ static void sp_draw_items (SidePanel *p, SpExt *e, int pres, int bx, int by, int
 	unsigned bg = sp_bg (e), ink = sp_ink (e), dim = sp_dim (e);
 	int ry[512], rh[512];
 	int n = e->n < 512 ? e->n : 512;
-	if (e->reveal)						// (the chosen item scrolled into the box: a rail of more systems than fit)
+	if (e->reveal || e->revealAt >= 0)			// (the chosen item scrolled into the box: a rail of more systems than fit)
 	{
-		e->reveal = false;
-		int total = sp_rows (e, pres, 0, ry, rh) + 8, i = sp_index (e, e->sel);
+		int total = sp_rows (e, pres, 0, ry, rh) + 8, i = e->revealAt >= 0 ? e->revealAt : sp_index (e, e->sel);
+		e->reveal = false; e->revealAt = -1;
 		if (i >= 0 && i < n && ry[i] >= 0 && rh[i] > 0)
 		{
 			if (ry[i] - 4 < e->top) e->top = ry[i] - 4;
@@ -959,6 +1006,7 @@ bool SidePanel::onKey (long k)
 	SpExt *e = sp (this);
 	int pres = presentation ();
 	if (k == 27 && e->open) { open (false); return true; }
+	if (overlay (pres) && !e->open) return false;		// (closed: nothing of it shows -- it takes no key)
 	if (e->npages > 0)
 	{
 		if ((k == KEY_LEFT || k == KEY_RIGHT) && e->npages >= 2) { setPage ((e->page + (k == KEY_LEFT ? e->npages - 1 : 1)) % e->npages); return true; }
@@ -968,7 +1016,7 @@ bool SidePanel::onKey (long k)
 	{
 		int d = k == KEY_DOWN ? 1 : -1, i = e->cursor >= 0 ? e->cursor : sp_index (e, e->sel);
 		for (int s = i + d; s >= 0 && s < e->n; s += d)
-			if (sp_pickable (e->items[s])) { e->cursor = s; e->hot = s; invalidate (true); return true; }
+			if (sp_pickable (e->items[s])) { e->cursor = s; e->hot = s; if (internal::ring_on ()) e->revealAt = s; invalidate (true); return true; }
 		return true;
 	}
 	if ((k == KEY_ENTER || k == ' ') && e->cursor >= 0 && e->cursor < e->n) { sp_choose (this, e, pres, e->cursor); return true; }

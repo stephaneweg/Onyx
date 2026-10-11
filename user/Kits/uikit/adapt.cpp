@@ -271,10 +271,25 @@ static bool in_ready ()
 // SidePanel -- of this Root.
 static bool nav_step (Root *r, int dir)
 {
-	NavOwner *best = 0;
-	for (int i = 0; i < 16; i++)
-		if (s_nav[i].w && root_of (s_nav[i].w) == r && shown (s_nav[i].w) && (best == 0 || s_nav[i].prio > best->prio)) best = &s_nav[i];
-	return best && best->step && best->step (best->w, dir);
+	// The owners of this Root, the highest priority first: one that has nothing to step (a panel without places: a
+	// drawer of free content, an inspector -- it opens and closes instead, by ITS side's key) lets the next one try;
+	// when none took the key they are asked once more (dir * 2: "nobody did") -- a window's only panel then takes
+	// either key.
+	for (int pass = 1; pass <= 2; pass++)
+	{
+		bool tried[16];
+		for (int i = 0; i < 16; i++) tried[i] = false;
+		for (;;)
+		{
+			int best = -1;
+			for (int i = 0; i < 16; i++)
+				if (!tried[i] && s_nav[i].w && root_of (s_nav[i].w) == r && shown (s_nav[i].w) && (best < 0 || s_nav[i].prio > s_nav[best].prio)) best = i;
+			if (best < 0) break;
+			tried[best] = true;
+			if (s_nav[best].step && s_nav[best].step (s_nav[best].w, dir * pass)) return true;
+		}
+	}
+	return false;
 }
 
 // An ACTION of InputKit that no control took, whatever it came from -- a key or a pad's button: Prev / Next the
@@ -501,6 +516,41 @@ bool uk_focus_move (Widget *root, int dx, int dy)
 	best->onTabFocus ();
 	best->invalidate (true);
 	return true;
+}
+
+// ---- the keys' pointer (uikit/adapt.h) ------------------------------------------------------------------------------
+bool uk_keys_drive () { return internal::ring_on (); }
+
+bool uk_keypointer_move (UkKeyPointer &p, long key, int step, int x0, int y0, int x1, int y1)
+{
+	if (key != KEY_UP && key != KEY_DOWN && key != KEY_LEFT && key != KEY_RIGHT) return false;
+	if (step < 1) step = 1;
+	if (p.x < 0 || p.y < 0) { p.x = x0 + (x1 - x0) / 2 / step * step; p.y = y0 + (y1 - y0) / 2 / step * step; return true; }
+	int n = (kapi_get_modifiers () & MOD_SHIFT) ? 4 * step : step;
+	p.x += key == KEY_LEFT ? -n : key == KEY_RIGHT ? n : 0;
+	p.y += key == KEY_UP ? -n : key == KEY_DOWN ? n : 0;
+	if (p.x < x0) p.x = x0;
+	if (p.x > x1) p.x = x1;
+	if (p.y < y0) p.y = y0;
+	if (p.y > y1) p.y = y1;
+	return true;
+}
+
+void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p)
+{
+	if (p.x < 0 || p.y < 0) return;
+	unsigned a = C_ACCENT, w = 0x00FFFFFF, k = 0x00000000;
+	// a cross with a gap at its middle, white edged with black (seen on any ground), the ring in the accent
+	for (int d = 5; d <= 11; d++)
+		for (int t = -1; t <= 1; t++)
+		{
+			unsigned c = t == 0 ? w : k;
+			cv.pixel (p.x - d, p.y + t, c); cv.pixel (p.x + d, p.y + t, c);
+			cv.pixel (p.x + t, p.y - d, c); cv.pixel (p.x + t, p.y + d, c);
+		}
+	uk_rline (cv, p.x - 5, p.y - 5, 11, 11, 5, a, 255);
+	uk_rline (cv, p.x - 4, p.y - 4, 9, 9, 4, p.held ? a : k, p.held ? 255 : 160);
+	if (p.held) uk_rbox (cv, p.x - 3, p.y - 3, 7, 7, 3, a, a);
 }
 
 // The pad's actions for a program that runs its own loop (uikit/adapt.h): what Root::step does each turn.

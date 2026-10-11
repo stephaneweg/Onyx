@@ -105,6 +105,10 @@ public:
 	// list: the widget draws itself for the width it is given -- resizeTo) once the tools of a lower priority have
 	// left. In the "»" panel and on the desktop it has its own width again.
 	void setFlex (Widget *w, int minW, int foldW = 0);
+	// A tool the app takes off the bar for now (a gate this level does not allow), and puts back: the desktop hides
+	// it (w->hidden, as an app did itself); compact, the row is laid out without it and the "»" panel does not have
+	// it -- hiding it there by hand did nothing: the bar's layout shows every tool it places.
+	void setShown (Widget *w, bool shown);
 	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
 	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
 						// (a bar folded into another: 0 when compact)

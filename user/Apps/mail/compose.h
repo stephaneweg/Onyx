@@ -145,9 +145,10 @@ public:
 		from->setOptions (fromOpts, n ? n : 1, from->sel < n ? from->sel : 0);
 	}
 	int attY () const { return height - 54 - (natt ? 34 : 0); }
+	int top0 () const { return g_three ? 10 : 56; }		// the first row (pocket's three screens: the title is in the bar)
 	void place ()
 	{
-		int w = width - 2 * PAD - LBL, y = 56;
+		int w = width - 2 * PAD - LBL, y = top0 ();
 		from->left = PAD + LBL; from->top = y; from->resizeTo (w, 30); y += ROW;
 		to->left = PAD + LBL; to->top = y; to->resizeTo (w - (ccOn ? 0 : 70), 30); y += ROW;
 		cc->hidden = bcc->hidden = !ccOn;
@@ -164,8 +165,8 @@ public:
 	{
 		canvas.clear (C_FIELD);
 		hits.clear ();
-		text (canvas, PAD, 16, title, C_FIELD_TEXT, F_H2, 1);
-		int y = 56;
+		if (!g_three) text (canvas, PAD, 16, title, C_FIELD_TEXT, F_H2, 1);
+		int y = top0 ();
 		const char *lab[5] = { TR ("From"), TR ("To"), TR ("Cc"), TR ("Bcc"), TR ("Subject") };
 		int rows[5] = { y, y + ROW, ccOn ? y + 2 * ROW : -1, ccOn ? y + 3 * ROW : -1, y + (ccOn ? 4 : 2) * ROW };
 		for (int i = 0; i < 5; i++) if (rows[i] >= 0) { text_v (canvas, PAD, rows[i], 30, lab[i], col_dim ()); canvas.fillRect (PAD, rows[i] + 34, width - 2 * PAD, 1, col_line ()); }
