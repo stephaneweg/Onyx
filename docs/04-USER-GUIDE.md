@@ -729,6 +729,13 @@ keys of its keyboard that are not these, `a.key = F5` says that F5 is the A butt
 (in a game the pad is the game's; Select + Start together is Home). Quick settings (Super+N) take the arrows and
 Enter too. The Display applet lists **640 × 480** and **800 × 480** for such screens.
 
+**A gamepad and the keys are one input (InputKit).** Which key and which pad button is *up*, *accept*, *back*,
+*previous / next*... is in **`SD:/etc/input.ini`** (the defaults: the table above -- the arrows and the D-pad, Enter
+and A, Esc and B, Delete and X, Shift+F10 and Y, Ctrl+Page Up / Down or Ctrl+Tab and L / R). A pad drives every
+app's controls as the keyboard does, and **L / R change the tab in any window that has tabs** (the Terminal's
+shells, the Control Panel's sections...). Only the app in front answers the pad; in a game the pad is the game's.
+The `[buttons]` section of `pocketui.ini` no longer exists.
+
 **The launcher.** At the top a round **search field** and, beside it, **Today**: the Calendar's next appointment
 (“Mon 28 Sep | 14:00 Team call — in 1 h 26”; read from `SD:/apps/calendar.app/agenda.txt`, which the Calendar
 writes; a click opens the Calendar; nothing planned: the line is not shown). On a wide screen (1920 × 1080) Today

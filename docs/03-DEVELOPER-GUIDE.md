@@ -1782,6 +1782,33 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   shell's only): it is sent `UK_SHELL_KEY_MENU` for the menu key and, while it grabs, every key; `UK_SHELL_KEY_CANCEL`
   when a key of the shell's closes its menu.
 
+### 5.10.8. InputKit and UIKit's navigation: a pad and the keys as actions (`inputkit/inputkit.h`, `uikit/adapt.h`; the branch `PocketTerm`)
+
+**InputKit** (`user/Kits/inputkit/`, `SD:/lib/inputkit.so`; docs/06 §14, `docs/21-INPUTKIT.md`) turns the keys and
+the gamepads into **actions** bound in `SD:/etc/input.ini`. UIKit links its import stubs (as SystemKit's) and takes
+all its navigation from it — in every `Root`, with no code in the app:
+
+- **the pad** (`adapt.cpp` `pad_turn`, each `Root::step`): InputKit's events are acted on as the keys they stand
+  for — the directions are the arrows, Accept is Enter, Back is Esc, Alt1 is Delete — through `Root::handleKey`, so
+  every control answers a pad as it answers the keyboard; what no control takes moves the focus (pocket, console);
+- **Prev / Next** (L / R; Ctrl+Page Up / Down, Ctrl+Tab / Ctrl+Shift+Tab): the window's tabs — the registered owner
+  of the highest priority: a `TabStrip`, else a navigation `SidePanel`'s sections. In pocket and console
+  `Root::keyEvent` tries them **before** the focused control (`key_first`), so they work while a view that takes
+  every key has the focus;
+- **Alt2** (Y; Shift+F10): a right click at the focused control's middle — its context menu;
+- the desktop with a mouse and a keyboard is unchanged; a pad there acts on the focused control the same way.
+
+Only the program that **has the keys** gets a pad's events (the kernel's `kapi_pad_state` gives a pad's buttons to
+it alone; under PocketUI the shell at home and under its overlays, the menu bar while its Menu is open). A program
+whose pad is its own is left alone: one that reads InputKit's **state** (`in_state`: `in_claimed`), and — until
+the emulators and games move to it — one whose `app.txt` has the category Games or Emulators, or `pad = own`
+(`in_app_owns_pad`).
+
+A program that runs **its own loop** (`pump_events`, no `Root::run` / `step` — the Terminal) calls
+`uk_input_turn (&root)` each turn for the pad, and one that hands its keys to a view itself calls
+`uk_nav_key (root, key)` first for Prev / Next. A program that is not on a `Root` (the pocket shell, the menu bar)
+reads InputKit itself: `in_poll`, `in_key_action`.
+
 ## 6. Writing a graphical application
 
 > **Notifications and clipboard (ABI v40).** Notifications are AppKit's (`appkit/appkit.h`; it was `notify.h`):

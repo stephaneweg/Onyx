@@ -1013,7 +1013,70 @@ A game is opened with its emulator by AppKit (`lx_open (g[i].path, "")`: the emu
 A folder added: `games_folders_save (dirs, nd + 1)`. A program that makes the pictures saves them with
 `games_thumb_save`.
 
-## 14. Adding to a kit, creating a kit
+## 14. InputKit — the keyboard and the gamepads as one input
+
+`#include "inputkit/inputkit.h"` — link `lib/inputkit.imp.a` (C++) or `lib/inputkit.imp_c.a` (C). Reference:
+`docs/21-INPUTKIT.md`.
+
+A program asks for an **action** — `IN_UP`, `IN_ACCEPT`, `IN_NEXT`... — never for "the arrow key or the D-pad".
+Each action has its **sources**, keys (with their modifiers) and pad buttons, in one file, **`SD:/etc/input.ini`**
+(two sections, `[keys]` and `[pad]`; without the file, or for what it does not say, the defaults):
+
+| action | keys | pad | what it is for |
+|---|---|---|---|
+| `up` `down` `left` `right` | the arrows | the D-pad (and the left stick) | the focus, the caret |
+| `accept` | Enter | A | open, confirm, activate |
+| `back` | Esc | B | cancel, close, back |
+| `alt1` | Delete | X | the second action: close the chosen app, remove |
+| `alt2` | Shift+F10 | Y | the options: a context menu |
+| `prev` / `next` | Ctrl+Page Up, Ctrl+Shift+Tab / Ctrl+Page Down, Ctrl+Tab | L / R | the tab, the category, the section before / after |
+| `menu` | F10 | — | the app's menus (PocketUI's CMD key is the server's own) |
+| `home` | Ctrl+Esc | the middle button | Home |
+| `start` `select` `l2` `r2` | — | Start, Select, L2, R2 | a game's |
+
+Which raw button of a given pad model is "A" stays **`gamepad.h`**'s business (`SD:/etc/gamepad.ini`, the Control
+Panel's Gamepad applet): InputKit is built on it, and the emulators that still read `gamepad.h` are untouched.
+
+Two ways to read, for two kinds of programs:
+
+- **events**, for an interface — `in_poll` gives the pads' actions *pressed*, *repeated* (the directions, at the
+  keyboard's cadence) and *released*, each saying its source (so a hint shows the right glyph: `in_binding`); a key
+  the program received becomes its action with `in_key_action (key, kapi_get_modifiers ())`. Only the program that
+  has the keys gets a pad's events: a background app never moves;
+- **state**, for a game — `in_state (player, &st)`: the actions held now (`st.held & IN_BIT (IN_ACCEPT)`), the
+  sticks, per player; player 0 also reads the keyboard's held keys. A program that reads the state **owns the pad**
+  (`in_claimed`): the interface's navigation leaves it alone.
+
+```cpp
+#include "inputkit/inputkit.h"
+
+// an interface with its own loop: the pad and the keys through the same switch
+static void act (int action)
+{
+	switch (action)
+	{
+	case IN_LEFT:   move (-1); break;
+	case IN_RIGHT:  move (1); break;
+	case IN_ACCEPT: open_chosen (); break;
+	case IN_BACK:   close_me (); break;
+	case IN_NEXT:   next_page (); break;
+	}
+}
+static void on_key (unsigned long, int, long key) { int a = in_key_action ((int) key, kapi_get_modifiers ()); if (a >= 0) act (a); }
+// ... each turn:
+struct in_event ev[8];
+for (int i = 0, n = in_poll (ev, 8); i < n; i++) if (ev[i].kind != IN_RELEASE) act (ev[i].action);
+
+// a game: the state
+struct in_state st;
+if (in_state (0, &st)) { if (st.held & IN_BIT (IN_LEFT)) x--; if (st.held & IN_BIT (IN_ACCEPT)) jump (); }
+```
+
+**A UIKit app writes none of this**: a `Root` takes its navigation from InputKit (docs/03 §5.10.8) — the pad's
+directions, A, B and X act as the arrows, Enter, Esc and Delete on the focused control, L / R step the window's
+tabs, Y is the context menu. Text is not InputKit's: characters keep coming as keys.
+
+## 15. Adding to a kit, creating a kit
 
 **Before writing a helper, look for it in the kits.** If two programs could use it, it belongs to a
 kit.
@@ -1045,7 +1108,7 @@ When a domain has no kit (SystemKit and NetKit are the models — small, with no
 
 The header of a kit a C program may use is written in C.
 
-## 15. Quick reference
+## 16. Quick reference
 
 | I want to… | Kit | Call |
 |---|---|---|

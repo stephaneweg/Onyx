@@ -25,6 +25,18 @@ menu, on the home too; Alt alone does not; CMD held = Home; a `[buttons]` `x.key
 `run_test.py` (210 steps). Not done: Onyx Noir in the Theme applet, TrueType text in Letters' own chrome. If
 `pc/dist/PocketTermSim.running-old.exe` is there, delete it (the simulator was running while it was rebuilt).
 
+**Update, 2026-10-11, later: InputKit (phase 1)** -- a new kit, `user/Kits/inputkit/` (`SD:/lib/inputkit.so`,
+`inputkit.abi`: 12 entries; package `inputkit` declared in `tools/pkg/packages.ini`, NOT published): the keys and
+the gamepads as actions bound in `SD:/etc/input.ini` (new on the card; `[buttons]` left `pocketui.ini`). UIKit
+links it (`uikit.so` needs `inputkit.so` on the card) and navigates by it: a pad drives every `Root` app, **L / R
+(and Ctrl+Page Up / Down, Ctrl+Tab) step the tabs of any window**; the pocket shell and the menu bar read it and no
+longer type keys; the Terminal uses `uk_nav_key` / `uk_input_turn`. The simulator bug (a key handler saw no
+modifiers) is `server_sim`'s, fixed there; a simulated pad was added to it (`pad MASK`). Details, who gets the pad,
+and **phase 2** (the emulators and games on `in_state`, the Gamepad applet, `consolehome`, hints by source):
+`docs/COMPACT-SHELL-STUDY.md` section 20.8. To try on the card, copy also `SD:/lib/inputkit.so` and
+`SD:/etc/input.ini`. Untested without a real pad: the pads' real layouts through InputKit, the repeat's feel, a pad
+on the desktop.
+
 - **S1, the theme** -- UIKit: the named theme `Onyx Noir`, the flat look (`UK_FLAT`, `uk_flat ()`, the `UK_N_*`
   tokens; `uikit/theme.h`, `theme.cpp`, `paint.cpp`: no gradient, no bevel, no shadow, the focus a ring), chosen for
   the **pocket mode only** by `SD:/etc/pocketui.ini` `[look] theme =` (the default: Onyx Noir; `system`: theme.txt).

@@ -2089,6 +2089,40 @@ desktop keeps the kernel's 8 × 16 bitmap font. `SD:/etc/terminal.ini`: `font = 
 row of Modern schemes holds two swatches in the 700 px window: a third needs the row laid out again); TrueType text
 in Letters' boxes and status bar (the app's own code: its chrome is measured in the bitmap font's cells).
 
+### 20.8 InputKit: the keys and the pad as one input (2026-10-11, phase 1)
+
+The user asked that L / R switch tabs in any window that has tabs, and that the keyboard's arrows and the pad's be
+seen "in an agnostic way". **InputKit** (`user/Kits/inputkit/`; docs/06 §14, docs/03 §5.10.8) is that: actions --
+up, down, left, right, accept, back, alt1, alt2, prev, next, menu, home, start, select, l2, r2 -- bound to keys AND
+pad buttons in **`SD:/etc/input.ini`**; events for interfaces, the state for games; built on `gamepad.h` (the pads'
+layouts stay there: no emulator changes). What it replaces: the pocket shell no longer **types keys** for a pad's
+buttons, and `SD:/etc/pocketui.ini` has no `[buttons]` section any more (§20.4 and §20.7 describe that first
+version: the table of what each button does is unchanged, only the mechanism is).
+
+- **UIKit** takes its navigation from the actions: any `Root` app is driven by the pad with no code of its own --
+  the directions, A, B, X as the arrows, Enter, Esc, Delete on the focused control; **L / R step the window's tabs**
+  (a `TabStrip`, else a navigation `SidePanel`), as Ctrl+Page Up / Down and Ctrl+Tab do; Y is the context menu.
+- **Who gets the pad**: the program that has the keys, alone (the kernel's rule) -- a background app never moves.
+  The shell reads it at home and under its overlays, the menu bar while its Menu is open, the app in front
+  otherwise. A program whose pad is its own is left alone: it reads InputKit's state (`in_claimed`), or -- as long
+  as the emulators and games read `gamepad.h` themselves -- its `app.txt` says Games, Emulators or `pad = own`
+  (the category rule is KEPT for that reason; it goes with phase 2).
+- **The Terminal**: its private Ctrl+Tab / Ctrl+Page Up / Down are gone (`uk_nav_key`); it runs its own loop, so
+  it calls `uk_input_turn` for the pad. **The bug reported** (Ctrl+Page Up did not change the tab in the
+  simulator): the simulator's fault, not the device's -- `server_sim` called the key handlers without giving the
+  stand-in kernel the event's modifiers, so `kapi_get_modifiers ()` was 0 in every handler; on Onyx AppKit's pump
+  sets them from the event (`event_mods`, kapi_abi.h). `server_sim` now does the same, which makes every "mods N;
+  key K" step of the tests meaningful.
+- **Still without a pad**: a program that is not on a UIKit `Root` and does not read InputKit (a few apps draw and
+  pump by themselves), and a `Root` program with its own loop until it calls `uk_input_turn` (the Terminal does);
+  an extra key bound to an action in `[keys]` acts where nothing else took the key (UIKit's fallback), not before a
+  control that uses that key.
+- **Phase 2 (not done)**: the emulators and the games moved from `gamepad.h` to `in_state` (then the category
+  rule and `pad = own` go); the Gamepad applet's "Map buttons" and its keyboard page writing InputKit's file; the
+  console home (`consolehome`) on InputKit instead of its own pad code and typed keys; the menu bar's and the
+  shell's hint lines choosing their glyph from the event's source (key cap or pad button); analog triggers and
+  the sticks as actions; a pad message in `rdpd` (a kernel call).
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau
