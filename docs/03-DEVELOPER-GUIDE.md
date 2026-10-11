@@ -1809,6 +1809,14 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   UkToolButton_`, `#include "uikit/toolbar.h"`, `#undef ToolButton`, then `using uikit::ToolBar;` in its namespace:
   the desktop's rows are the same pixels (checked), pocket gets "»" and F6. Cardfile's is the next one.
 
+- **A closed drawer without a pointer (the designer's Q3).** In pocket and console a closed drawer, slide-over or
+  sheet draws NO tab until a pointer exists -- `internal::pointer_seen ()`, set by the first pointer event that
+  reaches a Root (`Root::ptrEvent`), which lays the adaptive widgets out again. The shell's band names the drawers
+  instead: `SidePanel::setName ("Levels")` (else *Panel* / *Inspector*); SidePanel sends `D<L|R><0|1>\t<name>` lines
+  before the app's menus in the spec given to `uk_win_menu_set` (`uikit/menu.cpp`: `internal::menu_extra`), and the
+  menu bar (`user/Apps/menubar`: `g_drawer`) draws `[L] name` after Menu and `name [R]` before the status icons, lit
+  while open. An app writes one line (`setName`) and leaves no gutter for a tab.
+
 ### 5.10.8. InputKit and UIKit's navigation: a pad and the keys as actions (`inputkit/inputkit.h`, `uikit/adapt.h`; the branch `PocketTerm`)
 
 **InputKit** (`user/Kits/inputkit/`, `SD:/lib/inputkit.so`; docs/06 §14, `docs/21-INPUTKIT.md`) turns the keys and

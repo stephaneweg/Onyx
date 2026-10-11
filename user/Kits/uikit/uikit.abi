@@ -963,3 +963,4 @@
 957 _ZN5uikit18uk_keypointer_drawERNS_6CanvasERKNS_12UkKeyPointerE
 958 _ZN5uikit18uk_keypointer_moveERNS_12UkKeyPointerEliiiii
 959 _ZN5uikit7ToolBar8setShownEPNS_6WidgetEb
+960 _ZN5uikit9SidePanel7setNameEPKc

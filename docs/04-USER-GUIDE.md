@@ -719,7 +719,9 @@ uses the tool, Esc, Down or F6 again gives the keys back to the document. **L / 
 window without tabs whose side panel is a **drawer without places** — the Calendar's month and tasks, the Archiver's
 folders, FM Tracker's and the PDF Viewer's panels, the levels of Circuits and Turtle Quest, GPIO Lab's header --, open
 and close that drawer: **L the left one, R the right one** (the Icon Editor's colours; a window's only panel: either
-key). An open drawer has the keys (its list's, its fields'), Esc closes it and gives them back to what had them. In pocket mode under 800 px wide the Control
+key). **The band names a window's drawers beside their buttons** -- `L Levels` after *Menu*, `Colours R` before the
+status icons, lit while the drawer is open; a closed drawer shows nothing on the window's edge (its tab comes back
+when a mouse is plugged in and moved: it is a pointer's target). An open drawer has the keys (its list's, its fields'), Esc closes it and gives them back to what had them. In pocket mode under 800 px wide the Control
 Panel shows one thing at a time: its list, then an applet whole with a "< Control Panel" bar; **Mail** is three
 screens there (its folders, a folder's messages, a message: §Mail). In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
 mode's dark look, draws its text in a TrueType face (DejaVu Sans Mono 15: 69 × 22 on a 640 × 480 screen);
@@ -6782,6 +6784,17 @@ and the board are worked with a pointer — on such a device, levels are made on
 ![](compact-shell/real/pocketterm/pt-turtle-640.png)
 
 *Turtle Quest on a 640 × 480 pocket screen: the program, its words, the board; the levels behind L.*
+
+**Setup on a small pocket screen** (under 800 px wide: the PocketTerm35). The first-start assistant takes the whole
+screen there, **one page a step**: a bar with the step's title and *3 of 5*, and at the foot **B: Back, A: Continue**
+(Esc and Enter). The welcome page shows the language (Left / Right) and the device's four controls -- the D-pad, A, B
+and CMD (the Menu). Then *Region & keyboard* (Up / Down the country; the arrows reach the lists beside it), *Wi-Fi*
+(Up / Down a network: its row opens and the password is typed there, Enter connects; A with no network skips),
+*Name & privacy* (the name typed; Down to the services, Up / Down one of them, Space its switch) and *Ready* (A starts
+Onyx). The *Display* and *Appearance* steps are not asked on such a device: its screen has one size, and its look is
+pocket's own (the Control Panel has both for the desktop mode).
+
+![](compact-shell/real/pocketterm/pt-setup-640-1-welcome.png)
 
 ## 14. Troubleshooting
 

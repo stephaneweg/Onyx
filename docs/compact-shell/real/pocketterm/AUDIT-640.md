@@ -86,6 +86,23 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Lisa** | minor: a fixed window bigger than the screen (a viewport: the first lines and the right edge out of sight) | ok | resizable in pocket | small | no |
 | **Life**, **Mandelbrot**, **Eyes**, **Shut Down** | fine | ok | — | — | no |
 
+## After the designer's answers (2026-10-11, later)
+
+The nine questions were answered (`docs/compact-shell/mockups/pocketterm/apps/ANSWERS.md`, its pictures beside it) and
+the user agreed to all of it. **Built from it so far** (each driven by the keys alone in the simulator:
+`pocket640.sh`):
+
+| What | State | Captures |
+|---|---|---|
+| **Q3, the closed drawer** | **done, in UIKit for every app**: no tab, no gutter while no pointer exists; the band names the drawer beside its button (`[L] Levels` after Menu, `Inspector [R]` before the status icons), lit while open; the tab is back as soon as a pointer event reaches the program. The names travel with the app's menus (no change to PocketUI's protocol nor to the kernel). The Calendar's hours and the Archiver's first icon are no longer covered: both **fine** now | `pt-drawer-calendar-0` (no tab), `-pointer` (the tab back), `pt-drawer-band` (the chips) |
+| **Q5, Setup** | **done in its structure**: one page a step, a bar "3 of 5", B back / A next, the welcome page with the device's four controls, dark cards, every part by the keys. **Differs from the mock-up**: the Wi-Fi password stays in the network's row; Region keeps its two columns; the Display AND the Appearance steps are skipped (five steps, not six); the foot keeps its buttons beside the hint. Verdict: **fine** to set a card up; the "You are online" banner's text is hard to read on the dark card (minor) | `pt-setup-640-1-welcome` … `-5-ready`, `-1-welcome-fr` |
+| **The review of the four reworked apps** (21 directives) | **done: 1** (no tab, no gutter), **3** (Circuits: no mouse words where the keys drive), **7** (Mail's list bar: title, All / Unread, pen; typing searches), **8** (the account's stripe at the left), **9** (reply icons once), **16** (Turtle Quest: no word chips, 12 whole lines of program), **19** (GPIO Lab's warning a line of text). **Not done**: 2 (the hint line), 4 (the level cards and Circuits' message card still light), 5-6 (type scale, margins), 10-11, 12-15, 17-18, 20, 21 | the `pt-mail-640-*`, `pt-turtle-640*`, `pt-gpiolab-640*` series, taken again |
+
+**Not built**: Q1 Slides and the shared object stepping (M / S modes), Q6 QBStudio, Q2 Paint, Q7 3DForge, Q8 Turtle
+Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
+applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above
+stand as they were.
+
 ## What was fixed in this work (the audit's "small")
 
 - **Letters**: the status bar (above). **Sheet** and **Slides**: their toolbars are UIKit's (`user/Apps/sheet/

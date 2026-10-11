@@ -37,6 +37,20 @@ and **phase 2** (the emulators and games on `in_state`, the Gamepad applet, `con
 `SD:/etc/input.ini`. Untested without a real pad: the pads' real layouts through InputKit, the repeat's feel, a pad
 on the desktop.
 
+**Update, 2026-10-11, the night: the designer's answers, begun** (`docs/compact-shell/mockups/pocketterm/apps/
+ANSWERS.md`; the user agreed to all nine, the four "not in pocket" included). Built, each committed apart, PC
+simulator only: (1) part of **the review** of Mail / Circuits / Turtle Quest / GPIO Lab -- directives 1, 3, 7, 8, 9,
+16, 19 of 21; (2) **Q3, the closed drawer, in UIKit**: no tab while no pointer exists (`internal::pointer_note` from
+`Root::ptrEvent`: a pointer event seen, no kernel call), the drawers' names sent WITH THE MENUS (`D<L|R><0|1>\t<name>`
+lines before the menus' in `uk_win_menu_set`'s spec; `menu.cpp` `menu_extra`, `SidePanel::setName`) and drawn by the
+menu bar in pocket as `[L] name` / `name [R]`, lit while open; (3) **Q5, Setup**: `g_pk` in `user/Apps/setup/
+main.cpp` -- W / H / RAIL_W are variables, `StepBar`, `FootHint`, `PocketWelcome`, keys in `NetList`, `Services`, the
+pickers, `card_c ()`; the Display and Appearance steps skipped in pocket. **Not built: Q1 (Slides and the shared
+object stepping), Q6, Q2, Q7, Q8, Q9, Q4 and item 10's medium fixes; of the review: 2, 4, 5-6, 10-15, 17, 18, 20,
+21.** `AUDIT-640.md` has the table ("After the designer's answers"). Next in the user's order: the rest of the
+review (the hint line first: one UIKit helper for a 30 px line of `uk_pad_hints` at a window's foot), then Slides
+with the stepping written once.
+
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached
 another way, everything by the keys). Tested on the PC only (`sh tools/tests/server_sim/pocket640.sh <out> [mail
