@@ -298,7 +298,7 @@ public:
 			int ix = W - PAD - 4 * 26;
 			static const int IC[4] = { I_REPLY, I_REPLYALL, I_FORWARD, I_STAR };
 			static const int HK[4] = { H_REPLY, H_REPLYALL, H_FORWARD, H_STAR };
-			for (int k = 0; k < 4; k++)
+			for (int k = g_three ? 4 : 0; k < 4; k++)	// (pocket's three screens: the bar has them -- not twice)
 			{
 				bool on = k == 3 && (m.flags & F_FLAGGED);
 				icon (canvas, k == 3 ? (on ? I_STAR : I_STAR_O) : IC[k], ix + k * 26 + 3, hy + 21, 18, on ? 0xF2A600 : col_dim ());

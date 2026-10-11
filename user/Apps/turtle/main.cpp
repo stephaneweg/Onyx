@@ -1587,7 +1587,9 @@ static void layout ()
 	int ey = PAD + TOOLH + 6 + 22 + 8;
 	g_words->resizeTo (edw, 60); g_words->build ();
 	int wordsH = 0; for (int i = 0; i < g_words->n; i++) if (g_words->chips[i].y + 24 > wordsH) wordsH = g_words->chips[i].y + 24;
-	g_words->resizeTo (edw, wordsH);
+	((Widget *) g_words)->hidden = g_pk;		// (a small pocket screen: the room is the program's; the words are typed)
+	if (g_pk) wordsH = -8;
+	g_words->resizeTo (edw, wordsH > 1 ? wordsH : 1);
 	int countH = 22;
 	g_ed->left = mid; g_ed->top = ey; g_ed->resizeTo (edw, H - ey - PAD - countH - 8 - wordsH - 8);
 	g_words->left = mid; g_words->top = g_ed->top + g_ed->height + 8;

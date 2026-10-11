@@ -239,7 +239,7 @@ static void update_tools ()
 	g_btReset->setDisabled (g_step < 0);
 	static char mode[128];
 	if (g_step >= 0) snprintf (mode, sizeof mode, TR ("Step %d of %d \xC2\xB7 F7: back to live"), g_step, g_ev.maxDepth);
-	else snprintf (mode, sizeof mode, "%s", TR ("Live: click a switch or a row."));
+	else snprintf (mode, sizeof mode, "%s", uk_keys_drive () ? TR ("Live: Enter on a switch flips it.") : TR ("Live: click a switch or a row."));
 	g_lbMode->setText (mode); g_lbMode->fg = g_step >= 0 ? C_ACCENT : C_DIS;
 	((Widget *) g_lbMode)->invalidate (true);
 }
@@ -281,7 +281,7 @@ static void arm (int type)
 	if (type >= 0)
 	{
 		select_gate (-1);
-		char m[200]; snprintf (m, sizeof m, TR ("%s: click a free place on the board to put it (Esc: cancel)."), gate_word (type));
+		char m[200]; snprintf (m, sizeof m, uk_keys_drive () ? TR ("%s: the arrows choose its place, Enter puts it (Esc: cancel).") : TR ("%s: click a free place on the board to put it (Esc: cancel)."), gate_word (type));
 		set_message (M_INFO, m);
 	}
 	else if (g_msg->kind == M_INFO) prompt ();

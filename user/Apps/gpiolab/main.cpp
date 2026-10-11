@@ -834,6 +834,8 @@ public:
 		// the warning: 3.3 V
 		unsigned amber = 0xF6C343, ink = 0x3A2A00;
 		int vsw = g_pk ? 150 : 192;				// (the Pins / Code switch at its right)
+		if (g_pk) { ink = amber; amber = bg; }			// (a small pocket screen: a line of warning text, no filled box)
+		else
 		uk_rbox (canvas, 12, 8, width - 24 - vsw - 8, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
 		VPath t; int tx = 32, ty = 25;
 		int tri[6] = { V (tx), V (ty - 10), V (tx + 11), V (ty + 9), V (tx - 11), V (ty + 9) };

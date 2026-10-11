@@ -111,3 +111,6 @@ YOURS	OBTENU
 “%s” cannot be read.	« %s » ne peut pas être lu.
 The arrows move the pointer. Enter on the switch's pin starts a wire, Enter on the lamp's pin lays it.	Les flèches déplacent le pointeur. Entrée sur la broche de l'interrupteur commence un fil, Entrée sur celle de la lampe le pose.
 1 to 6 take a gate, the arrows move it, Enter puts it. Enter on a pin starts a wire, Enter on another pin lays it.	1 à 6 prennent une porte, les flèches la déplacent, Entrée la pose. Entrée sur une broche commence un fil, Entrée sur une autre le pose.
+Live: Enter on a switch flips it.	En direct : Entrée sur une entrée la bascule.
+%s: the arrows choose its place, Enter puts it (Esc: cancel).	%s : les flèches choisissent sa place, Entrée la pose (Échap : annuler).
+The arrows to an input pin, then Enter lays the wire (Esc: cancel).	Les flèches jusqu'à une borne d'entrée, puis Entrée pose le fil (Échap : annuler).

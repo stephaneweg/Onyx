@@ -347,7 +347,7 @@ public:
 	{
 		drag = D_WIRE; src = s; pickDst = dst; pickPin = pin; catchOutside = true;
 		select_gate (-1);
-		set_message (M_INFO, TR ("Let go on an input pin to lay the wire (Esc: cancel)."));
+		set_message (M_INFO, uk_keys_drive () ? TR ("The arrows to an input pin, then Enter lays the wire (Esc: cancel).") : TR ("Let go on an input pin to lay the wire (Esc: cancel)."));
 		update_target ();
 		if (dst >= 0) refresh ();
 	}

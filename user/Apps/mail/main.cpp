@@ -78,8 +78,8 @@ public:
 	{
 		if (g_three)				// (the search: on the folders' and the list's screens only)
 		{
-			int s = three_screen (), sw = s == SC_LIST ? 110 : 200;
-			((Widget *) search)->hidden = s != SC_FOLDERS && s != SC_LIST;
+			int s = three_screen (), sw = 200;	// (the list's screen has no field: typing there searches -- ListPane::onKey)
+			((Widget *) search)->hidden = s != SC_FOLDERS;
 			search->left = width - sw - 54; search->resizeTo (sw, 30);
 			return;
 		}
@@ -105,8 +105,8 @@ public:
 			hits.add (right, 8, 34, 34, kind);
 			right -= 4;
 		};
-		if (s == SC_FOLDERS || s == SC_LIST || s == SC_WELCOME) tool (T_CHECK, I_REFRESH, busy ? C_ACCENT : C_TEXT);
-		if (s == SC_FOLDERS || s == SC_LIST) { icon (canvas, I_SEARCH, search->left - 24, 16, 18, uk_mix (C_BG, C_TEXT, 150)); right = search->left - 30; }
+		if (s == SC_FOLDERS || s == SC_WELCOME) tool (T_CHECK, I_REFRESH, busy ? C_ACCENT : C_TEXT);
+		if (s == SC_FOLDERS) { icon (canvas, I_SEARCH, search->left - 24, 16, 18, uk_mix (C_BG, C_TEXT, 150)); right = search->left - 30; }
 		if (s == SC_LIST)
 		{
 			tool (T_NEW, I_PEN, C_ACCENT);
@@ -449,7 +449,7 @@ public:
 		else if (hot == i) uk_fill_round (canvas, x, y, W - 6, ROW_H, 8, col_hover ());
 		// the account's stripe
 		unsigned ac = g_m.accts.a[last.acct].colour;
-		canvas.fillRect (W - 6, y + 10, 3, ROW_H - 20, 0xFF000000u | ac);
+		canvas.fillRect (g_three ? 1 : W - 6, y + 10, 3, ROW_H - 20, 0xFF000000u | ac);	// (pocket: at the left, the right edge is the time's and the star's)
 		// the unread dot
 		if (c.unread) icon (canvas, I_DOT, x - 1, y + 25, 12, C_ACCENT);
 		// who: in a sent folder, to whom
@@ -562,6 +562,14 @@ public:
 				return true;
 			}
 			if (k == KEY_ENTER && g_cur >= 0 && g_cur < n) { open_conv (g_cur); return true; }
+			// typing searches (no field on this screen: what is typed is the list's title, in quotes); Backspace takes a letter off
+			if ((k >= 32 && k < 127 && !(kapi_get_modifiers () & (MOD_CTRL | MOD_ALT))) || (k == KEY_BACKSPACE && g_tb->search->text[0]))
+			{
+				char t[200]; scpy (t, g_tb->search->text, sizeof t); int l = (int) strlen (t);
+				if (k == KEY_BACKSPACE) t[l - 1] = 0; else if (l < 180) { t[l] = (char) k; t[l + 1] = 0; }
+				g_tb->search->setText (t); search_changed ();
+				return true;
+			}
 			return false;
 		}
 		if (k == KEY_DOWN && g_conv < n - 1) { open_conv (g_conv + 1); reveal (g_conv); return true; }
@@ -1149,7 +1157,8 @@ static void three_back ()
 	case SC_COMPOSE: compose_discard (); break;			// (asked first when something is written)
 	case SC_CONTACTS: show_contacts (false); break;
 	case SC_MESSAGE: three_go (SC_LIST); break;
-	case SC_LIST: if (g_tb->search->text[0]) { g_tb->search->setText (""); search_changed (); } three_go (SC_FOLDERS); break;
+	case SC_LIST: if (g_tb->search->text[0]) { g_tb->search->setText (""); search_changed (); three_go (SC_LIST); break; }	// (a search: back to the folder's list first)
+		three_go (SC_FOLDERS); break;
 	}
 }
 
