@@ -1116,9 +1116,9 @@ runs a `/bin` command so.
 
 | Action | How |
 |---|---|
-| **New tab** | the **+** after the tabs, **Shell ▸ New Tab**, or **Ctrl+Shift+T** (it starts in `SD:/`). |
+| **New tab** | the **+** after the tabs, **Shell ▸ New Tab**, **Ctrl+Shift+T** or **F12** (on a thumb keyboard such as the PocketTerm35's: **Fn** with the **=** / **+** key); it starts in `SD:/`. |
 | **Change tabs** | a click on a tab, **Ctrl+Tab** / **Ctrl+Shift+Tab** (next / previous), **Ctrl+PgDn** / **Ctrl+PgUp**, or the wheel over the tabs. |
-| **Close a tab** | its **×**, a **middle click** on it, **Shell ▸ Close Tab**, or **Ctrl+Shift+W**. |
+| **Close a tab** | its **×**, a **middle click** on it, **Shell ▸ Close Tab**, **Ctrl+Shift+W** or **F11** (**Fn** with **-** on a thumb keyboard). |
 
 - A tab's **title** is the **command running** in it, else its **current folder** (the prompt's last
   name: `docs` for `SD:/docs`; `SD:/` at the root). A **dot** before the title marks a tab where a

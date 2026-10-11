@@ -313,11 +313,18 @@ static void term_key (Tab *t, int key)
 	}
 }
 
-// The tabs' keys, before anything else: Ctrl+Shift+T / W, Ctrl+(Shift+)Tab, Ctrl+PgUp / PgDn.
+// The tabs' keys, before anything else: Ctrl+Shift+T / W, F12 / F11, Ctrl+(Shift+)Tab, Ctrl+PgUp / PgDn.
 // (Ctrl with a letter comes as its control code -- ^T = 20 -- with Shift held as a modifier.)
 static bool tab_keys (long k)
 {
 	unsigned m = kapi_get_modifiers ();
+	// F12 / F11 alone: a new tab / this one closed -- on a thumb keyboard (the PocketTerm35's) Fn with "=" (the "+"
+	// key) and Fn with "-"
+	if (!(m & (MOD_CTRL | MOD_SHIFT | MOD_ALT)))
+	{
+		if (k == KEY_F12) { new_tab (); return true; }
+		if (k == KEY_F12 - 1) { m_close (); return true; }
+	}
 	if (!(m & MOD_CTRL)) return false;
 	bool shift = (m & MOD_SHIFT) != 0;
 	if (k == KEY_TAB) { g_strip->selectNext (shift ? -1 : 1); return true; }
