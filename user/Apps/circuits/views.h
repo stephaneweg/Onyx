@@ -96,6 +96,15 @@ public:
 		if (!bl) pressed = false;
 		return true;
 	}
+	// The keys, when the list has them (pocket's drawer): Up / Down the level before / after, Enter leaves the drawer
+	bool onKey (long k) override
+	{
+		if (!g_pk) return false;
+		if (k == KEY_UP) { do_prev (); return true; }
+		if (k == KEY_DOWN) { do_next (); return true; }
+		if (k == KEY_ENTER && g_side && g_side->isOpen ()) { g_side->open (false); return true; }
+		return false;
+	}
 	void showSel ()					// the current level's row in view
 	{
 		int y = 0;

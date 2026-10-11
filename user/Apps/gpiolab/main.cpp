@@ -155,7 +155,10 @@ static bool is_input (int m) { return m == GK_IN || m == GK_IN_PULLUP || m == GK
 static bool mine (int pin) { return g_pin[pin].owner != 0 && g_pin[pin].owner == (unsigned) kapi_getpid (0) ? true : gk_available () == 2 && g_pin[pin].owner != 0; }
 
 // ---- the header ------------------------------------------------------------------------------------------
-#define ROWH	23
+static bool g_pk = false;			// pocket on a small screen (under 800 px wide): the header a drawer (below: HeadPane)
+static SidePanel *g_side = 0;
+static int g_rowh = 23;			// (the header's row; lower in pocket's drawer on a 480 px screen: HeadPane::place)
+#define ROWH	g_rowh
 #define PINX0	190			// the odd pins' column (x of their centre)
 #define PINX1	226			// the even pins'
 #define HTOP	40
@@ -375,8 +378,12 @@ public:
 			if (g < 0) continue;
 			const gk_pin_info &p = g_pin[g];
 			char t[24]; snprintf (t, sizeof t, "GPIO%d", g);
+			if (g_pk && rowh < 30) uk_text_l (canvas, 10, y + rowh / 2 - 9, 18, t, C_FIELD_TEXT, 2);	// (a low chart: the name alone)
+			else
+			{
 			uk_text_l (canvas, 10, y + rowh / 2 - 15, 18, t, C_FIELD_TEXT, 2);
 			uk_text_l (canvas, 10, y + rowh / 2 + 1, 16, p.flags & GK_F_RESERVED ? TR ("system") : TR (gk_mode_name (p.mode)), dim);
+			}
 			unsigned col = mode_col (p.mode == GK_FREE ? GK_IN : p.mode, 1);
 			int hi = y + 6, lo = y + rowh - 8;
 			canvas.fillRect (lx, y + rowh - 1, cw, 1, grid);
@@ -802,6 +809,20 @@ static void demo (void)
 	set_status (TR ("The demonstration: an LED on GPIO 17, a servo on GPIO 18, a button on GPIO 27."));
 }
 
+// POCKET ON A SMALL SCREEN (under 800 px wide: the PocketTerm35's 640 x 480; no mouse): the header is a DRAWER -- L
+// (Ctrl + Page Up) opens and closes it; in it the arrows choose a pin, Enter closes it -- and the pin's panel, the
+// charts or the Code view take the window's width. Out of the drawer the arrows move the focus over the panel's
+// controls (Left / Right inside a row of choices), Space sets the chosen output high / low as ever.
+class HeadPane : public Widget			// the drawer's content: the header and the Simulator's switch, placed in it
+{
+public:
+	HeadPane () : Widget (0, 0, 412, 400) {}
+	void onDraw () override { canvas.clear (bgColor ()); }
+	void place ();
+	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); place (); }
+	bool onKey (long k) override;
+};
+
 class LabRoot : public Root
 {
 public:
@@ -812,7 +833,8 @@ public:
 		Root::onDraw ();
 		// the warning: 3.3 V
 		unsigned amber = 0xF6C343, ink = 0x3A2A00;
-		uk_rbox (canvas, 12, 8, width - 24 - 200, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
+		int vsw = g_pk ? 150 : 192;				// (the Pins / Code switch at its right)
+		uk_rbox (canvas, 12, 8, width - 24 - vsw - 8, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
 		VPath t; int tx = 32, ty = 25;
 		int tri[6] = { V (tx), V (ty - 10), V (tx + 11), V (ty + 9), V (tx - 11), V (ty + 9) };
 		t.poly (tri, 3); t.fill (canvas, ink);
@@ -820,14 +842,15 @@ public:
 		const char *w1 = TR ("3.3 V only: never connect 5 V to a GPIO pin."), *w2 = TR ("16 mA a pin at most: an LED through 330 ohm.");
 		int x2 = 52 + uk_text_w (w1, 2) + 10;
 		uk_text_l (canvas, 52, 11, 28, w1, ink, 2);
-		if (x2 + uk_text_w (w2) <= width - 224) uk_text_l (canvas, x2, 11, 28, w2, ink);	// (where the band has the room)
+		if (x2 + uk_text_w (w2) <= width - 32 - vsw) uk_text_l (canvas, x2, 11, 28, w2, ink);	// (where the band has the room)
 		// what drives the pins, and the last message
 		const char *who = gk_available () == 2 ? TR ("SIMULATOR") : gk_available () == 1 ? TR ("RASPBERRY PI HEADER") : TR ("NO GPIO");
 		int ww = uk_text_w (who, 2) + 20;
 		unsigned bc = gk_available () == 2 ? 0x8E6BD8 : gk_available () == 1 ? 0x3B9A4A : 0x9A3B3B;
 		uk_rbox (canvas, width - ww - 12, height - 30, ww, 22, 11, bc, bc);
 		uk_text_c (canvas, width - ww - 12, height - 30, ww, 22, who, 0xFFFFFF, 2);
-		uk_text_l (canvas, 16, height - 30, 22, g_status, uk_mix (bg, C_TEXT, 150));
+		if (g_pk) { char st[200]; uk_text_fit (g_status, width - ww - 12 - 28, st, sizeof st); uk_text_l (canvas, 16, height - 30, 22, st, uk_mix (bg, C_TEXT, 150)); }	// (cut before the pill)
+		else uk_text_l (canvas, 16, height - 30, 22, g_status, uk_mix (bg, C_TEXT, 150));
 	}
 	void onTick () override
 	{
@@ -1144,6 +1167,7 @@ static void run_program (bool step)
 	host.lineHook = true;
 	g_running = true; g_stepMode = step; g_waitStep = false; g_stopReq = false; g_nkeyQ = 0;
 	set_run_buttons ();
+	if (g_pk) ((Widget *) g_root)->setFocus (); else	// (pocket: the header is in its closed drawer -- the window itself)
 	((Widget *) g_header)->setFocus ();		// (the keys go to the program: INKEY$)
 	g_con->say (step ? TR ("Step by step: F8 (or Step) runs the lit line.") : TR ("Running..."), 2);
 	unsigned long long t0 = gk_now_us ();
@@ -1210,7 +1234,7 @@ static void on_view (Widget &)
 {
 	g_view = g_viewSw->selected == 1 ? 1 : 0;
 	apply_view ();
-	if (g_view == 1) g_ed->setFocus (); else ((Widget *) g_header)->setFocus ();
+	if (g_view == 1) g_ed->setFocus (); else if (g_pk) ((Widget *) g_modes)->setFocus (); else ((Widget *) g_header)->setFocus ();
 }
 
 // Which of the right side's widgets the view shows
@@ -1243,7 +1267,20 @@ bool LabRoot::onKey (long k)
 	}
 	if (g_view == 1) return false;
 	if (k == ' ') { toggle_level (); return true; }
+	if (g_pk) return false;				// (the header is in its drawer: the arrows are the focus's)
 	return ((Widget *) g_header)->onKey (k);
+}
+void HeadPane::place ()
+{
+	g_rowh = (height - 8 - HTOP - 12) / 20; if (g_rowh > 23) g_rowh = 23; if (g_rowh < 16) g_rowh = 16;	// (the 20 rows in the screen's height)
+	if (g_header) { ((Widget *) g_header)->left = (width - 412) / 2; ((Widget *) g_header)->top = 4; ((Widget *) g_header)->resizeTo (412, height - 8); }
+	if (g_simSw) { ((Widget *) g_simSw)->left = (width - 412) / 2 + 412 - 132; ((Widget *) g_simSw)->top = 6; }
+}
+bool HeadPane::onKey (long k)				// (the drawer's keys: the header's; Enter leaves it)
+{
+	if (k == KEY_ENTER && g_side && g_side->isOpen ()) { g_side->open (false); return true; }
+	if (k == ' ') { toggle_level (); return true; }
+	return g_header ? ((Widget *) g_header)->onKey (k) : false;
 }
 
 static void m_quit (void) { save_sketch (); kapi_exit (0); }
@@ -1272,8 +1309,9 @@ static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_a
 void LabRoot::onResized ()
 {
 	W = width; H = height;
-	int rx = 436, rw = W - rx - 12;
-	g_header->resizeTo (412, H - BANNER - 44);
+	int rx = g_pk ? 24 : 436, rw = W - rx - 12;		// (pocket's drawer: its tab's room at the edge)
+	if (g_pk) g_side->place (0, 0, 412, H);
+	else g_header->resizeTo (412, H - BANNER - 44);
 	g_panel->resizeTo (rw, 214);
 	g_modes->resizeTo (rw - 28, 28);
 	Widget *duty = (Widget *) g_slDuty; duty->resizeTo (rw - 274 - ((Widget *) g_lbDuty)->width, 30);
@@ -1281,8 +1319,8 @@ void LabRoot::onResized ()
 	((Widget *) g_btOled)->left = W - 12 - 90 - 8 - 130;
 	int vy = BANNER + 6 + 214 + 12 + 38, vh = H - vy - 40;
 	g_chart->resizeTo (rw, vh); g_i2c->resizeTo (rw, vh); g_edges->resizeTo (rw, vh);
-	((Widget *) g_viewSw)->left = W - 12 - 192;
-	int cy = BANNER + 6, ddx = W - 12 - 190;
+	((Widget *) g_viewSw)->left = W - 12 - (g_pk ? 150 : 192);
+	int cy = BANNER + 6, ddx = W - 12 - (g_pk ? 160 : 190);
 	((Widget *) g_ddEx)->left = ddx;
 	int x = ((Widget *) g_speed)->left, wSlider = ddx - 12 - x; if (wSlider > 120) wSlider = 120; if (wSlider < 60) wSlider = 60;
 	g_speed->resizeTo (wSlider, 30);
@@ -1321,14 +1359,21 @@ int main (void)
 	refresh_pins ();
 	set_status (gk_available () == 2 ? TR ("The simulator drives the pins: nothing touches the real header.") : TR ("Choose a pin on the header."));
 
+	{
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+		if (g_pk) { W = sw; H = sh - 30; }		// (the widgets made for the window PocketUI gives: no column of the header's)
+	}
+	HeadPane *headPane = g_pk ? new HeadPane : 0;
+	Widget *headOf = g_pk ? (Widget *) headPane : (Widget *) &root;
 	g_header = new HeaderView (12, BANNER + 6, 412, H - BANNER - 44);
-	root.addChild (g_header);
+	headOf->addChild (g_header);
 	g_simSw = new ToggleSwitch (12 + 412 - 132, BANNER + 8, 132, 26, TR ("Simulator"), gk_available () == 2, on_sim_switch, root.bg);
 	g_simSw->tip = TR ("On: a board in memory -- click an input's dot to drive it, nothing touches the real pins. Off: the Pi's header.");
-	root.addChild (g_simSw);
+	headOf->addChild (g_simSw);
 	sync_sim_switch ();
 
-	int rx = 436, rw = W - rx - 12;
+	int rx = g_pk ? 24 : 436, rw = W - rx - 12;		// (pocket's drawer: its tab's room at the edge)
 	g_panel = new PinPanel (rx, BANNER + 6, rw, 214);
 	root.addChild (g_panel);
 	int py = BANNER + 6;
@@ -1386,11 +1431,12 @@ int main (void)
 
 	// the view: the pins, or the code (the mini IDE)
 	const char *const VIEWS[2] = { TR ("Pins"), TR ("Code") };
-	g_viewSw = new SegmentedControl (W - 12 - 192, 10, 192, 30, VIEWS, 2, 0, on_view);
+	g_viewSw = new SegmentedControl (W - 12 - (g_pk ? 150 : 192), 10, g_pk ? 150 : 192, 30, VIEWS, 2, 0, on_view);
 	g_viewSw->tip = TR ("Pins: drive them by hand. Code: write a BASIC program and watch it drive them.");
 	root.addChild (g_viewSw);
 	{
-		int cy = BANNER + 6, x = rx, ddx = W - 12 - 190;
+		int exW = g_pk ? 160 : 190;
+		int cy = BANNER + 6, x = rx, ddx = W - 12 - exW;
 		// (Step and the Speed's label as wide as their words -- "Pas à pas", "Vitesse : max" --, the slider in what is left)
 		int wStep = uk_text_w (TR ("Step")) + 28; if (wStep < 70) wStep = 70;
 		int wSpeed = uk_text_w (TR ("Speed: full")) + 8; if (wSpeed < 86) wSpeed = 86;
@@ -1402,7 +1448,7 @@ int main (void)
 		int wSlider = ddx - 12 - x; if (wSlider > 120) wSlider = 120; if (wSlider < 60) wSlider = 60;
 		g_speed = new Slider (x, cy, wSlider, 30, 1, 10, 6, cb_speed, root.bg);
 		g_speed->tip = TR ("How fast the lines run (each lit as it runs); full: as fast as it can"); root.addChild (g_speed);
-		g_ddEx = new Dropdown (ddx, cy, 190, 30, g_exNames, NEX, 0, cb_example); root.addChild (g_ddEx);
+		g_ddEx = new Dropdown (ddx, cy, exW, 30, g_exNames, NEX, 0, cb_example); root.addChild (g_ddEx);
 		int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
 		g_ed = new CodeEdit (rx, ey, rw, eh);
 		g_ed->mono = g_mono; g_ed->ui = ft_uikit_face ();
@@ -1447,9 +1493,17 @@ int main (void)
 	on_tab (*g_tabs);
 	g_view = codeArg ? 1 : 0; g_viewSw->selected = g_view;
 	apply_view ();
-	if (g_view == 1) g_ed->setFocus (); else g_header->setFocus ();
+	if (g_pk)					// (after everything: an open drawer covers the window)
+	{
+		headPane->place ();
+		g_side = new SidePanel (0, 0, 412, H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_side->setContent (headPane);
+		root.addChild (g_side);
+	}
+	if (g_view == 1) g_ed->setFocus (); else if (g_pk) ((Widget *) g_modes)->setFocus (); else g_header->setFocus ();
 	root.setResizable (true);
-	root.setMinSize (940, 600);
+	if (g_pk) root.setMinSize (480, 320);
+	else root.setMinSize (940, 600);
 	if (strstr (args, "--run")) g_runReq = 1;
 	// the loop (Root::run's), with the programs started from it -- never from a callback: their run gives the
 	// window its rounds (pump)

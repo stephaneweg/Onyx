@@ -27,6 +27,7 @@ public:
 	bool lbl, lbr;					// the buttons as last seen
 	int hoverGate, hoverOut;			// the gate / the output pin under the pointer (-1)
 	bool inside;					// the pointer over the board
+	UkKeyPointer kp;				// pocket, console: the pointer the arrows move (uikit/adapt.h)
 
 	Board (int l, int t, int w, int h) : Widget (l, t, w, h), c (12), ox (0), oy (0), drag (D_NONE), src (-1), pickDst (-1), pickPin (0),
 		mvI (-1), mvDX (0), mvDY (0), mvX (0), mvY (0), pressX (0), pressY (0), px (-1), py (-1), tgt (-1), tpin (0), tok (false),
@@ -195,14 +196,18 @@ public:
 		bool first = g_L && g_L->parts == 0;
 		const char *t = first ? TR ("Press on the switch's pin, drag to the lamp's pin, let go.")
 				      : TR ("Take a gate from the palette and put it on the board, then drag from a pin to a pin to wire it.");
+		if (uk_keys_drive ())			// (pocket, console: by the keys)
+			t = first ? TR ("The arrows move the pointer. Enter on the switch's pin starts a wire, Enter on the lamp's pin lays it.")
+				  : TR ("1 to 6 take a gate, the arrows move it, Enter puts it. Enter on a pin starts a wire, Enter on another pin lays it.");
 		int bx = X (9), by = Y (6), bw = X (31) - bx;
 		if (c < 12) { bw = width - 16 < 300 ? width - 16 : 300; bx = (width - bw) / 2; }	// (a small cell: its text all the same)
-		int n = wrap_count (t, bw - 32, 4), bh = 44 + n * 18 + 12;
+		int ml = uk_keys_drive () ? 6 : 4;		// (the keys' words are longer)
+		int n = wrap_count (t, bw - 32, ml), bh = 44 + n * 18 + 12;
 		uk_rbox (canvas, bx, by, bw, bh, 10, 0x00FFFFFF, 0x00FFFFFF, 170);
 		for (int x = bx + 8; x < bx + bw - 8; x += 10) { canvas.fillRect (x, by, 5, 1, 0x009DB0A4); canvas.fillRect (x, by + bh - 1, 5, 1, 0x009DB0A4); }
 		for (int y = by + 8; y < by + bh - 8; y += 10) { canvas.fillRect (bx, y, 1, 5, 0x009DB0A4); canvas.fillRect (bx + bw - 1, y, 1, 5, 0x009DB0A4); }
 		{ UkFaceScope fs (g_big); uk_text_c (canvas, bx, by + 12, bw, 24, first ? TR ("Lay a wire") : TR ("Build your circuit"), 0x00405048, 2); }
-		wrap_draw (canvas, bx + 16, by + 44, bw - 32, t, 0x005A6A60, 4, 18, 0, true);
+		wrap_draw (canvas, bx + 16, by + 44, bw - 32, t, 0x005A6A60, ml, 18, 0, true);
 	}
 	void onDraw () override
 	{
@@ -245,6 +250,30 @@ public:
 		else if (g_armed >= 0 && inside) { int gx, gy; ghost_cell (gx, gy); draw_gate (-1, g_armed, gx, gy, g_c.fits (g_armed, gx, gy)); }
 		if (drag == D_WIRE) draw_rubber ();
 		else if (hoverOut >= 0 && g_armed < 0) { int x, y; g_c.pinOut (hoverOut, x, y); ring (X16 (x * 16), Y16 (y * 16), 4, 6, C_ACCENT, 110); }
+		if (uk_keys_drive ()) uk_keypointer_draw (canvas, kp);
+	}
+	// ---- the keys (pocket, console: no mouse) -- the board's own pointer, on the grid's points: the arrows move it, a
+	// cell at a time; Enter is the button, pressed and let go at once (a switch toggled, an armed gate put, a wire or
+	// nothing selected) or, when the press took something (a gate, a wire from a pin), held until the next Enter
+	bool key (long k)
+	{
+		fit ();
+		if (uk_keypointer_move (kp, k, c, X (0), Y (0), X (BOARD_W), Y (BOARD_H)))
+		{
+			kp.x = X ((kp.x - ox + c / 2) / c); kp.y = Y ((kp.y - oy + c / 2) / c);
+			onMouse (kp.x, kp.y, kp.held ? 1 : 0, 0, 0, 0);
+			return true;
+		}
+		if (k != KEY_ENTER) return false;
+		if (kp.x < 0) { uk_keypointer_move (kp, KEY_LEFT, c, X (0), Y (0), X (BOARD_W), Y (BOARD_H)); invalidate (true); return true; }
+		if (!kp.held)
+		{
+			onMouse (kp.x, kp.y, 1, 0, 0, 0);
+			if (drag != D_NONE) kp.held = true; else onMouse (kp.x, kp.y, 0, 0, 0, 0);
+		}
+		else { kp.held = false; onMouse (kp.x, kp.y, 0, 0, 0, 0); }
+		invalidate (true);
+		return true;
 	}
 
 	// ---- the mouse ------------------------------------------------------------------------------------------------------

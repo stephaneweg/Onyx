@@ -231,6 +231,11 @@ static unsigned g_lastUs = 0;
 static void layout ();
 static bool g_cardBelow = false;			// a narrow window: the card's Hint and Lesson under its text
 static void show_level (int pack, int lv, bool keepCode);
+// POCKET ON A SMALL SCREEN (under 800 px wide: the PocketTerm35's 640 x 480): the pack and its levels are a DRAWER --
+// L (Ctrl + Page Up) opens and closes it; in it Up / Down go from level to level, Left / Right from pack to pack, Enter
+// closes it -- and the program and the board share the window. (uikit/sidepanel.h; main makes it.)
+static bool g_pk = false;
+static SidePanel *g_side = 0;
 static void refresh_count ();
 static void set_message (int kind, const char *text, int stars = 0);
 enum { M_NONE, M_INFO, M_OK, M_ERR };
@@ -392,6 +397,15 @@ public:
 			uk_draw_vscroll (canvas, width - UK_SBW - 2, 2, UK_SBW, height - 4, th, C_FIELD);
 		}
 	}
+	bool onKey (long k) override			// (the keys, when the list has them: pocket's drawer)
+	{
+		if (!g_pk || g_editing) return false;
+		// (show_level gives the keys to the program: taken back while the drawer is open)
+		if (k == KEY_UP || k == KEY_DOWN) { int i = g_level + (k == KEY_DOWN ? 1 : -1); if (i >= 0 && i < count ()) { show_level (g_pack, i, false); setFocus (); } return true; }
+		if (k == KEY_LEFT || k == KEY_RIGHT) { int p = g_pack + (k == KEY_RIGHT ? 1 : -1); if (p >= 0 && p < g_npacks) { show_level (p, 0, false); setFocus (); } return true; }
+		if (k == KEY_ENTER && g_side && g_side->isOpen ()) { g_side->open (false); return true; }
+		return false;
+	}
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
 	{
 		if (mx < 0) { if (hot >= 0) { hot = -1; invalidate (true); } return false; }
@@ -399,7 +413,12 @@ public:
 		int i = topRow + (my - 2) / rowH ();
 		if (i >= count ()) i = -1;
 		if (i != hot) { hot = i; invalidate (true); }
-		if (bl && !pressed) { pressed = true; if (i >= 0 && (i != g_level || g_editing)) show_level (g_pack, i, false); }
+		if (bl && !pressed)
+		{
+			pressed = true;
+			if (i >= 0 && (i != g_level || g_editing)) show_level (g_pack, i, false);
+			if (i >= 0 && g_pk && g_side && g_side->isOpen ()) g_side->open (false);	// (chosen: the drawer away)
+		}
 		if (!bl) pressed = false;
 		return true;
 	}
@@ -1538,7 +1557,9 @@ static void layout ()
 	bool narrow = W < 920;
 	int listW = narrow ? 170 : LISTW;
 	if (narrow) mid = PAD + listW + PAD;
+	if (g_pk) { g_side->place (0, 0, LISTW + 2 * PAD, H); mid = g_side->reservedWidth () + (g_side->presentation () == UK_SP_DRAWER ? 24 : PAD); }	// (the levels: a drawer -- its tab's room at the edge)
 	int edw = narrow ? 270 : EDW;
+	if (g_pk && narrow) edw = 290;			// (the count's line whole: its two star thresholds)
 	if (W > 1000)
 	{
 		int bw = H - 120, most = W - mid - EDW - 2 * PAD;
@@ -1548,9 +1569,12 @@ static void layout ()
 	}
 	int right = mid + edw + PAD, rw = W - right - PAD;
 	// left: the pack and its levels, or the level editor
+	if (!g_pk)					// (pocket's drawer: its pane places them -- LeftPane)
+	{
 	g_packBox->left = PAD; g_packBox->top = PAD; g_packBox->resizeTo (listW, 28);
 	g_list->left = PAD; g_list->top = PAD + 36; g_list->resizeTo (listW, H - PAD - 36 - PAD);
 	g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (listW, H - 2 * PAD);
+	}
 	// the middle: the buttons, the speed, the program, its words, its count
 	int x = mid;
 	Widget *bts[4] = { g_btRun, g_btStep, g_btStop, g_btReset };
@@ -1625,6 +1649,22 @@ public:
 	EdPanel (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void onDraw () override { canvas.clear (bgColor ()); }
 };
+// Pocket's drawer: its content -- the pack's list and the levels (or the level editor's panel), placed in it.
+class LeftPane : public Widget
+{
+public:
+	LeftPane () : Widget (0, 0, LISTW + 2 * PAD, 400) {}
+	void onDraw () override { canvas.clear (bgColor ()); }
+	void place ()
+	{
+		int w = width - 2 * PAD;
+		if (g_packBox) { g_packBox->left = PAD; g_packBox->top = PAD; g_packBox->resizeTo (w, 28); }
+		if (g_list) { g_list->left = PAD; g_list->top = PAD + 36; g_list->resizeTo (w, height - PAD - 36 - PAD); }
+		if (g_editPanel) { g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (w, height - 2 * PAD); }
+	}
+	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); place (); }
+	bool onKey (long k) override { return g_list && !g_editing ? ((Widget *) g_list)->onKey (k) : false; }	// (the drawer's keys: the list's)
+};
 static Widget *ed_label (Widget *p, int y, const char *en, const char *fr, int x = 0, int w = LISTW)
 {
 	Label *l = new Label (x, y, w, 18, L2 (en, fr), C_DIS);
@@ -1654,8 +1694,14 @@ int main (void)
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
 	static const char *none[1] = { "" };
-	g_packBox = new Dropdown (PAD, PAD, LISTW, 28, none, 0, 0, cb_pack); root.addChild (g_packBox);
-	g_list = new LevelList (PAD, PAD + 36, LISTW, 400); root.addChild (g_list);
+	{
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+	}
+	LeftPane *leftPane = g_pk ? new LeftPane : 0;
+	Widget *leftOf = g_pk ? (Widget *) leftPane : (Widget *) &root;	// (where the pack, the levels and the editor's panel live)
+	g_packBox = new Dropdown (PAD, PAD, LISTW, 28, none, 0, 0, cb_pack); leftOf->addChild (g_packBox);
+	g_list = new LevelList (PAD, PAD + 36, LISTW, 400); leftOf->addChild (g_list);
 	g_btRun = new Button (0, 0, 80, TOOLH, "Run", cb_run); root.addChild (g_btRun);
 	g_btStep = new Button (0, 0, 70, TOOLH, "Step", cb_step); root.addChild (g_btStep);
 	g_btStop = new Button (0, 0, 70, TOOLH, "Stop", cb_stop); root.addChild (g_btStop);
@@ -1723,10 +1769,19 @@ int main (void)
 			g_edBtn[2] = new Button (b0 + b1 + 12, y, LISTW - b0 - b1 - 12, 30, "Close", cb_ed_close); p->addChild (g_edBtn[2]);
 		}
 		p->hidden = true;
-		root.addChild (p);
+		leftOf->addChild (p);
+	}
+	if (g_pk)					// (after everything: an open drawer covers the window)
+	{
+		leftPane->place ();
+		g_side = new SidePanel (0, 0, LISTW + 2 * PAD, 600, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_side->setContent (leftPane);
+		g_side->onPresentation = [] (SidePanel &, int) { ::layout (); };
+		root.addChild (g_side);
 	}
 	root.setResizable (true);
-	root.setMinSize (800, 440);			// (a pocket's 800 x 480: the narrow layout)
+	if (g_pk) root.setMinSize (480, 320);
+	else root.setMinSize (800, 440);		// (a pocket's 800 x 480: the narrow layout)
 	retitle ();
 	build_menu ();
 	layout ();

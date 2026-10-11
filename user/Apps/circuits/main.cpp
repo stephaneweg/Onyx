@@ -15,6 +15,12 @@
 // the gate selected, Del / Backspace delete, Esc cancels, Ctrl+Z / Ctrl+Y undo / redo, Ctrl+N / Ctrl+P the next /
 // previous level, Ctrl+O a pack of levels, Ctrl+Q quit. The language is the system's (UIKit's TR, lang/fr.txt).
 //
+// Pocket and console (no mouse): the board has a pointer of its own that the ARROWS move, a cell at a time (Shift:
+// four), and Enter (A) presses -- on a switch: toggled; on a gate: taken (the arrows move it, Enter puts it down); on
+// an output pin: a wire begun (the arrows, then Enter on an input pin); a gate armed (1-6): put there. On a small
+// pocket screen (under 800 px wide: 640 x 480) the levels are a drawer -- L (Ctrl + Page Up) opens and closes it, Up /
+// Down go from level to level, Enter closes it -- and the board has their room.
+//
 // Files: the packs SD:/apps/circuits.app/levels/*.circuits (and any .circuits opened, dropped or given as the
 // argument -- a double click on one in the File Viewer); the player's progress -- the stars, the boards, the lessons
 // seen, the levels open -- SD:/apps/circuits.app/progress.ini (FileKit's fk_kv). The engine: circuit.h (no UI).
@@ -25,6 +31,8 @@
 #include "systemkit/systemkit.h"	// the clipboard
 #include "uikit/uikit.h"
 #include "uikit/toolbar.h"
+#include "uikit/sidepanel.h"
+#include "uikit/adapt.h"
 #include "uikit/lang.h"
 #include "fontkit/uikitface.h"
 #include "circuit.h"
@@ -73,6 +81,9 @@ static void toggle_switch (int k);
 static void set_row (unsigned r);
 static void arm (int type);
 static void level_clicked (int p, int l);
+static void do_next (); static void do_prev ();
+static bool g_pk = false;				// pocket on a small screen (under 800 px wide): the levels a drawer
+static SidePanel *g_side = 0;				// ... that drawer (its content: the list)
 // The engine's refusals in words (TR'd where shown)
 static const char *err_word (Err e)
 {
@@ -290,7 +301,12 @@ static void layout ()
 	int listW = W < 920 ? 172 : LISTW;
 	bool low = H < 600;
 	int mid = PAD + listW + PAD, rx = W - PAD - RIGHTW, mw = rx - PAD - mid;
-	g_list->left = PAD; g_list->top = PAD; g_list->resizeTo (listW, H - 2 * PAD);
+	if (g_pk)					// (the levels: a drawer over the window -- their column is the board's)
+	{
+		g_side->place (0, 0, 230, H);
+		mid = PAD + g_side->reservedWidth (); mw = rx - PAD - mid;
+	}
+	else { g_list->left = PAD; g_list->top = PAD; g_list->resizeTo (listW, H - 2 * PAD); }
 	// compact: Hint and Lesson on the bench (in the place of its title), the card's text on its whole width
 	bool compact = low || W < 920;
 	g_card->btnRoom = compact ? 0 : 180;
@@ -305,7 +321,7 @@ static void layout ()
 	// Delete, Undo, Redo at the toolbar's right; no room after the palette: Undo and Redo away (Ctrl+Z, Ctrl+Y)
 	int palR = 6 + 40 + 11 + 1 + g_palN * 41 + 6;
 	bool undo = mw - 112 >= palR;
-	((Widget *) g_btUndo)->hidden = ((Widget *) g_btRedo)->hidden = !undo;
+	g_tb->setShown (g_btUndo, undo); g_tb->setShown (g_btRedo, undo);	// (the bar told: its compact row is laid out without them)
 	((Widget *) g_btRedo)->left = mw - 40; ((Widget *) g_btUndo)->left = mw - 74;
 	((Widget *) g_btDel)->left = undo ? mw - 112 : mw - 40;
 	g_noGate->resizeTo (((Widget *) g_btDel)->left - g_noGate->left - 4 < 290 ? ((Widget *) g_btDel)->left - g_noGate->left - 4 : 290, 30);
@@ -345,7 +361,7 @@ static void palette_setup ()
 	for (int t = P_NOT; t < P_COUNT_; t++)
 	{
 		PaletteButton *b = g_pal[t];
-		((Widget *) b)->hidden = !g_L->allows (t);
+		g_tb->setShown (b, g_L->allows (t));	// (the bar told: in pocket its own layout shows what it places)
 		if (!g_L->allows (t)) continue;
 		b->left = 6 + 40 + 11 + 1 + k * 41; b->top = (TBH - 40) / 2;
 		k++; g_palN = k;
@@ -401,6 +417,7 @@ static void show_level (int p, int l)
 }
 static void level_clicked (int p, int l)
 {
+	if (g_pk && g_side->isOpen () && level_open (g_pr, *g_packs[p], l)) g_side->open (false);	// (chosen: the drawer away)
 	if (p == g_pack && l == g_level) return;
 	if (level_open (g_pr, *g_packs[p], l)) { show_level (p, l); return; }
 	int pp, pl; char m[200];
@@ -630,11 +647,13 @@ public:
 		case KEY_F1: do_lesson (); return true;
 		case KEY_F1 + 1: do_hint (); return true;
 		case KEY_DEL: case KEY_BACKSPACE: do_delete (); return true;
-		case KEY_LEFT: move_sel (-1, 0); return true;
-		case KEY_RIGHT: move_sel (1, 0); return true;
-		case KEY_UP: move_sel (0, -1); return true;
-		case KEY_DOWN: move_sel (0, 1); return true;
+		case KEY_LEFT: case KEY_RIGHT: case KEY_UP: case KEY_DOWN: case KEY_ENTER:
+			if (uk_keys_drive ()) return g_board->key (k);	// (pocket, console: the board's own pointer)
+			if (k == KEY_ENTER) break;
+			move_sel (k == KEY_LEFT ? -1 : k == KEY_RIGHT ? 1 : 0, k == KEY_UP ? -1 : k == KEY_DOWN ? 1 : 0);
+			return true;
 		case 27:					// a drag, then the armed gate, then the selection
+			g_board->kp.held = false;
 			if (g_board->drag != Board::D_NONE) { g_board->cancel (); prompt (); }
 			else if (g_armed >= 0) arm (-1);
 			else { select_gate (-1); select_wire (-1, 0); }
@@ -665,7 +684,12 @@ int main (void)
 	CircuitsRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
-	g_list = new LevelList (PAD, PAD, LISTW, 600); root.addChild (g_list);
+	{
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+	}
+	g_list = new LevelList (PAD, PAD, LISTW, 600);
+	if (!g_pk) root.addChild (g_list);
 	g_card = new Card (0, 0, 500, 66); root.addChild (g_card);
 	g_btHint = new Button (0, 0, 80, 28, TR ("Hint"), cb_hint); ((Widget *) g_btHint)->tip = "F2"; root.addChild (g_btHint);
 	g_btLesson = new Button (0, 0, 80, 28, TR ("Lesson"), cb_lesson); ((Widget *) g_btLesson)->tip = "F1"; root.addChild (g_btLesson);
@@ -696,8 +720,16 @@ int main (void)
 	// the cards over the board
 	g_lesson = new LessonCard (0, 0, 500, 330); ((Widget *) g_lesson)->hidden = true; root.addChild (g_lesson);
 	g_result = new ResultCard (0, 0, 420, 250); ((Widget *) g_result)->hidden = true; root.addChild (g_result);
+	if (g_pk)					// (after everything: an open drawer covers the window)
+	{
+		g_side = new SidePanel (0, 0, 230, 600, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_side->setContent (g_list);
+		g_side->onPresentation = [] (SidePanel &, int) { layout (); };
+		root.addChild (g_side);
+	}
 	root.setResizable (true);
-	root.setMinSize (800, 440);			// (a pocket's 800 x 480: the compact layout)
+	if (g_pk) root.setMinSize (480, 320);
+	else root.setMinSize (800, 440);		// (a pocket's 800 x 480: the compact layout)
 	build_menu ();
 	layout ();
 	root.fitWorkArea ();
