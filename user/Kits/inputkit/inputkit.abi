@@ -1,0 +1,17 @@
+# inputkit.abi -- the export table of SD:/lib/inputkit.so: "<slot> <symbol>", in the table's order.
+# APPEND-ONLY (tools/libgen/libgen.py adds the new functions at the end): never move or remove a
+# line -- programs built against an older table call the entries by their slot. The one edit allowed:
+# a function RENAMED keeps its line, with its new symbol (a reserved virtual given a meaning).
+# The table's version is its number of entries.
+0 in_action_name
+1 in_app_owns_pad
+2 in_binding
+3 in_claim
+4 in_claimed
+5 in_key_action
+6 in_key_event
+7 in_load
+8 in_load_text
+9 in_pad_mask
+10 in_poll
+11 in_state

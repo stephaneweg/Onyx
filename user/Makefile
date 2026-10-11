@@ -128,7 +128,7 @@ LIBGCC_A := $(shell $(CC) -mcpu=cortex-a72 -print-libgcc-file-name)
 lib/fontkit.so: $(FT_SO_OBJ) lib/ft/ftso.o lib/fontkit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) --gc-sections -o $@ $^ $(LIBC_A) $(LIBGCC_A)
 
-UIKIT_HDR = $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h Runtime/onyxpp.hpp Kits/systemkit/applet_proto.h Kits/uikit/bmp.h Kits/systemkit/clipboard.h Include/gamepad.h 
+UIKIT_HDR = Kits/inputkit/inputkit.h $(wildcard Kits/uikit/*.h) Kits/appkit/appkit.h Runtime/onyxpp.hpp Kits/systemkit/applet_proto.h Kits/uikit/bmp.h Kits/systemkit/clipboard.h Include/gamepad.h 
 # ---- uikit.so: the toolkit as a shared library. Its table: every global function of uikit's objects
 # (Kits/uikit/uikit.abi, append-only), the programs' copies of its vtables (--vtables); its global variables
 # are the program's (Kits/uikit/globals.cpp, compiled into the import library too: --data). globals.o is
@@ -158,13 +158,13 @@ uikit-layout-update:
 	$(UIKIT_LAYOUT) --update
 lib/uikit_table.S: $(UIKIT_SO_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py
 	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
-		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp \
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$|onyx_inputkit_table$$)' --table lib/uikit_table.S --stubs lib/uikit_stubs.S --bind lib/uikit_bind.cpp \
 		--bind-c lib/uikit_bind_c.c $(UIKIT_SO_OBJ)
 Kits/uikit/uikit.abi:
 	@touch $@
 lib/uikit_stubs.S lib/uikit_bind.cpp lib/uikit_bind_c.c: lib/uikit_table.S ;
 # (its img_load... are relays to ImageKit: that library's import stubs linked in, opened at the first picture)
-lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
+lib/uikit.so: $(UIKIT_SO_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/inputkit_stubs.o lib/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 # ---- lib/pocket/uikit.so: PocketUI's UIKit (the pocket and console modes' server loads it under the name
 # SD:/lib/uikit.so: kapi_lib_open_as). The SAME objects as lib/uikit.so but the port, compiled with UK_PORT_POCKET
@@ -178,8 +178,8 @@ lib/pocket/port.o: Kits/uikit/port.cpp $(wildcard Kits/uikit/port/*.h Kits/uikit
 	$(CXX) $(LIB_CXXFLAGS) -DONYX_LIB_BUILD -DUK_PORT_POCKET -c $< -o $@
 lib/pocket/uikit_table.S: $(UIKIT_POCKET_OBJ) Kits/uikit/uikit.abi ../tools/libgen/libgen.py | lib/uikit_table.S
 	$(LIBGEN) --name uikit --abi Kits/uikit/uikit.abi --init uikit_lib_init --vtables --data onyx_uikit_data --exclude '^_ZN5uikit(4port|8internal)' \
-		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$)' --frozen --table lib/pocket/uikit_table.S $(UIKIT_POCKET_OBJ)
-lib/pocket/uikit.so: $(UIKIT_POCKET_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/pocket/uikit_table.o lib/librt.o $(LIB_KAPI)
+		--allow-data '^(_ZN5uikit|onyx_imagekit_table$$|onyx_systemkit_table$$|onyx_inputkit_table$$)' --frozen --table lib/pocket/uikit_table.S $(UIKIT_POCKET_OBJ)
+lib/pocket/uikit.so: $(UIKIT_POCKET_OBJ) lib/imagekit_stubs.o lib/systemkit_stubs.o lib/inputkit_stubs.o lib/pocket/uikit_table.o lib/librt.o $(LIB_KAPI)
 	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
 lib/pocket/abi_same.stamp: lib/uikit.so lib/pocket/uikit.so lib/uikit_table.S lib/pocket/uikit_table.S ../tools/libgen/abi_same.py
 	python3 ../tools/libgen/abi_same.py --nm $(PREFIX)nm lib/uikit.so lib/pocket/uikit.so --tables lib/uikit_table.S lib/pocket/uikit_table.S
@@ -429,9 +429,30 @@ lib/gamekit.imp_c.a: lib/gamekit_stubs.o lib/gamekit_bind_c.o
 	@rm -f $@
 	$(AR) rcs $@ $^
 
-SHLIBS = lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so lib/gamekit.so
+# ---- inputkit.so: InputKit -- the keyboard and the gamepads as one input (Kits/inputkit: the actions, their bindings
+# SD:/etc/input.ini, the pads' events and the state; built on Include/gamepad.h). Through AppKit only. UIKit links its
+# import stubs (the navigation by a pad).
+lib/in/inputkit.o: Kits/inputkit/inputkit.cpp Kits/inputkit/inputkit.h Include/gamepad.h Kits/appkit/appkit.h $(LIB_DEP)
+	@mkdir -p lib/in
+	$(CXX) $(LIB_CXXFLAGS) -Wno-unused-function -fno-tree-loop-distribute-patterns -fno-builtin -DONYX_LIB_BUILD -c $< -o $@
+Kits/inputkit/inputkit.abi:
+	@touch $@
+lib/inputkit_table.S: lib/in/inputkit.o Kits/inputkit/inputkit.abi ../tools/libgen/libgen.py
+	$(LIBGEN) --name inputkit --abi Kits/inputkit/inputkit.abi --init in_lib_init --allow-data . --export '^in_' --exclude '^in_lib_init$$' \
+		--table lib/inputkit_table.S --stubs lib/inputkit_stubs.S --bind lib/inputkit_bind.cpp --bind-c lib/inputkit_bind_c.c lib/in/inputkit.o
+lib/inputkit_stubs.S lib/inputkit_bind.cpp lib/inputkit_bind_c.c: lib/inputkit_table.S ;
+lib/inputkit.so: lib/in/inputkit.o lib/inputkit_table.o lib/librt.o $(LIB_KAPI)
+	$(LIB_LD) $(LIB_LDFLAGS) -o $@ $^ $(LIBGCC_A)
+lib/inputkit.imp.a: lib/inputkit_stubs.o lib/inputkit_bind.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+lib/inputkit.imp_c.a: lib/inputkit_stubs.o lib/inputkit_bind_c.o
+	@rm -f $@
+	$(AR) rcs $@ $^
+
+SHLIBS = lib/inputkit.so lib/appkit.so lib/demo.so lib/demo2.so lib/fontkit.so lib/uikit.so lib/printerkit.so lib/audiokit.so lib/filekit.so lib/imagekit.so lib/systemkit.so lib/netkit.so lib/gpiokit.so lib/gamekit.so
 .PHONY: libs
-libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/gamekit.imp.a lib/gamekit.imp_c.a lib/uikit.imp_c.a
+libs: $(SHLIBS) lib/pocket/uikit.so lib/pocket/abi_same.stamp lib/kits.bi.stamp lib/appkit_stubs.o lib/fontkit.imp.a lib/uikit.imp.a lib/printerkit.imp.a lib/audiokit.imp.a lib/filekit.imp.a lib/imagekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/systemkit.imp_c.a lib/netkit.imp_c.a lib/gpiokit.imp.a lib/gpiokit.imp_c.a lib/gamekit.imp.a lib/gamekit.imp_c.a lib/inputkit.imp.a lib/inputkit.imp_c.a lib/uikit.imp_c.a
 
 # The kits' descriptions for Onyx BASIC (lib/<kit>.bi -> SD:/lib/<kit>.bi; `#import filekit`): each kit's functions,
 # their places (its .abi) and their types (its headers' prototypes), by tools/kitbi/kitbi.py -- every kit of Kits/,
@@ -873,6 +894,9 @@ consolehome.elf: NL_CXXFLAGS += -DPKG_NET -DONYX_HTTP_TLS -Wno-format-truncation
 consolehome.elf: lib/gamekit.imp.a lib/audiokit.imp.a Kits/gamekit/gamekit.h Apps/consolehome/xmb.h Apps/consolehome/xset.h Apps/consolehome/tiles.h Apps/pocketshell/catalog.h Apps/pocketshell/look.h $(PKG_DEPS) Include/gamepad.h
 FT_EXTRA_gamelib = lib/gamekit.imp.a Emulators/gb/libgb.a Emulators/gba/libgba.a Emulators/nes/libnes.a Emulators/snes/libsnes.a
 FT_EXTRA_fmtracker = lib/audiokit.imp.a
+# (the pocket shell and the menu bar read a pad's buttons as InputKit's actions)
+FT_EXTRA_pocketshell = lib/inputkit.imp.a
+pocketshell.elf menubar.elf: lib/inputkit.imp.a Kits/inputkit/inputkit.h
 FT_EXTRA_soundconf = lib/audiokit.imp.a
 # (GPIO Lab's Code view: Onyx BASIC's compiler and VM built in, as Turtle Quest's)
 FT_EXTRA_gpiolab = lib/gpiokit.imp.a Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp
@@ -910,7 +934,7 @@ FT_EXTRA_clock = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/audiokit.imp
 clock.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp $(wildcard Apps/clock/*.h) lib/audiokit.imp.a Kits/audiokit/audiokit.h \
 	   Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/systemkit/locale.h Kits/uikit/toolbar.h
 # The menu bar's bell (AutoDev round 6, S1): an alarm of the Clock within 24 hours -- the Clock's model read.
-FT_EXTRA_menubar = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
+FT_EXTRA_menubar = Apps/clock/alarms.cpp Apps/clock/clocktime.cpp lib/inputkit.imp.a
 menubar.elf: Apps/clock/alarms.cpp Apps/clock/clocktime.cpp Apps/clock/alarms.h Apps/clock/clocktime.h Kits/filekit/kvtext.h
 # The Nintendo DS emulator: its core (Emulators/nds/, the JIT included), AudioKit's sound output.
 FT_EXTRA_ndsemu = Emulators/nds/libnds.a lib/audiokit.imp.a

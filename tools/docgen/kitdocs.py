@@ -77,6 +77,11 @@ KITS = [
    "GameKit is the games of the card's ROMs: the consoles the installed emulators play (their app.txt's "
    "`games =`), the watched folders, the ROMs found in them by their extension, and their pictures -- what the "
    "Game Library and the console's home share."),
+  ("21-INPUTKIT", "InputKit", 14, "inputkit", '#include "inputkit/inputkit.h"', "`lib/inputkit.imp.a` (C++) or `lib/inputkit.imp_c.a` (C)",
+   ["inputkit/inputkit.h"],
+   "InputKit is the keyboard and the gamepads as one input: a program asks for an action -- Up, Accept, Back, "
+   "Prev, Next... -- and never for 'the arrow key or the D-pad'. Each action has its keys and its pad buttons, "
+   "from one file (SD:/etc/input.ini); an interface reads events, a game the state. UIKit's navigation is built on it."),
 ]
 
 PREFIX = re.compile(r"^(KAPI_FN|KAPI_C|SK_API|NK_API|FS_API|FK_KV_API|UIKIT_API)\s+")
