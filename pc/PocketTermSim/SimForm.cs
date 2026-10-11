@@ -30,7 +30,7 @@ namespace PocketTermSim
 		readonly ToolStripStatusLabel stLink = new ToolStripStatusLabel ("Not connected"), stSize = new ToolStripStatusLabel (""), stFps = new ToolStripStatusLabel (""),
 			stMods = new ToolStripStatusLabel (""), stScale = new ToolStripStatusLabel ("");
 		readonly System.Windows.Forms.Timer second = new System.Windows.Forms.Timer { Interval = 1000 };
-		ToolStripMenuItem miConnect, miDisconnect, miSmooth, miMouse, miTop;
+		ToolStripMenuItem miConnect, miDisconnect, miSmooth, miMouse, miTop, miGame;
 		readonly List<ToolStripMenuItem> scaleItems = new List<ToolStripMenuItem> (), layoutItems = new List<ToolStripMenuItem> ();
 		Bitmap remote; int[] scr;
 		int rounds, fps;
@@ -125,7 +125,8 @@ namespace PocketTermSim
 				Item ("Release all modifiers", (s, e) => Dev.ReleaseAll ()),
 				new ToolStripSeparator (),
 				Item ("Edit the button mapping...", (s, e) => { try { Process.Start ("notepad.exe", "\"" + MappingPath + "\""); } catch (Exception x) { MessageBox.Show (this, x.Message, Text); } }),
-				Item ("Reload the mapping", (s, e) => ReloadMapping ()) });
+				Item ("Reload the mapping", (s, e) => ReloadMapping ()),
+				(miGame = Item ("Game keys (the pad as the emulators' keyboard)", (s, e) => { Dev.GameKeys = !Dev.GameKeys; miGame.Checked = Dev.GameKeys; Invalidate (true); }, Keys.F11)) });
 			var help = new ToolStripMenuItem ("Help");
 			help.DropDownItems.AddRange (new ToolStripItem[] {
 				Item ("What each control sends...", (s, e) => ShowText ("What each control sends", SendsTable ())),

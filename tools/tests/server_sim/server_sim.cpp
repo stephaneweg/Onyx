@@ -287,11 +287,22 @@ static void SimStaleScreen (int *w, int *h)
 	if (h) *h = sh;
 }
 
+// The app's own typing (kapi_inject_key, kapi_inject_modifiers: the pocket shell's buttons) goes the keyboard's way.
+static void SimInjectKey (const char *keys) { if (keys != 0 && keys[0] != 0) ws_route_key (keys, s_nMods); }
+static void SimInjectMods (unsigned mods)
+{
+	s_nMods = mods; el_core_modifiers (s_nMods & 7);
+#ifdef WS_POLICY_HAS_MODS
+	if (g_pWsPolicy != 0 && g_pWsPolicy->mods != 0) g_pWsPolicy->mods (s_nMods);
+#endif
+}
+
 static void Init (void)
 {
 	if (s_bInit) return;
 	s_bInit = true;
 	TKApiTable *T = (TKApiTable *) KAPI_TABLE_VA;
+	T->inject_key = SimInjectKey; T->inject_modifiers = SimInjectMods;
 	s_pShouldExit = T->should_exit; T->should_exit = SimShouldExit;
 	T->getpid = SimGetpid;
 	s_pFsBegin = T->fullscreen_begin; T->fullscreen_begin = SimFsBegin;

@@ -29,6 +29,7 @@ namespace PocketTermSim
 		public static readonly string[] PadButtons = { "Up", "Down", "Left", "Right", "A", "B", "X", "Y", "L", "R", "Select", "Start" };
 
 		public readonly Dictionary<string, Chord> Buttons = new Dictionary<string, Chord> (StringComparer.OrdinalIgnoreCase);
+		public readonly Dictionary<string, Chord> Game = new Dictionary<string, Chord> (StringComparer.OrdinalIgnoreCase);	// [game]: the pad with Game keys on
 		public readonly Dictionary<string, Chord> Fn = new Dictionary<string, Chord> (StringComparer.OrdinalIgnoreCase);
 		public readonly Dictionary<Keys, string> Pc = new Dictionary<Keys, string> ();
 		public readonly List<string> Problems = new List<string> ();
@@ -54,10 +55,28 @@ X      = Delete
 Y      = Shift+F10
 L      = Ctrl+PageUp
 R      = Ctrl+PageDown
-# Select: the focus on the app's Menu entry
-Select = F10
-# Start: the Super key (CMD) pressed alone: Home / the open apps
-Start  = Super
+# Select, Start: NOT the shell's -- games use them (PocketUI binds nothing to them either). They send nothing
+# here; with Device > Game keys the whole pad sends the [game] keys below. The system's keys are on the
+# keyboard: CMD pressed and released = the Menu (the app's menus, Home, Open apps); CMD held = Home; F10 the Menu too.
+Select = none
+Start  = none
+
+# Device > Game keys (F11): the pad as the emulators read a keyboard (user/Include/gamepad.h's [keyboard]
+# defaults: z x a s the face buttons by their place, q w the shoulders, Enter Start, Backspace Select) -- rdpd has
+# no gamepad message, so this is how a game is played through the simulator.
+[game]
+Up     = Up
+Down   = Down
+Left   = Left
+Right  = Right
+A      = z
+B      = x
+X      = a
+Y      = s
+L      = q
+R      = w
+Select = Backspace
+Start  = Enter
 
 # The thumb keyboard's Fn layer (the blue legends; assumed from one photo): key = what Fn + key gives.
 # Keys are named by their legend: ` 1 .. 0 - = Backspace Tab Enter Up Down Left Right Space, a letter...
@@ -124,14 +143,14 @@ Start  = F12
 				int eq = line[0] == '=' ? line.IndexOf ('=', 1) : line.IndexOf ('=');	// (the key "=" itself)
 				if (eq < 0) { Problems.Add ("line " + n + ": no '='"); continue; }
 				string name = line.Substring (0, eq).Trim (), value = line.Substring (eq + 1).Trim ();
-				if (section == "buttons" || section == "fn")
+				if (section == "buttons" || section == "fn" || section == "game")
 				{
 					Chord c = ParseChord (value);
 					if (c == null) { Problems.Add ("line " + n + ": '" + value + "' is not a key"); continue; }
-					if (section == "buttons")
+					if (section == "buttons" || section == "game")
 					{
 						if (Array.FindIndex (PadButtons, b => b.Equals (name, StringComparison.OrdinalIgnoreCase)) < 0) { Problems.Add ("line " + n + ": no button '" + name + "'"); continue; }
-						Buttons[name] = c;
+						if (section == "game") Game[name] = c; else Buttons[name] = c;
 					}
 					else if (c.Empty) Fn.Remove (name); else Fn[name] = c;
 				}

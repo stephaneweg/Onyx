@@ -200,8 +200,8 @@ int uk_shell_events (gui_handler fn);
 #define UK_SHELL_KEY_SUPER	0x1000	// a Super pressed and released with no key between (Home)
 #define UK_SHELL_KEY_HELD	0x1001	// (grabbed) the modifiers held changed: UK_SHELL_KEY_MODS says which now
 // The MENU BAR's keys (pocket: the app's menus are one "Menu" entry of the top band). The menu bar's program gives its
-// handler with uk_shell_events and is sent UK_SHELL_KEY_MENU for the menu key -- F10, an Alt pressed and released alone, a
-// pad's Select (the shell types F10); while its menu is open it asks every key with uk_shell_grab (1) -- but the shell's
+// handler with uk_shell_events and is sent UK_SHELL_KEY_MENU for the menu key -- the Super key (a handheld's CMD)
+// pressed and released alone, or F10; while its menu is open it asks every key with uk_shell_grab (1) -- but the shell's
 // own (Home, Alt+Tab): those close it (UK_SHELL_KEY_CANCEL) and go to the shell.
 #define UK_SHELL_KEY_MENU	0x1002
 #define UK_SHELL_KEY_CANCEL	0x1003

@@ -862,7 +862,7 @@ static bool front_is_game (void)
 		if (g_tasks[i].flags & UK_TASK_FRONT)
 		{
 			App *a = find_app (g_tasks[i].name);
-			return a != 0 && (ieq (a->cat, "Games") || ieq (a->cat, "Emulators"));
+			return a != 0 && (a->padOwn || ieq (a->cat, "Games") || ieq (a->cat, "Emulators"));
 		}
 	return false;
 }

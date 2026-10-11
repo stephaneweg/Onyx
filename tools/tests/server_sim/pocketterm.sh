@@ -42,22 +42,23 @@ if want menu; then
 	ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
 	bar () {	# bar <screen> <tag> <lang> <theme>
 		sz=$1; t=$2; lg=$3; th=$4; w=${sz%x*}; h=${sz#*x}; WR=$(langdir "$lg" "$th")
-		E="SIM_SCREEN=$sz SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR"
+		E="SIM_SCREEN=$sz SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR SIM_SERVICES=shell"
 		OTH="other $w $((h - 30)) Letters;othermenu $MENUS;$W;$W;$W"
-		run pocket_menubar pt-band-home-$t "$W;$W;expect bar 1;dump $OUT/pt-band-home-$t.elsm" $E
+		# on the home: the menu key opens the system's rows (Open apps, Quick settings, Shut Down...)
+		run pocket_menubar pt-band-home-$t "$W;$W;expect bar 1;dump $OUT/pt-band-home-$t.elsm;mods 8;mods 0;$W;expect bargrab 1;dump $OUT/pt-menu-home-$t.elsm;key 0x1b;$W;expect bargrab 0" $E
 		# an app in front: the band shows its name and the Menu entry; F10 opens the column (the keys grabbed), Down x4 and
 		# Right the Format menu's items, Down the second one; Esc goes back to the column, Esc again closes it
 		SC="$OTH;expect bargrab 0;dump $OUT/pt-band-app-$t.elsm;key $F10;$W;expect bargrab 1;dump $OUT/pt-menu-focus-$t.elsm"
 		SC="$SC;key $DOWN;key $DOWN;key $DOWN;key $DOWN;key $RIGHT;key $DOWN;key $DOWN;key $DOWN;$W;expect bargrab 1;dump $OUT/pt-menu-open-$t.elsm"
 		SC="$SC;key 0x1b;$W;expect bargrab 1;key 0x1b;$W;expect bargrab 0"
-		# Alt pressed and released alone opens it too; again closes it; F10 then F10 the same
-		SC="$SC;mods 4;mods 0;$W;expect bargrab 1;mods 4;mods 0;$W;expect bargrab 0;key $F10;$W;expect bargrab 1;key $F10;$W;expect bargrab 0"
-		# Alt + a key is not the menu key
-		SC="$SC;mods 4;key x;mods 0;$W;expect bargrab 0"
+		# THE MENU KEY: Super (CMD) pressed and released alone opens it; again closes it; F10 then F10 the same; Alt alone
+		# is not the menu key (it was), nor Super + a key
+		SC="$SC;mods 8;mods 0;$W;expect bargrab 1;dump $OUT/pt-menu-cmd-$t.elsm;mods 8;mods 0;$W;expect bargrab 0;key $F10;$W;expect bargrab 1;key $F10;$W;expect bargrab 0"
+		SC="$SC;mods 4;mods 0;$W;expect bargrab 0;mods 8;key x;mods 0;$W;expect bargrab 0"
 		# an item chosen: its command sent to the app (Edit > Copy: id 8), the menu closed
 		SC="$SC;key $F10;key $DOWN;key $RIGHT;key $DOWN;key $DOWN;key $DOWN;key 13;$W;expect bargrab 0;expect menucmd 8"
 		run pocket_menubar pt-menu-$t "$SC" $E
-		for p in pt-band-home-$t pt-band-app-$t pt-menu-focus-$t pt-menu-open-$t; do out $p; done
+		for p in pt-band-home-$t pt-band-app-$t pt-menu-focus-$t pt-menu-open-$t pt-menu-home-$t; do out $p; done
 	}
 	bar 640x480 640 "" ""
 	bar 800x480 800 "" ""
@@ -131,7 +132,7 @@ if want shell; then
 	echo "pocketterm: the pocket shell"
 	ftapp pocket pocketshell uikit_pocket
 	ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
-	app pocket terminal uikit_pocket
+	ftapp pocket terminal uikit_pocket
 	app pocket tinypad uikit_pocket
 	shell () {	# shell <screen> <tag> [lang]
 		sz=$1; t=$2; lg=$3; w=${sz%x*}; h=${sz#*x}; sfx=$t${lg:+-$lg}; WR=$(langdir "$lg" "")
@@ -150,6 +151,8 @@ if want shell; then
 		# Esc on the home: back to the app
 		SC="$SC;key t;key e;$W;$W;dump $OUT/pt-search-$sfx.elsm;key 0x1b;$W;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/pt-home-tab-$sfx.elsm"
 		SC="$SC;mods 8;mods 0;$W;$W;expect shown1 1;expect home 1;key 0x1b;$W;expect shown1 0;expect home 1;key 0x1b;$W;$W;expect home 0;expect front other"
+		# Super HELD half a second: Home, and nothing more when it is released
+		SC="$SC;mods 8;$WW;$WW;$WW;$WW;expect home 1;mods 0;$W;expect home 1;expect shown1 0"
 		run pocket_pocketshell pt-shell-home-$sfx "$SC" $E
 		SC="otherpic $w 30 menubar $OUT/pt-bar-pad-$sfx.elsm 0 0 0x35 0 0;$W;$W;$APPS;expect front other;expect shown1 0"
 		SW="$SC;mods 4;key 0x09;$W;$W;expect shown1 1;dump $OUT/pt-switcher-$sfx.elsm;key 0x09;mods 0;$W;$W;expect shown1 0;expect front other"
@@ -161,6 +164,13 @@ if want shell; then
 	shell 640x480 640
 	shell 800x480 800
 	shell 640x480 640 fr
+	# [buttons]: a key that IS a button types the button's key ("x = t", "x.key = F9": F9 on the home types t -- the
+	# search takes it); Start and Select are bound to nothing by default
+	WR=$(langdir "" ""); { cat sdcard/etc/pocketui.ini; printf 'x = t
+x.key = F9
+'; } > "$WR/etc/pocketui.ini"
+	run pocket_pocketshell pt-buttons-key "otherpic 640 30 menubar $OUT/pt-bar-home-640.elsm 0 0 0x35 0 0;$W;$W;expect home 1;expect keys 0;key 0x118;$W;$W;expect keys 1" SIM_SCREEN=640x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
+	if grep -q '^#   start = none' sdcard/etc/pocketui.ini && grep -q '{ 0, 0 }, { 0, 0 } };	// (Start, Select: none)' user/Apps/pocketshell/buttons.h; then echo "  Start and Select bound to nothing by default: ok"; else echo "  Start / Select defaults: FAILED"; FAIL=1; fi
 	pixel pt-home-640 2 240 0b0c0e "the home's background is the glass' black"
 	pixel pt-home-640 20 200 15171b "the card is a flat surface"
 fi

@@ -13,6 +13,18 @@ mockup_pocketterm.py`). What is built, slice by slice, and what differs from the
 **`docs/COMPACT-SHELL-STUDY.md` section 20**; the captures of the real code: `docs/compact-shell/real/pocketterm/`.
 The same branch has the PocketTerm Simulator (`pc/`, another session's: the device's face on a PC, a client of `rdpd`).
 
+**Update, 2026-10-11 (the user's decision; `docs/COMPACT-SHELL-STUDY.md` section 20.7 has the table):** Start and
+Select are the games' -- the shell binds nothing to them (`[buttons]` `start` / `select` = `none`). **CMD (Super)
+tapped is the Menu**, whose column now ends with Home, Open apps, Quit (on the home: Open apps, Quick settings, Shut
+Down...); **CMD held 0.5 s is Home**; F10 is the menu too; Alt alone no longer is. The shell types no key from the
+pad while the program in front is a game or an emulator (app.txt's category, or `pad = own`). The Terminal draws a
+TrueType monospace grid in the flat look (`SD:/etc/terminal.ini`; a FreeType app now). The PocketTerm Simulator:
+Select / Start send nothing, **Device > Game keys (F11)** makes the pad send the emulators' keyboard keys. What the
+lines below say of Select, Start and Alt is superseded by this. Tests: `pocketterm.sh` (CMD opens / closes the
+menu, on the home too; Alt alone does not; CMD held = Home; a `[buttons]` `x.key` override), the simulator's
+`run_test.py` (210 steps). Not done: Onyx Noir in the Theme applet, TrueType text in Letters' own chrome. If
+`pc/dist/PocketTermSim.running-old.exe` is there, delete it (the simulator was running while it was rebuilt).
+
 - **S1, the theme** -- UIKit: the named theme `Onyx Noir`, the flat look (`UK_FLAT`, `uk_flat ()`, the `UK_N_*`
   tokens; `uikit/theme.h`, `theme.cpp`, `paint.cpp`: no gradient, no bevel, no shadow, the focus a ring), chosen for
   the **pocket mode only** by `SD:/etc/pocketui.ini` `[look] theme =` (the default: Onyx Noir; `system`: theme.txt).

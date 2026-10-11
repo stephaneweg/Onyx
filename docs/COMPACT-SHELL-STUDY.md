@@ -2035,6 +2035,60 @@ client sending real buttons) needs a pad-injection call in the kernel: left for 
 - no lock / boot splash screen (PocketUI has none);
 - the apps' own text is still the bitmap font where the app does not install a TrueType face.
 
+### 20.7 The controls as decided on 2026-10-11: CMD is the menu, Start and Select are the games'
+
+The user's decision replaces what §20.2 and §20.4 said of Select, Start, Alt and the Super key (the rest of those
+sections stands). **Start and Select are not the shell's**: games and emulators use them, so PocketUI binds nothing
+to them (`[buttons]`: `start = none`, `select = none`; a line may still bind them) and they reach the program in
+front as pad buttons. The system's actions are keys of the keyboard under the buttons:
+
+| control | what it does |
+|---|---|
+| **CMD** (the Super key) pressed and released | the **Menu** of the top band: the app's menus, then **Home**, **Open apps**, **Quit**; on the home: **Open apps**, **Quick settings**, **Shut Down...**; again: closed |
+| **CMD held** half a second | **Home** (on the home: the open apps) |
+| **F10** (Fn + 0 on the device) | the Menu too |
+| Alt + Tab | the open apps (the switcher) |
+| Ctrl + Esc, Alt + F1 | Home |
+| CMD + N | quick settings |
+| D-pad | the arrows |
+| **A** / **B** | Enter / Esc |
+| **X** / **Y** | Delete / Shift+F10 (the context menu) |
+| **L** / **R** | Ctrl+Page Up / Ctrl+Page Down |
+| **Start**, **Select** | nothing in the shell and the apps: the program's (a game's Start and Select) |
+
+- **Alt pressed alone is no longer the menu key** (it was, for a day): removing it cost one block of `wm.cpp`, and
+  it had a drawback -- an Alt pressed for a shortcut then let go opened the menu.
+- How: PocketUI (`wm.cpp` `Mods`, `Tick`) sends the menu bar's program `UK_SHELL_KEY_MENU` when Super is released
+  with no key typed meanwhile (pocket mode, a menu bar running, no overlay of the shell's, no full-screen program),
+  and sends the shell its Home key once Super has been held 0.5 s. The timing is the server's, on the modifiers'
+  changes: the same through the USB keyboard and through `rdpd` (which forwards Super's press and release as they
+  come; a slow network lengthens or shortens the press by its jitter only). In console mode, and in pocket without
+  a menu bar, a tap of Super is Home as before.
+- The menu bar's column (`menubar/main.cpp`: `col_kind`) asks the shell for Home, the switcher and quick settings
+  (SystemKit's `shell_ask`).
+- **The rule that keeps the shell from taking a game's buttons** is the console shell's (`consolehome`): the pad's
+  buttons are typed as keys **unless the program in front has the category Games or Emulators in its `app.txt`** --
+  or, new, the line **`pad = own`** (a program of another category that reads the pad). There nothing is typed and
+  nothing is taken: the program reads the pad itself (`gamepad.h`: the kernel gives a pad's state to the program that
+  has the keys). The shell logs the change once (`pocketshell: the pad is the program's in front...`). Known gap:
+  the Gamepad applet runs inside the Control Panel: while its "Map buttons" page is open the
+  buttons are also typed as keys -- `pad = own` on the Control Panel would silence them in all its applets, so it is
+  not set; to be decided.
+- The hint lines show a **CMD** key cap (the home: "CMD menu"; the Menu's foot: "CMD close") and pad glyphs only
+  for the D-pad, A, B, X, L, R.
+- **Through the PocketTerm Simulator** (`rdpd` has no pad message): the pad cluster sends the keys of the table;
+  Select and Start send nothing. For a game, **Device > Game keys (F11)** switches the cluster to the emulators'
+  keyboard-as-pad keys (`gamepad.h`'s `[keyboard]` defaults; the `[game]` section of `PocketTermSim.buttons.ini`):
+  the arrows, A = z, B = x, X = a, Y = s, L = q, R = w, Select = Backspace, Start = Enter. The toggle is needed
+  because A is Enter in the shell and Enter is Start in a game.
+
+**The Terminal** (S5, finished): the grid is drawn in a TrueType monospace face in the flat look -- DejaVu Sans
+Mono 15 px, 9 × 18 cells, each character in its cell: 69 × 22 at 640 × 480 --, the tabs' titles in Selawik; the
+desktop keeps the kernel's 8 × 16 bitmap font. `SD:/etc/terminal.ini`: `font = auto | bitmap | truetype`, `face =`,
+`size =` (10..28). The Terminal is a FreeType app now (`FT_APPS`). **Not done**: Onyx Noir in the Theme applet (its
+row of Modern schemes holds two swatches in the 700 px window: a third needs the row laid out again); TrueType text
+in Letters' boxes and status bar (the app's own code: its chrome is measured in the bitmap font's cells).
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau

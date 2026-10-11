@@ -35,14 +35,14 @@ KAPI_ALIASES = -Wl,--defsym,memset=kapi_memset -Wl,--defsym,memcpy=kapi_memcpy \
 # app is C++ on the uikit toolkit now; the /bin console tools stay C in BinUtils/.
 APPS = tinycalc tinypad cppdemo \
        demoA demoB demoC demoD demoE demoF inidemo \
-       tetris snake same terminal \
+       tetris snake same \
        2048 life pong sokoban \
        mandelbrot minesweeper \
        eyes voronoy irc spin wtkdemo notifyd shutdown plasma agenda imageview widgets qbasic lisa invaders pipes solitaire freecell graphcalc iconedit rtfview gbemu gbaemu nesemu snesemu teapot gpudemo n64emu gcemu wifimenu dock lock cardfile
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu
+FT_APPS = terminal disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)

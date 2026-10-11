@@ -32,11 +32,11 @@ fi
 for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$OUT/pkzlib/$f.o"; done
 ftapp pocket consolehome uikit_pocket user/Kits/gamekit/gamekit.cpp -Ithird_party/zlib-1.3.1 -I$M/include "$OUT"/pkzlib/*.o "$OUT/libmb.a" "$OUT/libaudiokit.a" -lm
 ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
-app pocket terminal uikit_pocket
+ftapp pocket terminal uikit_pocket
 app pocket tinycalc uikit_pocket
 app pocket tinypad uikit_pocket
 app elegant tinycalc uikit_wire
-app elegant terminal uikit_wire
+ftapp elegant terminal uikit_wire
 
 echo "server_sim: PocketUI"
 # the Terminal: resizable -> filled under the band, no frame; Alt+Tab with another program (a card) -- one in front

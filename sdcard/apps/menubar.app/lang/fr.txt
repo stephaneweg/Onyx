@@ -45,3 +45,6 @@ move	déplacer
 choose	choisir
 back	retour
 close	fermer
+Home	Accueil
+Open apps	Applis ouvertes
+Quick settings	Réglages rapides

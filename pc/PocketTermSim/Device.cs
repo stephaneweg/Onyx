@@ -106,6 +106,9 @@ namespace PocketTermSim
 		// the Fn layer's key of a key (null: none)
 		public Chord FnOf (KeyDef d) { Chord c; return Map.Fn.TryGetValue (d.Name, out c) && !c.Empty ? c : null; }
 
+		// Game keys: the pad's buttons send the mapping's [game] keys (the emulators' keyboard) instead of [buttons]
+		public bool GameKeys;
+
 		// ---- pressing ----
 		public void Press (string id)
 		{
@@ -114,7 +117,7 @@ namespace PocketTermSim
 			Chord c;
 			if (!Keys.TryGetValue (id, out d))			// a pad button
 			{
-				if (!Map.Buttons.TryGetValue (id, out c)) c = new Chord ();
+				if (!(GameKeys ? Map.Game : Map.Buttons).TryGetValue (id, out c)) c = new Chord ();
 			}
 			else if (d.Mod != Mod.None)
 			{

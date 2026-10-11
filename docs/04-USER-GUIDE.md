@@ -708,6 +708,15 @@ the chosen menu's items beside the column, **Enter** does the chosen item, **Lef
 starting with it; F10, Alt or Select again closes it. The shortcuts (`Ctrl+S`) work as ever without opening it. On
 the home there is no Menu entry: the name is *Onyx* (a click on it: the Onyx menu).
 
+**Since 2026-10-11: CMD is the menu key.** What the two paragraphs around this one say of *Select*, *Start* and
+*Alt* is replaced by this: a handheld's **Start and Select do nothing in the shell and the apps** -- they are the
+games' buttons. The **CMD key** (the Super key) pressed and released opens the **Menu**: the app's menus, then
+**Home**, **Open apps** and **Quit** (on the home: Open apps, Quick settings, Shut Down...); CMD again closes it.
+**CMD held half a second** goes Home. **F10** opens the Menu too; Alt + Tab shows the open apps, Ctrl + Esc goes
+Home. In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
+mode's dark look, draws its text in a TrueType face (DejaVu Sans Mono 15: 69 × 22 on a 640 × 480 screen);
+`SD:/etc/terminal.ini` (`font = bitmap`, `size = 18`...) changes it.
+
 **A handheld's buttons.** On a device with a D-pad and buttons and no pointer (the Waveshare PocketTerm35) each
 button types a key, so everything is done with the keys: the **D-pad** is the arrows (the focus, the caret), **A**
 is Enter (open, confirm), **B** is Esc (back, cancel, close; on the home: back to the last app), **X** is Delete

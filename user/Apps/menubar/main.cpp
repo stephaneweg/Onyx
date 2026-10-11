@@ -31,8 +31,10 @@
 //
 // In pocket the app's menus are ONE entry, "Menu", after the app's name (docs/COMPACT-SHELL-STUDY.md section 20: a
 // small screen, no pointer): it unfolds as a COLUMN of the menus' titles (then Quit), each opening its items beside
-// it. The menu key opens it -- F10, an Alt pressed and released alone, a pad's Select (PocketUI tells this program:
-// UK_SHELL_KEY_MENU, uikit/win.h) -- and while it is open every key is the menu's (uk_shell_grab): Up / Down move,
+// it; under them the SYSTEM's rows: Home, Open apps, Quit (on the home: Open apps, Quick settings, Shut Down...). The
+// menu key opens it -- the CMD key (Super) pressed and released alone, or F10; a handheld's Start and Select are the
+// games', not the shell's (PocketUI tells this program: UK_SHELL_KEY_MENU, uikit/win.h) -- and while it is open every
+// key is the menu's (uk_shell_grab): Up / Down move,
 // Right or Enter opens a menu / does the item, Left, Esc or Backspace goes back one level, Page Up / Down the menu
 // before / after, a letter the next title or item starting with it, the menu key again closes. A click works too.
 // In the flat look (the theme Onyx Noir, pocket's default) the band is plain and dark, 22 px clear of the glass'
@@ -93,7 +95,7 @@ static int g_titleHot = -1;		// the title under the pointer while no menu is ope
 static bool g_dirty = true, g_pressedTitle = false;
 // Pocket: the ONE "Menu" entry's column (the app's menus g_menus[2..], then Quit), g_open the menu whose items show
 static bool g_col = false;		// the column is open
-static int g_colSel = 0;		// its chosen row (the last one: Quit)
+static int g_colSel = 0;		// its chosen row (the app's menus, then the system's rows: col_kind)
 static int g_rowH = 24;			// an item's row in the open panel
 static int g_lastMin = -1;
 static int g_wifi = -1;			// last drawn Wi-Fi state (1 connected, 0 not)
@@ -340,27 +342,40 @@ static int drop_w (const MenuDef &m)
 }
 static int item_h (const Item &it) { return g_col ? (it.sep ? g_rowH / 2 : g_rowH) : it.sep ? 9 : g_fh + 8; }
 // ---- pocket: the Menu entry and its column ----
-static bool pk_has_menu (void) { return g_pocket && !g_onyx && g_nmenus >= 2; }
+static bool pk_has_menu (void) { return g_pocket && g_nmenus >= 1 && (!g_onyx || shell_running ()); }
 static int pk_menu_x (void) { return g_menus[0].x + g_menus[0].w + 8; }
 static int pk_menu_w (void) { return 24 + uk_tw (TR ("Menu")) + 10; }
 static bool on_menu_entry (int x, int y) { return pk_has_menu () && y >= 0 && y < BAR_H && x >= pk_menu_x () - 6 && x < pk_menu_x () + pk_menu_w () + 2; }
-static int col_n (void) { return g_nmenus - 2; }			// the app's menus (row col_n (): Quit)
+static int col_n (void) { return g_onyx || g_nmenus < 2 ? 0 : g_nmenus - 2; }	// the app's menus
+// The rows after them, the SYSTEM's -- an app in front: Home, Open apps, then Quit; on the home: Open apps, Quick
+// settings, Shut Down... (the menu key is the only system key of a handheld: CMD; Start and Select are the games').
+enum { CX_HOME, CX_APPS, CX_QUICK, CX_SHUT, CX_QUIT };
+static int col_total (void) { return col_n () + 3; }
+static int col_kind (int i) { static const int A[3] = { CX_HOME, CX_APPS, CX_QUIT }, H[3] = { CX_APPS, CX_QUICK, CX_SHUT }; int k = i - col_n (); return k < 0 || k > 2 ? -1 : g_onyx ? H[k] : A[k]; }
+static int col_seps (int i) { return (i >= col_n () && col_n () > 0 ? 1 : 0) + (i == col_n () + 2 ? 1 : 0); }	// the separators above row i
+static const char *col_label (int i)
+{
+	if (i < col_n ()) return g_menus[2 + i].title;
+	switch (col_kind (i)) { case CX_HOME: return TR ("Home"); case CX_APPS: return TR ("Open apps"); case CX_QUICK: return TR ("Quick settings"); case CX_SHUT: return TR ("Shut Down..."); }
+	return TR ("Quit");
+}
+static const char *col_keytext (int i) { int k = col_kind (i); return k == CX_QUIT ? "Ctrl+Q" : k == CX_APPS ? "Alt+Tab" : k == CX_HOME ? "Ctrl+Esc" : k == CX_QUICK ? "CMD+N" : ""; }
 static int col_rh (void) { return uk_flat () ? 30 : g_fh + 10; }
 static int col_w (void)
 {
 	int w = 150;
 	for (int i = 2; i < g_nmenus; i++) { int ww = uk_tw (g_menus[i].title, 2) + 16 + 40; if (ww > w) w = ww; }
-	int q = uk_tw (TR ("Quit")) + uk_tw ("Ctrl+Q") + 16 + 40;
-	return q > w ? q : w;
+	for (int i = col_n (); i < col_total (); i++) { int q = uk_tw (col_label (i)) + uk_tw (col_keytext (i)) + 16 + 40; if (q > w) w = q; }
+	return w;
 }
 static int col_x (void) { int x = pk_menu_x () - 4; return x + col_w () > g_sw - 4 ? g_sw - 4 - col_w () : x; }
 static int col_y (void) { return BAR_H + 4; }
-static int col_row_y (int i) { return col_y () + 7 + i * col_rh () + (i >= col_n () && col_n () > 0 ? 9 : 0); }
-static int col_h (void) { return col_row_y (col_n ()) + col_rh () + 7 - col_y (); }
+static int col_row_y (int i) { return col_y () + 7 + i * col_rh () + 9 * col_seps (i); }
+static int col_h (void) { return col_row_y (col_total () - 1) + col_rh () + 7 - col_y (); }
 static int col_at (int x, int y)
 {
 	if (!g_col || x < col_x () || x >= col_x () + col_w ()) return -1;
-	for (int i = 0; i <= col_n (); i++) if (y >= col_row_y (i) && y < col_row_y (i) + col_rh ()) return i;
+	for (int i = 0; i < col_total (); i++) if (y >= col_row_y (i) && y < col_row_y (i) + col_rh ()) return i;
 	return -1;
 }
 static bool in_col (int x, int y) { return g_col && x >= col_x () && x < col_x () + col_w () && y >= col_y () && y < col_y () + col_h (); }
@@ -967,21 +982,21 @@ static void draw (void)
 		int cx = col_x (), cw = col_w (), rh = col_rh ();
 		bool here = g_open < 0;				// (the focus is in the column: no menu's items open)
 		panel (cx, col_y (), cw, col_h ());
-		for (int i = 0; i <= col_n (); i++)
+		for (int i = 0; i < col_total (); i++)
 		{
 			int ry = col_row_y (i);
-			bool sel = i == g_colSel, quit = i == col_n ();
-			if (quit && col_n () > 0) uk_etch_h (g_cv, cx + 10, ry - 5, cw - 20, C_DROP);
+			bool sel = i == g_colSel, quit = i >= col_n ();		// (quit: a row of the system's, done at once)
+			if (i > 0 && col_seps (i) > col_seps (i - 1)) uk_etch_h (g_cv, cx + 10, ry - 5, cw - 20, C_DROP);
 			if (sel && here) uk_hilite (g_cv, cx + 5, ry, cw - 10, rh, 7, true);
 			else if (sel) { unsigned f = uk_flat () ? (unsigned) UK_N_BG3 : uk_mix (C_DROP, C_ACCENT, 60); uk_rbox (g_cv, cx + 5, ry, cw - 10, rh, 7, f, f); }
 			unsigned ink = sel && here ? C_SEL_TEXT : C_FIELD_TEXT;
-			uk_text_l (g_cv, cx + 16, ry, rh, quit ? TR ("Quit") : g_menus[2 + i].title, ink, sel && !here ? 2 : 0);
-			if (quit) uk_text_l (g_cv, cx + cw - 16 - uk_tw ("Ctrl+Q"), ry, rh, "Ctrl+Q", sel && here ? C_SEL_TEXT : C_DIM);
+			uk_text_l (g_cv, cx + 16, ry, rh, col_label (i), ink, sel && !here ? 2 : 0);
+			if (quit) uk_text_l (g_cv, cx + cw - 16 - uk_tw (col_keytext (i)), ry, rh, col_keytext (i), sel && here ? C_SEL_TEXT : C_DIM);
 			else uk_glyph (g_cv, WKG_CHEV_RIGHT, cx + cw - 18, ry + rh / 2, 8, sel ? ink : C_DIM);
 		}
 		// the foot: this device's buttons (and what they are on a keyboard: the arrows, Enter, Esc, F10)
 		static UkPadHint H[4];
-		H[0] = { "+", TR ("move") }; H[1] = { "A", TR ("choose") }; H[2] = { "B", TR ("back") }; H[3] = { "s", TR ("close") };
+		H[0] = { "+", TR ("move") }; H[1] = { "A", TR ("choose") }; H[2] = { "B", TR ("back") }; H[3] = { "[CMD]", TR ("close") };
 		g_cv.fillRect (0, g_sh - 30, g_sw, 30, uk_flat () ? (unsigned) UK_N_BG0 : C_MENUBAR);
 		int hw = uk_pad_hints (g_cv, 0, 0, 18, H, 4, 0, true);
 		uk_pad_hints (g_cv, (g_sw - hw) / 2, g_sh - 25, 18, H, 4, uk_flat () ? (unsigned) UK_N_TEXT2 : C_BARDIM);
@@ -1075,9 +1090,19 @@ static int first_item (const MenuDef &m, int from, int dir)	// the next item tha
 }
 static void col_enter (int row, bool keys)	// a row chosen: a menu's items open beside it; Quit: done
 {
-	if (row < 0 || row > col_n ()) return;
+	if (row < 0 || row >= col_total ()) return;
 	g_colSel = row; g_dirty = true;
-	if (row == col_n ()) { close_menu (); draw (); uk_win_menu_command (MENU_QUIT); return; }
+	if (row >= col_n ())				// a row of the system's
+	{
+		int k = col_kind (row);
+		close_menu (); draw ();
+		if (k == CX_QUIT) uk_win_menu_command (MENU_QUIT);
+		else if (k == CX_HOME) shell_ask (SHELL_MSG_HOME);
+		else if (k == CX_APPS) shell_ask (SHELL_MSG_SWITCHER);
+		else if (k == CX_QUICK) shell_ask (SHELL_MSG_QUICK);
+		else if (k == CX_SHUT) kapi_launch ("shutdown");
+		return;
+	}
 	const MenuDef &m = g_menus[2 + row];
 	g_rowH = col_rh ();				// (a long menu: its rows closer, to stay on the screen)
 	int nrow = 0, nsep = 0;
@@ -1089,7 +1114,7 @@ static void col_enter (int row, bool keys)	// a row chosen: a menu's items open 
 }
 static void col_key (int code)
 {
-	int n = col_n () + 1;
+	int n = col_total ();
 	if (code == KEY_F1 + 9) { close_menu (); return; }		// F10 again
 	if (g_open >= 2)					// in a menu's items
 	{
@@ -1104,8 +1129,8 @@ static void col_key (int code)
 			if (g_hover >= 0) { Item it = m.items[g_hover]; close_menu (); draw (); run_item (it); }
 			return;
 		case KEY_LEFT: case 0x1b: case KEY_BACKSPACE: g_open = -1; g_hover = -1; break;
-		case KEY_PGUP: col_enter ((g_colSel + col_n () - 1) % col_n (), true); break;
-		case KEY_PGDN: col_enter ((g_colSel + 1) % col_n (), true); break;
+		case KEY_PGUP: if (col_n () > 0) col_enter ((g_colSel + col_n () - 1) % col_n (), true); break;
+		case KEY_PGDN: if (col_n () > 0) col_enter ((g_colSel + 1) % col_n (), true); break;
 		default:
 			if (code > 32 && code < 127)			// a letter: the next item starting with it
 				for (int k = 1; k <= m.count; k++)
@@ -1131,7 +1156,7 @@ static void col_key (int code)
 			for (int k = 1; k <= n; k++)
 			{
 				int i = (g_colSel + k) % n;
-				const char *t = i == col_n () ? TR ("Quit") : g_menus[2 + i].title;
+				const char *t = col_label (i);
 				if (lx_low (t[0]) == lx_low ((char) code)) { g_colSel = i; break; }
 			}
 	}

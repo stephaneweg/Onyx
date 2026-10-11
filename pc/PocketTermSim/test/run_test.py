@@ -45,7 +45,7 @@ def F (n): return 0xFFBE + n - 1
 def tap (sym, *mods): return [(1, m) for m in mods] + [(1, sym), (0, sym)] + [(0, m) for m in reversed (mods)]
 
 PAD = [("Up", tap (UP)), ("Down", tap (DOWN)), ("Left", tap (LEFT)), ("Right", tap (RIGHT)), ("A", tap (ENTER)), ("B", tap (ESC)), ("X", tap (DEL)),
-       ("Y", tap (F (10), SHL)), ("L", tap (PGUP, CTRL)), ("R", tap (PGDN, CTRL)), ("Select", tap (F (10))), ("Start", tap (SUPER))]
+       ("Y", tap (F (10), SHL)), ("L", tap (PGUP, CTRL)), ("R", tap (PGDN, CTRL)), ("Select", []), ("Start", [])]	# (Select, Start: the games', nothing sent by default)
 ROWS = ["` 1 2 3 4 5 6 7 8 9 0 - = Backspace", "Tab q w e r t y u i o p [ ] \\", "Caps a s d f g h j k l ; ' Enter",
 	"ShiftL z x c v b n m , . / Up ShiftR", "FnL Ctrl AltL Space AltR CMD FnR Left Down Right"]
 SHIFTED = dict (zip ("`1234567890-=[]\\;',./", "~!@#$%^&*()_+{}|:\"<>?"))
@@ -86,7 +86,7 @@ expect.update ({
 	1008: ("Ctrl, Alt, Fn, Backspace = Ctrl+Alt+Del", [(1, CTRL), (1, ALTL), (1, DEL), (0, DEL), (0, CTRL), (0, ALTL)]),
 	1009: ("CMD then Left", tap (LEFT, SUPER)),
 	1200: ("PC F7 held = L", [(1, CTRL), (1, PGUP), (1, PGUP), (0, PGUP), (0, CTRL)]),
-	1201: ("PC F12 = Start", tap (SUPER)),
+	1201: ("PC F12 = Start (nothing by default)", []),
 	1202: ("PC Left", tap (LEFT)),
 	1203: ("PC a", [(3, A), ("CHAR", A), (2, A)]),
 	1204: ("PC e acute", [("CHAR", 0xE9)]),

@@ -14,8 +14,12 @@
 //     y = Shift+F10                   the focused control's context menu
 //     l = Ctrl+PageUp                 the category / tab / section before (in the Menu: the menu before)
 //     r = Ctrl+PageDown               ... after
-//     start = Super                   Home (on the home: the open apps)
-//     select = F10                    the Menu entry of the top band
+//     start = none    select = none   NOT the shell's: Start and Select are the games' (the user, 2026-10-11) -- they
+//                                     reach the program in front as pad buttons, untouched; a line may bind them
+//
+// The two SYSTEM actions are keys of the keyboard under the buttons: the CMD key (Super) pressed and released is the
+// MENU -- the top band's column: the app's menus, then Home, Open apps, Quit --, held half a second it is Home; F10 is
+// the menu too, Alt+Tab the open apps, Ctrl+Esc Home (PocketUI, the menu bar: not this file).
 //
 // A key: Up Down Left Right Enter Esc Tab Space Backspace Delete Insert Home End PageUp PageDown F1..F12, a character,
 // with Ctrl+ Shift+ Alt+ Super+ before it; "Super" alone is the Super key pressed and released; "none": nothing.
@@ -23,8 +27,10 @@
 // Two ways a device's buttons reach Onyx, both served by this file:
 //   * as a GAMEPAD (USB HID, the kernel's kapi_pad_state through gamepad.h and SD:/etc/gamepad.ini): this shell reads
 //     the pads and types each button's key (kapi_inject_key / kapi_inject_modifiers), the D-pad repeating while held.
-//     In a game or an emulator (app.txt's category Games or Emulators) the pad is the game's: only Select + Start
-//     held together types Start's key (Home);
+//     NOT while the program in front reads the pad itself -- the rule is the console shell's (consolehome): its
+//     app.txt's category is Games or Emulators, or its app.txt says "pad = own" (a program of another category that
+//     reads the pad): there every button is the program's, none is typed (no doubled
+//     Enter, no stolen Esc);
 //   * as KEYS of the keyboard: nothing to do when they are the keys above; when the device sends OTHER keys, a line
 //     "<button>.key = <key>" says which key IS that button (e.g. "a.key = F5"): the shell takes that key before the
 //     apps (uk_shell_keys) and types the button's key instead.
@@ -39,7 +45,7 @@ struct Chord { unsigned mods; int code; };		// code: a key's (KEY_*, a character
 static const char *const BT_NAME[BT_N] = { "up", "down", "left", "right", "a", "b", "x", "y", "l", "r", "start", "select" };
 static Chord g_btDo[BT_N] = {
 	{ 0, KEY_UP }, { 0, KEY_DOWN }, { 0, KEY_LEFT }, { 0, KEY_RIGHT }, { 0, KEY_ENTER }, { 0, 0x1b }, { 0, KEY_DEL },
-	{ MOD_SHIFT, KEY_F1 + 9 }, { MOD_CTRL, KEY_PGUP }, { MOD_CTRL, KEY_PGDN }, { 0, UK_SHELL_KEY_SUPER }, { 0, KEY_F1 + 9 } };
+	{ MOD_SHIFT, KEY_F1 + 9 }, { MOD_CTRL, KEY_PGUP }, { MOD_CTRL, KEY_PGDN }, { 0, 0 }, { 0, 0 } };	// (Start, Select: none)
 static Chord g_btKey[BT_N];				// "<button>.key": the keyboard's key that IS the button (code 0: none)
 static const unsigned BT_PAD[BT_N] = { PAD_UP, PAD_DOWN, PAD_LEFT, PAD_RIGHT, PAD_A, PAD_B, PAD_X, PAD_Y, PAD_L, PAD_R, PAD_START, PAD_SELECT };
 
@@ -209,12 +215,16 @@ static void buttons_poll (void)
 	static unsigned last, since, rep;
 	unsigned b = bt_pads (), now = kapi_get_ticks (), press = b & ~last;
 	last = b;
-	if (front_is_game ())					// a game's pad is its own: only Select + Start is Home
+	static int said = -1;					// (the Pi's kmsg: who has the pad's buttons, when it changes)
+	int game = front_is_game () ? 1 : 0;
+	if (b != 0 && game != said)
 	{
-		if ((press & (PAD_START | PAD_SELECT)) && (b & PAD_START) && (b & PAD_SELECT)) button_do (BT_START);
-		return;
+		said = game;
+		ax_puts (game ? "pocketshell: the pad is the program's in front (it reads it: no key typed)\n" : "pocketshell: the pad's buttons type keys\n");
 	}
-	if (press & PAD_HOME) button_do (BT_START);		// (a pad with a middle button: Home too)
+	if (game) return;					// a game's pad is its own: nothing typed, nothing taken
+	if (press & PAD_HOME)					// (a pad's middle button: Home -- Ctrl+Esc, the shell's key for it)
+	{ Chord h = { MOD_CTRL, 0x1b }; bt_type (h); }
 	for (int i = 0; i < BT_N; i++) if (press & BT_PAD[i]) button_do (i);
 	unsigned dir = b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT);
 	if (press & dir) { since = now; rep = now; }

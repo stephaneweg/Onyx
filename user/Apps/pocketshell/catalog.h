@@ -20,6 +20,7 @@ struct App
 	char text[128];			// (an applet: its line of help, in the language)
 	bool applet;			// a Control Panel applet (the Settings tab)
 	bool hidden;			// found by the search only (the Control Panel: its applets have the Settings tab)
+	bool padOwn;			// app.txt "pad = own": it reads the gamepad itself (buttons.h types no key over it)
 	unsigned *icon; int iw, ih;	// icon.bmp (read the first time it is drawn)
 	bool tried;
 	unsigned *scaled; int ss;	// ... scaled to ss x ss (0xTTRRGGBB)
@@ -152,6 +153,8 @@ static void scan_apps (void)
 			if (nm && nm[0]) fs_copy (a.label, nm, sizeof a.label);
 			const char *ct = app_ini_get (0, "category", 0);
 			if (ct && ct[0]) fs_copy (a.cat, ct, sizeof a.cat);
+			const char *pd = app_ini_get (0, "pad", 0);
+			a.padOwn = pd != 0 && ieq (pd, "own");
 		}
 		// the desktop's parts (Shell), the applets (Settings: their .lnk below) and the emulators (the Game Library's);
 		// the Control Panel itself: found by the search (its applets: the Settings tab)

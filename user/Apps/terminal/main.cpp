@@ -28,6 +28,7 @@
 //
 #include "appkit/appkit.h"
 #include "uikit/uikit.h"		// recursive widget toolkit (TermView draws into a Canvas)
+#include "fontkit/uikitface.h"	// the grid in a TrueType monospace face (the flat look; SD:/etc/terminal.ini)
 #include "lineedit.h"		// the line being typed: its cursor, the history
 
 #define W		620		// standalone window size
@@ -332,6 +333,55 @@ static bool tab_keys (long k)
 // Renders the shown tab's scrollback into its Canvas. Recomputes the visible rows/cols from its
 // current logical size each frame, so a window resize just reflows the text. The one dark part of
 // the window: TERM_BG / TERM_FG, whatever the theme.
+// THE GRID'S FACE. The kernel's bitmap font (8 x 16: the desktop's, as ever) or a TrueType monospace face, each
+// character drawn in its cell. SD:/etc/terminal.ini:
+//     font = auto | bitmap | truetype     auto (no file): TrueType in the flat look (pocket's Onyx Noir), else bitmap
+//     face = DejaVu Sans Mono             a monospace family of SD:/res/fonts
+//     size = 15                           its size, pixels (10..28): 15 gives 68 x 22 on a 640 x 480 screen
+static FtTextFace *g_mono;				// 0: the bitmap font
+static void term_font (void)
+{
+	char font[16] = "auto", face[48] = "DejaVu Sans Mono"; int size = 15;
+	static char b[1025];
+	void *f = kapi_open ("SD:/etc/terminal.ini");
+	if (f != 0)
+	{
+		int n = kapi_read (f, b, sizeof b - 1);
+		kapi_close (f);
+		b[n < 0 ? 0 : n] = 0;
+		for (char *p = b; *p; )
+		{
+			char *l = p; while (*p && *p != '\n') p++;
+			if (*p) *p++ = 0;
+			while (*l == ' ' || *l == '\t') l++;
+			char *eq = strchr (l, '=');
+			if (*l == '#' || eq == 0) continue;
+			char *v = eq + 1; while (*v == ' ' || *v == '\t') v++;
+			int vl = (int) strlen (v); while (vl > 0 && (v[vl - 1] == '\r' || v[vl - 1] == ' ' || v[vl - 1] == '\t')) v[--vl] = 0;
+			if (strncmp (l, "font", 4) == 0) { strncpy (font, v, sizeof font - 1); font[sizeof font - 1] = 0; }
+			else if (strncmp (l, "face", 4) == 0) { strncpy (face, v, sizeof face - 1); face[sizeof face - 1] = 0; }
+			else if (strncmp (l, "size", 4) == 0) { int s = 0; for (int i = 0; v[i] >= '0' && v[i] <= '9'; i++) s = s * 10 + (v[i] - '0'); if (s >= 10 && s <= 28) size = s; }
+		}
+	}
+	bool tt = font[0] == 't' || font[0] == 'T' || ((font[0] == 'a' || font[0] == 'A') && uk_flat ());
+	if (!tt) return;
+	FtTextFace *m = new FtTextFace;
+	if (!m->open (face, size)) { delete m; return; }	// (no TrueType font on the card: the bitmap font)
+	m->kerning = false;
+	g_mono = m;
+	g_fw = m->width ("M", 0); if (g_fw < 4) g_fw = 4;
+	g_fh = m->height (); if (g_fh < size + 3) g_fh = size + 3;
+	ft_uikit_install ("Selawik", 13);			// (the tabs' titles in a TrueType face too)
+}
+// A row of the grid at (x, y): each character in its cell.
+static void row_text (Canvas &cv, int x, int y, const char *s, unsigned c)
+{
+	if (g_mono == 0) { cv.text (x, y, s, c); return; }
+	char one[2] = { 0, 0 };
+	for (int i = 0; s[i]; i++)
+		if (s[i] != ' ') { one[0] = s[i]; g_mono->draw (cv, x + i * g_fw, y, one, c, 0); }
+}
+
 class TermView : public Widget
 {
 public:
@@ -368,12 +418,12 @@ public:
 		{
 			int idx = first + r;
 			if (idx < 0 || idx >= total) continue;
-			if (idx < t->rcount) { canvas.text (4, 4 + r * g_fh, ring_line (t, idx), TERM_FG); continue; }
+			if (idx < t->rcount) { row_text (canvas, 4, 4 + r * g_fh, ring_line (t, idx), TERM_FG); continue; }
 			int k = idx - t->rcount;			// a row of the live line
 			char row[COLS + 1]; int n = 0;
 			for (int i = k * g_cols; i < live && n < g_cols; i++) row[n++] = g_live[i];
 			row[n] = 0;
-			canvas.text (4, 4 + r * g_fh, row, TERM_FG);
+			row_text (canvas, 4, 4 + r * g_fh, row, TERM_FG);
 			if (caret / g_cols == k)			// the caret, at the cursor
 				canvas.fillRect (4 + (caret % g_cols) * g_fw, 4 + r * g_fh, 2, g_fh, uk_tone (C_ACCENT, 180));	// (the accent, lit)
 		}
@@ -430,6 +480,7 @@ int main (void)
 
 	Root root (W, H, "terminal");
 	if (root.canvas.px == 0) return 1;
+	term_font ();					// (the theme is read: the grid's face, its cell)
 	g_strip = new TabStrip (0, 0, W, STRIP_H, on_strip);
 	g_strip->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_strip->onClose = on_strip_close;

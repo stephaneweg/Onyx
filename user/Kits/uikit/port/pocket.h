@@ -102,7 +102,7 @@ struct pk_server
 // The shell's operations from another program than the shell: -KAPI_EPERM (PK_OP_TASKS and PK_OP_THUMB: anyone --
 // a task manager, a remote desktop may show them). ONE exception, the MENU BAR's program (the owner of the top band's
 // window): its PK_OP_EVENTS gives the handler of the menu's keys -- it is pushed UK_SHELL_KEYEV with
-// UK_SHELL_KEY_MENU for the menu key (F10 alone, an Alt pressed and released alone; not while the shell grabs, not
+// UK_SHELL_KEY_MENU for the menu key (the Super key pressed and released alone, F10 alone; not while the shell grabs, not
 // over a full-screen program) --, its PK_OP_GRAB (a[0] = on) makes every key the menu's while its menu is open; a key
 // of the shell's own (PK_OP_KEYS: Home, Alt+Tab; any key with Super) then ends the grab, the bar is pushed
 // UK_SHELL_KEY_CANCEL and the key goes to the shell. While the bar grabs, it is also who "has the keys" for the pads.

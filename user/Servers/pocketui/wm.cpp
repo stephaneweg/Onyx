@@ -84,12 +84,14 @@ static boolean s_bSuperAlone;					// a Super pressed, no key since
 
 // THE MENU BAR'S KEYS (pocket: the app's menus are ONE "Menu" entry of the top band, reached without a pointer --
 // docs/COMPACT-SHELL-STUDY.md section 20): the menu bar's program gives its handler (PK_OP_EVENTS) and is told the menu
-// key -- F10, an Alt pressed and released alone (a pad's Select: the shell types F10) -- as UK_SHELL_KEY_MENU; while
+// key -- the Super key (a handheld's CMD) pressed and released alone, or F10 -- as UK_SHELL_KEY_MENU; while
 // its menu is open it takes every key (PK_OP_GRAB), but the shell's own (Home, Alt+Tab...): those close the menu
 // (UK_SHELL_KEY_CANCEL) and go to the shell.
 static unsigned s_nBarPid;
 static u64 s_ulBarEv;
-static boolean s_bBarGrab, s_bAltAlone;
+static boolean s_bBarGrab;
+static unsigned s_nSuperAt;					// when the Super key went down (a long press: Home)
+enum { SUPER_LONG = 50 };					// ticks (0.5 s)
 
 // (P8) SPLIT VIEW: two programs share the work area -- the front one (it has the keys, the menu bar shows its menus)
 // and the one beside it -- each on its half, the divider between them (docs/COMPACT-SHELL-STUDY.md section 6.7).
@@ -951,26 +953,25 @@ static void Mods (unsigned mods)
 {
 	unsigned nOld = s_nMods;
 	s_nMods = mods;
-	// Alt pressed and released alone: the menu key (the bar's; not over the shell's overlay, a full-screen program)
-	if ((mods & 15) == MOD_ALT && (nOld & 15) == 0) s_bAltAlone = TRUE;
-	else if ((mods & 15) != 0) s_bAltAlone = FALSE;
-	else if (s_bAltAlone)
-	{
-		s_bAltAlone = FALSE;
-		if ((nOld & 15) == MOD_ALT && !s_bGrab && g_pElWM != 0 && g_pElWM->FullscreenWindow () == 0)
-			BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_MENU));
-	}
-	if (s_nShell == 0 || s_ulShellEv == 0) return;
-	if ((mods & KAPI_WS_MOD_SUPER) && !(nOld & KAPI_WS_MOD_SUPER)) s_bSuperAlone = (mods & 7) == 0;
+	if ((mods & KAPI_WS_MOD_SUPER) && !(nOld & KAPI_WS_MOD_SUPER)) { s_bSuperAlone = (mods & 7) == 0; s_nSuperAt = kapi_get_ticks (); }
 	else if (mods & 7) s_bSuperAlone = FALSE;
 	if (!(mods & KAPI_WS_MOD_SUPER) && (nOld & KAPI_WS_MOD_SUPER) && s_bSuperAlone)
 	{
 		s_bSuperAlone = FALSE;
+		// Super (CMD) tapped alone: in pocket, under the menu bar, the MENU key -- the bar's column (the app's menus,
+		// then Home, the open apps...; again: closed). Not over the shell's overlay (the shell's then, as in console
+		// mode and without a menu bar: Home), not over a full-screen program.
+		if (g_nPkMode == PK_MODE_POCKET && !s_bGrab && BarAlive () && g_pElWM->FullscreenWindow () == 0)
+		{
+			BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_MENU));
+			return;
+		}
+		if (s_nShell == 0 || s_ulShellEv == 0) return;
 		boolean bWanted = s_bGrab;
 		for (int i = 0; i < s_nShellKeys && !bWanted; i++) bWanted = s_ShellKeys[i] == UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER);
 		if (bWanted && g_pElWM->FullscreenWindow () == 0) ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER));
 	}
-	if (s_bGrab && mods != nOld) ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (mods & 15, UK_SHELL_KEY_HELD));
+	if (s_bGrab && mods != nOld && s_nShell != 0 && s_ulShellEv != 0) ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (mods & 15, UK_SHELL_KEY_HELD));
 }
 
 // The window the keys go to: home, the shell's home; else the front program's topmost window -- whatever the window
@@ -1079,7 +1080,6 @@ static boolean ShellWants (const char *keys, unsigned mods)	// (one of the shell
 }
 static int BarKey (const char *keys, unsigned mods)
 {
-	s_bAltAlone = FALSE;					// (Alt + a key: not Alt alone)
 	if (!BarAlive () || g_pElWM->FullscreenWindow () != 0) return 0;
 	const char *p = keys;
 	unsigned m = 0;
@@ -1102,6 +1102,7 @@ static int BarKey (const char *keys, unsigned mods)
 
 static int Key (const char *keys, unsigned mods)
 {
+	s_bSuperAlone = FALSE;					// (a key: the Super held is not "alone" -- no menu, no Home at its release)
 	if (SplitKey (keys, mods)) return 1;
 	if (BarKey (keys, mods)) return 1;
 	int r = ShellKey (keys, mods);
@@ -1121,6 +1122,18 @@ static void Tick (unsigned self)
 {
 	g_nPkSelf = self;
 	if (g_pElWM == 0) return;
+	// Super (CMD) HELD half a second with no other key: Home (the shell's UK_SHELL_KEY_SUPER) -- the one direct key
+	// for it now that a tap is the menu; the open menu closed first.
+	if (s_bSuperAlone && (s_nMods & KAPI_WS_MOD_SUPER) && g_nPkMode == PK_MODE_POCKET
+	    && (int) (kapi_get_ticks () - s_nSuperAt) >= SUPER_LONG)
+	{
+		s_bSuperAlone = FALSE;
+		if (g_pElWM->FullscreenWindow () == 0 && s_nShell != 0 && s_ulShellEv != 0)
+		{
+			if (s_bBarGrab) { s_bBarGrab = FALSE; BarPush (UK_SHELL_KEY (0, UK_SHELL_KEY_CANCEL)); }
+			ShellPush (UK_SHELL_KEYEV, UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER));
+		}
+	}
 	boolean bFull = g_pElWM->FullscreenWindow () != 0;
 	static boolean s_bWasFull;
 	if (bFull != s_bWasFull)					// (the Pi's kmsg: a full-screen program, its end)

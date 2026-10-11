@@ -666,7 +666,7 @@ static void draw_strip_flat (Canvas &cv, const Lay &L)
 	cv.fillRect (L.M + D (8), ly, g_aw - 2 * L.M - D (16), 1, UK_N_LINE);
 	static UkPadHint H[4];
 	if (g_stripFocus >= 0) { H[0] = { "-", TR ("choose") }; H[1] = { "A", TR ("bring it") }; H[2] = { "X", TR ("close") }; H[3] = { "B", TR ("back") }; }
-	else { H[0] = { "+", TR ("choose") }; H[1] = { "A", TR ("open") }; H[2] = { "LR", TR ("category") }; H[3] = { "S", TR ("tasks") }; }
+	else { H[0] = { "+", TR ("choose") }; H[1] = { "A", TR ("open") }; H[2] = { "LR", TR ("category") }; H[3] = { "[CMD]", TR ("menu") }; }
 	UkFaceScope f (F (13));
 	int hw = uk_pad_hints (cv, 0, 0, D (18), H, 4, 0, true);
 	uk_pad_hints (cv, (g_aw - hw) / 2, ly + D (13), D (18), H, 4, UK_N_TEXT2);

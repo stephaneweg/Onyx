@@ -91,7 +91,7 @@ fi
 if want pilots; then
 	echo "adaptive: the pilots"
 	ftapp pocket taskman uikit_pocket
-	app pocket terminal uikit_pocket
+	ftapp pocket terminal uikit_pocket
 	for t in 800x480:800 480x800:portrait 640x480:console; do
 		sz=${t%%:*}; tg=${t##*:}; md=pocket; [ $tg = console ] && md=console
 		run pocket_taskman taskman-$tg "$WWW;expect kind fill;$W;dump $OUT/taskman-$tg.elsm" SIM_SCREEN=$sz SIM_MODE=$md SIM_APPNAME=taskman SIM_APP=taskman
