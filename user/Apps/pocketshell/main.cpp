@@ -31,14 +31,13 @@
 #include "uikit/uikit.h"
 #include "uikit/bmp.h"
 #include "fontkit/uikitface.h"
-#include "gamepad.h"
+#include "inputkit/inputkit.h"		// a pad's buttons and the keys as actions (buttons.h)
 
 using namespace uikit;
 
 #include "catalog.h"
 #include "look.h"
 #include "today.h"
-#include "buttons.h"				// a handheld's buttons: each types a key (SD:/etc/pocketui.ini [buttons])
 
 // ---- the screen, the scale ------------------------------------------------------------------------------
 static int g_sw = 800, g_sh = 480;			// the screen
@@ -823,6 +822,7 @@ static bool screen_sync (bool force)
 	return true;
 }
 
+#include "buttons.h"				// a handheld's buttons: InputKit's actions for the shell's screens
 #include "keys.h"					// the on-screen keyboard (P10)
 static void relayout (void) { screen_sync (true); kb_screen (); }
 // The tile: with the text fields (the keyboard shown at once when a field has the focus), or on demand (hidden).
@@ -846,7 +846,7 @@ static void open_switcher (bool held);
 // Home (Super alone, a handheld's Start). On the home already: the open apps -- the switcher, where A / Enter goes to
 // the chosen one and B / Esc stays (Esc on the home, and the menu bar's gem clicked again, go straight back to the
 // last app).
-static void toggle_home (bool key = false)
+static void toggle_home (bool key)
 {
 	if (g_over != OV_NONE) over_hide ();
 	tasks_read ();
@@ -854,19 +854,6 @@ static void toggle_home (bool key = false)
 	else if (g_home && g_ntasks > 0) uk_shell_front (g_tasks[0].id, 1);	// (Home again: back to the app)
 	else go_home (false);
 }
-// The app in front reads the pad itself (a game, an emulator): its buttons are not typed as keys.
-static bool front_is_game (void)
-{
-	if (g_home || g_over != OV_NONE) return false;
-	for (int i = 0; i < g_ntasks; i++)
-		if (g_tasks[i].flags & UK_TASK_FRONT)
-		{
-			App *a = find_app (g_tasks[i].name);
-			return a != 0 && (a->padOwn || ieq (a->cat, "Games") || ieq (a->cat, "Emulators"));
-		}
-	return false;
-}
-
 static void open_switcher (bool held)
 {
 	tasks_read ();
@@ -889,7 +876,6 @@ static void shell_event (unsigned long, int ev, long v)
 	if (ev != UK_SHELL_KEYEV) return;
 	unsigned mods = UK_SHELL_KEY_MODS (v);
 	int code = UK_SHELL_KEY_CODE (v);
-	if (g_over == OV_NONE && buttons_key (mods, code)) return;	// (a key that IS a button: its key typed instead)
 	if (g_over == OV_SWITCHER)
 	{
 		if (code == UK_SHELL_KEY_SUPER) { over_hide (); go_home (false); return; }
@@ -983,7 +969,7 @@ static void messages (void)
 		switch (type)
 		{
 		case NOTIFY_MSG_SHOW: note_add (buf, n); break;
-		case SHELL_MSG_HOME: toggle_home (); break;
+		case SHELL_MSG_HOME: toggle_home (false); break;
 		case SHELL_MSG_SEARCH: over_hide (); go_home (true); break;
 		case SHELL_MSG_SWITCHER: if (g_over == OV_SWITCHER) over_hide (); else open_switcher (false); break;
 		case SHELL_MSG_QUICK: if (g_over == OV_QUICK) over_hide (); else over_show (OV_QUICK); break;
@@ -1058,13 +1044,12 @@ int main (void)
 	docs_load ();
 	tab_items ();
 	screen_sync (true);
-	buttons_load ();						// (SD:/etc/pocketui.ini [buttons])
 	static int K[32] = {
 		UK_SHELL_KEY (MOD_ALT, '\t'), UK_SHELL_KEY (MOD_ALT | MOD_SHIFT, '\t'), UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER),
 		UK_SHELL_KEY (MOD_ALT, KEY_F1), UK_SHELL_KEY (MOD_CTRL, 0x1b), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'n'),
 		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' '), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'k') };
 	uk_shell_events (shell_event);
-	uk_shell_keys (K, buttons_keys (K, 8, 32));
+	uk_shell_keys (K, 8);
 	tasks_read ();
 	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
 
@@ -1095,7 +1080,7 @@ int main (void)
 			kapi_list_apps (list, sizeof list);
 			if (strcmp (list, seen) != 0) { strcpy (seen, list); scan_apps (); recent_load (); g_homeDirty = true; }
 		}
-		buttons_poll ();						// a pad's buttons: each types its key
+		buttons_poll ();						// a pad's buttons: InputKit's actions, while the shell has the keys
 		if (g_homeDirty) draw_home ();
 		if (g_overDirty)
 		{

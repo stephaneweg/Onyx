@@ -325,11 +325,10 @@ static bool tab_keys (long k)
 		if (k == KEY_F12) { new_tab (); return true; }
 		if (k == KEY_F12 - 1) { m_close (); return true; }
 	}
+	// (the tab before / after -- Ctrl+Page Up / Down, Ctrl+(Shift+)Tab, a pad's L / R: UIKit's, from InputKit's Prev / Next)
+	if (uk_nav_key (Root::current (), k)) return true;
 	if (!(m & MOD_CTRL)) return false;
 	bool shift = (m & MOD_SHIFT) != 0;
-	if (k == KEY_TAB) { g_strip->selectNext (shift ? -1 : 1); return true; }
-	if (k == KEY_PGUP) { g_strip->selectNext (-1); return true; }
-	if (k == KEY_PGDN) { g_strip->selectNext (1); return true; }
 	if (!shift) return false;
 	if (k == UK_CTRL ('T') || k == 'T' || k == 't') { new_tab (); return true; }
 	if (k == UK_CTRL ('W') || k == 'W' || k == 'w') { m_close (); return true; }
@@ -543,6 +542,7 @@ int main (void)
 			}
 		}
 		pump_events ();			// then echo the keys typed this frame (onKey invalidates)
+		uk_input_turn (&root);		// (a pad: its buttons as the keys they stand for, L / R the tabs -- InputKit)
 		for (int i = 0; i < g_strip->count (); i++)	// a shell that ended (exit, killed): its tab goes
 		{
 			Tab *t = (Tab *) g_strip->data (i);

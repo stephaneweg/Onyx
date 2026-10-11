@@ -65,6 +65,7 @@
 #include "fontkit/uikitface.h"
 #include "uikit/uikit.h"
 #include "systemkit/systemkit.h"
+#include "inputkit/inputkit.h"		// the open Menu moved by a pad: its actions
 #include "Apps/clock/alarms.h"
 #include "Apps/clock/clocktime.h"
 
@@ -1486,7 +1487,20 @@ int main (void)
 		if (mm != g_lastMin) { g_dirty = true; bell_poll (); }
 		static unsigned lastNet = 0, lastTray = 0;		// Wi-Fi state: about once a second
 		unsigned now = kapi_get_ticks ();
-		if (now - lastTray >= 25) { lastTray = now; if (tray_poll ()) g_dirty = true; }	// (v95) the programs' icons
+		if (g_col)						// the open Menu: a pad's buttons (InputKit; the menu has the keys)
+			{
+				struct in_event ev[8];
+				int n = in_poll (ev, 8);
+				for (int i = 0; i < n && g_col; i++)
+				{
+					if (ev[i].kind == IN_RELEASE) continue;
+					int a = ev[i].action;
+					int code = a == IN_UP ? KEY_UP : a == IN_DOWN ? KEY_DOWN : a == IN_LEFT ? KEY_LEFT : a == IN_RIGHT ? KEY_RIGHT : a == IN_ACCEPT ? KEY_ENTER
+						 : a == IN_BACK ? 0x1b : a == IN_PREV ? KEY_PGUP : a == IN_NEXT ? KEY_PGDN : 0;
+					if (code) col_key (code);
+				}
+			}
+			if (now - lastTray >= 25) { lastTray = now; if (tray_poll ()) g_dirty = true; }	// (v95) the programs' icons
 		if (now - lastNet >= 100)
 		{
 			lastNet = now;

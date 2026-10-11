@@ -5,7 +5,7 @@
 # docs/compact-shell/mockups/pocketterm/). Real apps built against the pocket UIKit's wire port, run under PocketUI,
 # their checks counted, their screens dumped to PNG pictures.
 #
-# Usage: sh tools/tests/server_sim/pocketterm.sh [out dir] [only: theme menu toolbar shell apps]
+# Usage: sh tools/tests/server_sim/pocketterm.sh [out dir] [only: theme menu toolbar input shell]
 # SHOTS_PNG=<folder>: the pictures copied there too (docs/compact-shell/real/pocketterm/).
 set -e
 cd "$(dirname "$0")/../../.."
@@ -127,6 +127,56 @@ if want toolbar; then
 	pixel pt-letters-640x480 40 300 ffffff "letters: the page stays white in the dark shell"
 fi
 
+# ---- InputKit: the keys and a pad as the same actions; L / R the tabs of any window ------------------------------------
+# same <picture A> <picture B> <x0> <y0> <x1> <y1> yes|no <name>: that part of two pictures is the same (or is not)
+same () {
+	got=$(python3 -c "from PIL import Image, ImageChops; a = Image.open ('$OUT/$1.png').convert ('RGB').crop (($3, $4, $5, $6)); b = Image.open ('$OUT/$2.png').convert ('RGB').crop (($3, $4, $5, $6)); print ('no' if ImageChops.difference (a, b).getbbox () else 'yes')")
+	if [ "$got" = "$7" ]; then echo "  $8: ok"; else echo "  $8: FAILED ($1 / $2: the same? $got)"; FAIL=1; fi
+}
+if want input; then
+	echo "pocketterm: InputKit (the host test; the Terminal's and the gallery's tabs, the home, by keys and by a simulated pad)"
+	$CXX $INC -o "$OUT/inputkit_test" $S/inputkit_test.cpp "$OUT/fakekapi.o" user/Kits/inputkit/inputkit.cpp -lpthread
+	if env SIM_PAD=1 SIM_OVERLAY=$D/sd "$OUT/inputkit_test" >>"$OUT/log.txt" 2>&1; then echo "  inputkit's host test: ok"
+	else echo "  inputkit's host test: FAILED (see $OUT/log.txt)"; FAIL=1; fi
+	# the simulated pad's layout (server_sim.cpp SimPad): an unknown model, SD:/etc/gamepad.ini's [default]
+	WR=$(langdir "" ""); printf '[default]\na = 1\nb = 2\nx = 3\ny = 4\nl = 5\nr = 6\nselect = 7\nstart = 8\nhome = 9\ndpad = hat\n' > "$WR/etc/gamepad.ini"
+	PL=16; PR=32; PRIGHT=0x2000; PA=1
+	ftapp pocket terminal uikit_pocket
+	# THE TERMINAL: three tabs (F12 twice), the third shown. Ctrl+Page Up: the second; Ctrl+Page Down: the third again;
+	# the pad's L: the second; R: the third; Ctrl+Tab from the third: the first
+	T="$WW;key 0x11b;$W;key 0x11b;$W;$W;dump $OUT/in-term-3.elsm;mods 1;key 0x106;mods 0;$W;$W;dump $OUT/in-term-pgup.elsm;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/in-term-pgdn.elsm"
+	T="$T;pad $PL;$W;$W;pad 0;$W;$W;dump $OUT/in-term-l.elsm;pad $PR;$W;$W;pad 0;$W;$W;dump $OUT/in-term-r.elsm;mods 1;key 0x09;mods 0;$W;$W;dump $OUT/in-term-ctab.elsm"
+	run pocket_terminal in-terminal "$T" SIM_SCREEN=640x480 SIM_APPNAME=terminal SIM_APP=terminal SIM_PIPE="$PIPE" SIM_WRITES=$WR
+	for p in 3 pgup pgdn l r ctab; do png in-term-$p >/dev/null; done
+	same in-term-3 in-term-pgup 0 30 640 60 no "terminal: Ctrl+Page Up shows another tab"
+	same in-term-3 in-term-pgdn 0 30 640 60 yes "terminal: Ctrl+Page Down comes back"
+	same in-term-pgup in-term-l 0 30 640 60 yes "terminal: the pad's L is Ctrl+Page Up"
+	same in-term-3 in-term-r 0 30 640 60 yes "terminal: the pad's R is Ctrl+Page Down"
+	same in-term-3 in-term-ctab 0 30 640 60 no "terminal: Ctrl+Tab goes on (to the first tab)"
+	same in-term-pgup in-term-ctab 0 30 640 60 no "terminal: ... which is not the second"
+	# ANOTHER TABBED WINDOW, with no code of its own for it: the gallery (a TabStrip): R, Ctrl+Page Down, then L
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/pocket_gallery" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" $S/adaptive.cpp "$OUT/libuikit_pocket.a" "$OUT/libft.a" -lpthread
+	G="$WWW;$WW;move 320 300;$W;dump $OUT/in-gal-0.elsm;pad $PR;$W;$W;pad 0;$W;$W;dump $OUT/in-gal-r.elsm;pad $PL;$W;$W;pad 0;$W;$W;dump $OUT/in-gal-l.elsm;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/in-gal-pgdn.elsm"
+	run pocket_gallery in-gallery "$G" SIM_SCREEN=640x480 SIM_APPNAME=gallery SIM_APP=gallery SIM_WRITES=$WR
+	for p in 0 r l pgdn; do png in-gal-$p >/dev/null; done
+	same in-gal-0 in-gal-r 0 60 640 100 no "gallery: the pad's R shows the next tab"
+	same in-gal-0 in-gal-l 0 60 640 100 yes "gallery: the pad's L comes back"
+	same in-gal-r in-gal-pgdn 0 60 640 100 yes "gallery: Ctrl+Page Down is the pad's R"
+	# THE SHELL'S HOME: the pad's Right moves the focus as the Right key does; R changes the category as Ctrl+Page Down
+	ftapp pocket pocketshell uikit_pocket
+	mkdir -p "$WR/etc/pocket"; printf 'terminal\ntinypad\nletters\nfileviewer\ntinycalc\ncalendar\n' > "$WR/etc/pocket/recent"
+	H="$W;$W;expect home 1;dump $OUT/in-home-0.elsm;key $RIGHT;$W;$W;dump $OUT/in-home-key.elsm;key $LEFT;$W;$W;pad $PRIGHT;wait;pad 0;$W;$W;dump $OUT/in-home-pad.elsm"
+	H="$H;pad $PR;$W;$W;pad 0;$W;$W;dump $OUT/in-home-r.elsm;pad $PL;$W;$W;pad 0;$W;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/in-home-pgdn.elsm"
+	run pocket_pocketshell in-home "$H" SIM_SCREEN=640x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
+	for p in 0 key pad r pgdn; do png in-home-$p >/dev/null; done
+	same in-home-0 in-home-key 0 0 640 480 no "home: the Right key moves the focus"
+	same in-home-key in-home-pad 0 0 640 480 yes "home: the pad's Right does the same"
+	same in-home-pad in-home-r 0 0 640 480 no "home: the pad's R changes the category"
+	same in-home-r in-home-pgdn 0 0 640 480 yes "home: Ctrl+Page Down is the pad's R"
+	if grep -q "a pad's buttons reach the shell (InputKit)" "$OUT/log.txt"; then echo "  home: the pad read through InputKit: ok"; else echo "  home: the pad through InputKit: FAILED (no line in the log)"; FAIL=1; fi
+	cp "$OUT/in-term-pgup.png" "$OUT/pt-terminal-tabs-640.png"; if [ -n "$SHOTS_PNG" ]; then mkdir -p "$SHOTS_PNG"; cp "$OUT/pt-terminal-tabs-640.png" "$SHOTS_PNG/"; fi
+fi
+
 # ---- the pocket shell: the home, the switcher, quick settings -- the menu bar's picture above them ------------------------
 if want shell; then
 	echo "pocketterm: the pocket shell"
@@ -164,13 +214,7 @@ if want shell; then
 	shell 640x480 640
 	shell 800x480 800
 	shell 640x480 640 fr
-	# [buttons]: a key that IS a button types the button's key ("x = t", "x.key = F9": F9 on the home types t -- the
-	# search takes it); Start and Select are bound to nothing by default
-	WR=$(langdir "" ""); { cat sdcard/etc/pocketui.ini; printf 'x = t
-x.key = F9
-'; } > "$WR/etc/pocketui.ini"
-	run pocket_pocketshell pt-buttons-key "otherpic 640 30 menubar $OUT/pt-bar-home-640.elsm 0 0 0x35 0 0;$W;$W;expect home 1;expect keys 0;key 0x118;$W;$W;expect keys 1" SIM_SCREEN=640x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
-	if grep -q '^#   start = none' sdcard/etc/pocketui.ini && grep -q '{ 0, 0 }, { 0, 0 } };	// (Start, Select: none)' user/Apps/pocketshell/buttons.h; then echo "  Start and Select bound to nothing by default: ok"; else echo "  Start / Select defaults: FAILED"; FAIL=1; fi
+	# (the pad and the keys' bindings: InputKit's, the section "input" above -- SD:/etc/pocketui.ini has no [buttons] any more)
 	pixel pt-home-640 2 240 0b0c0e "the home's background is the glass' black"
 	pixel pt-home-640 20 200 15171b "the card is a flat surface"
 fi
