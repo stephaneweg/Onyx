@@ -424,6 +424,15 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 	case 0x0803:								// OpenFileDirectly (-, archive, the archive's path, the file's path, flags...)
 	{
 		if (cmd[2] == ARCHIVE_ROMFS) { openRomfs (m, id, cmd); break; }
+		if (cmd[2] == 0x2345678A)					// a title's content: its number and the media, then what of it
+		{
+			u32 t[4] = { 0, 0, 0, 0 }, f[5] = { 0, 0, 0, 0, 0 };
+			for (u32 i = 0; i < 4 && i * 4 + 4 <= cmd[4]; i++) t[i] = m->mem.r32 (cmd[10] + i * 4);
+			for (u32 i = 0; i < 5 && i * 4 + 4 <= cmd[6]; i++) f[i] = m->mem.r32 (cmd[12] + i * 4);
+			m->note ("fs:USER the content of title %08x%08x (media %u): %08x %08x %08x %08x %08x", (unsigned) t[1], (unsigned) t[0], (unsigned) (t[2] & 255), (unsigned) f[0], (unsigned) f[1], (unsigned) f[2], (unsigned) f[3], (unsigned) f[4]);
+			REPLY (FS_NOT_FOUND);
+			break;
+		}
 		const u32 missing = archiveName (m, cmd[2], cmd[10], cmd[4], name, sizeof name);
 		if (!name[0]) { m->note ("fs:USER archive %08x", (unsigned) cmd[2]); REPLY (missing); break; }
 		if (nodeFind (st, name) < 0) { if (missing) { REPLY (missing); break; } nodeAdd (st, name, true); }
