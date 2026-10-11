@@ -189,3 +189,11 @@ Norwegian	Norvégien
 Danish	Danois
 Portuguese	Portugais
 Japanese	Japonais
+A few choices and this device is ready. Everything can be changed later in the Control Panel.	Quelques choix et cet appareil est prêt. Tout se change ensuite dans le Panneau de configuration.
+THIS DEVICE'S CONTROLS	LES COMMANDES DE CET APPAREIL
+move, choose in a list	se déplacer, choisir dans une liste
+go on, press what is chosen	continuer, valider le choix
+go back	revenir
+the Menu of the app in front	le Menu de l'application
+%d of %d	%d sur %d
+A starts Onyx; this assistant does not come back.	A démarre Onyx ; cet assistant ne revient pas.

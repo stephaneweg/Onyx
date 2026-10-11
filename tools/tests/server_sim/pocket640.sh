@@ -8,7 +8,7 @@
 #   - circuits, gpiolab, turtle: the side panels one at a time, nothing cut, every panel reached by the keys;
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -184,6 +184,27 @@ if want turtle; then
 	WR=$(TQ fr star-fr)
 	run pocket_turtle pt-turtle-640-fr "$WWW;dump $OUT/pt-turtle-640-fr.elsm" $T SIM_WRITES=$WR
 	out pt-turtle-640-fr
+fi
+
+# ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------
+if want setup; then
+	echo "pocket640: Setup"
+	ftapp pocket setup uikit_pocket
+	K () { echo "key $1;$W;"; }
+	WR=$(langdir "")
+	SC="$WWW;expect kind fill;dump $OUT/pt-setup-640-1-welcome.elsm;$(K 13)dump $OUT/pt-setup-640-2-region.elsm;$(K $DOWN)$(K 13)$W;dump $OUT/pt-setup-640-3-wifi.elsm"
+	SC="$SC;$(K 13)dump $OUT/pt-setup-640-4-name.elsm;$(K $DOWN)$(K $DOWN)$(K 32)dump $OUT/pt-setup-640-4-name-switch.elsm;$(K 13)dump $OUT/pt-setup-640-5-ready.elsm;$(K 27)dump $OUT/pt-setup-640-back.elsm"
+	run pocket_setup pt-setup-640 "$SC" $P640 SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
+	for f in 1-welcome 2-region 3-wifi 4-name 4-name-switch 5-ready back; do out pt-setup-640-$f; size pt-setup-640-$f 640x480 "Setup, $f: the whole 640 x 480 screen"; done
+	differ pt-setup-640-1-welcome pt-setup-640-2-region "Setup: A leaves the welcome page"
+	differ pt-setup-640-2-region pt-setup-640-3-wifi "Setup: A, the Wi-Fi step"
+	differ pt-setup-640-3-wifi pt-setup-640-4-name "Setup: A after Wi-Fi is the name (no Display, no Appearance step)"
+	differ pt-setup-640-4-name pt-setup-640-4-name-switch "Setup: Down, Down, Space flips a service's switch"
+	differ pt-setup-640-4-name-switch pt-setup-640-5-ready "Setup: A, ready"
+	barsame pt-setup-640-4-name pt-setup-640-back "Setup: B goes back one step"
+	WR=$(langdir fr)
+	run pocket_setup pt-setup-640-fr "$WWW;dump $OUT/pt-setup-640-1-welcome-fr.elsm" $P640 SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
+	out pt-setup-640-1-welcome-fr
 fi
 
 # ---- the drawers by the keys (UIKit): a side panel without places opens and closes by L / R ------------------------------

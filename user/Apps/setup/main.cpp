@@ -31,9 +31,18 @@
 
 using namespace uikit;
 
-#define W	800		// the window's client area
-#define H	600
-#define RAIL_W	212		// the steps, on the left
+// POCKET ON A SMALL SCREEN (under 800 px wide: the PocketTerm35's 640 x 480, no pointer; g_pk, decided in main): the
+// window is the screen's (640 x 450), ONE PAGE A STEP -- no column of steps: a bar with the step's title and "3 of 5"
+// over five segments (the Display and Appearance steps are skipped: nothing of them to choose on this device), a foot with Back on
+// B (Esc) and the next step on A (Enter); the welcome page draws the device's controls. Each page's parts take the
+// keys (the arrows) where they only took the mouse. The desktop: as it was -- the same sizes, the same pages.
+static bool g_pk = false;
+static int g_winW = 800, g_winH = 600, g_railW = 212, g_top = 0;
+// A card's ground: white on the desktop (as it was); pocket's dark look -- a shade over the page's, its texts light.
+static unsigned card_c () { return g_pk ? uk_mix (C_FIELD, C_FIELD_TEXT, 26) : 0x00FFFFFF; }
+#define W	g_winW		// the window's client area (800 x 600 on the desktop)
+#define H	g_winH
+#define RAIL_W	g_railW		// the steps, on the left (212; pocket: none)
 #define FOOT_H	60		// Back / Continue
 #define PAD	34		// the page's margins
 #define PX	PAD
@@ -293,14 +302,14 @@ public:
 // A white rounded box with a thin outline: the lists' frame.
 static void card (Canvas &cv, int x, int y, int w, int h)
 {
-	uk_rbox (cv, x, y, w, h, 7, 0x00FFFFFF, 0x00FFFFFF);
+	uk_rbox (cv, x, y, w, h, 7, card_c (), card_c ());
 	uk_rline (cv, x, y, w, h, 7, line_c (C_FIELD));
 }
 static void sel_row (Canvas &cv, int x, int y, int w, int h)
 {
-	unsigned f = uk_mix (0x00FFFFFF, C_ACCENT, 38);
+	unsigned f = uk_mix (card_c (), C_ACCENT, 38);
 	uk_rbox (cv, x, y, w, h, 6, f, f);
-	uk_rline (cv, x, y, w, h, 6, uk_mix (0x00FFFFFF, C_ACCENT, 130));
+	uk_rline (cv, x, y, w, h, 6, uk_mix (card_c (), C_ACCENT, 130));
 }
 
 // ---- the steps (the rail) -----------------------------------------------------------------------------------
@@ -361,16 +370,18 @@ class Page : public Panel
 {
 public:
 	const char *title; char sub[240]; int bodyY;
-	Page (const char *t, const char *s) : Panel (RAIL_W, 0, W - RAIL_W, H - FOOT_H, C_FIELD), title (t), bodyY (0)
+	Page (const char *t, const char *s) : Panel (RAIL_W, g_top, W - RAIL_W, H - FOOT_H - g_top, C_FIELD), title (t), bodyY (0)
 	{
 		scpy (sub, sizeof sub, s);
 		if (title) bodyY = fwrap (0, 0, PX, 66, PW, 20, sub, 0) + 22;	// (below the subtitle)
+		if (title && g_pk) bodyY = fwrap (0, 0, PX, 10, PW, 20, sub, 0) + 12;	// (pocket: the title is the bar's)
 	}
 	void setSub (const char *s) { scpy (sub, sizeof sub, s); invalidate (true); }
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
 		if (!title) return;
+		if (g_pk) { fwrap (&canvas, 0, PX, 10, PW, 20, sub, dim_ink (C_FIELD)); return; }
 		ftext (canvas, g_h1, PX, 30, 30, title, C_FIELD_TEXT, 2);
 		fwrap (&canvas, 0, PX, 66, PW, 20, sub, dim_ink (C_FIELD));
 	}
@@ -426,7 +437,7 @@ public:
 		{
 			int x = lx + 4 + i * LW; bool s = i == g_lang;
 			if (s) sel_row (canvas, x, LY + 4, LW, LH);
-			else if (i == hot) { unsigned f = uk_mix (0x00FFFFFF, C_BG, 110); uk_rbox (canvas, x, LY + 4, LW, LH, 6, f, f); }
+			else if (i == hot) { unsigned f = uk_mix (card_c (), C_BG, 110); uk_rbox (canvas, x, LY + 4, LW, LH, 6, f, f); }
 			uk_radio_mark (canvas, x + 10, LY + 4 + (LH - 16) / 2, 16, s, UK_NORMAL);
 			uk_text_l (canvas, x + 34, LY + 4, LH, locale_language_name (i), ink, s ? 2 : 0);
 		}
@@ -443,7 +454,7 @@ public:
 		{
 			int x = ix + 4 + i * IW; bool s = i == g_iface;
 			if (s) sel_row (canvas, x, iy + 4, IW, IH);
-			else if (i + 100 == hot) { unsigned f = uk_mix (0x00FFFFFF, C_BG, 110); uk_rbox (canvas, x, iy + 4, IW, IH, 6, f, f); }
+			else if (i + 100 == hot) { unsigned f = uk_mix (card_c (), C_BG, 110); uk_rbox (canvas, x, iy + 4, IW, IH, 6, f, f); }
 			uk_radio_mark (canvas, x + 10, iy + 4 + (IH - 16) / 2, 16, s, UK_NORMAL);
 			uk_text_l (canvas, x + 34, iy + 4, IH, TR (IFACE_NAME[i]), ink, s ? 2 : 0);
 		}
@@ -479,12 +490,12 @@ public:
 		{
 			int i = top + r, y = 4 + r * RH; const Country &c = COUNTRIES[i]; bool s = i == sel;
 			if (s) sel_row (canvas, 4, y, width - 18, RH);
-			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : uk_mix (0x00FFFFFF, C_BG, 170), s ? 0x00FFFFFF : dim_ink (0x00FFFFFF));
+			chip (canvas, 12, y + 6, c.code, s ? C_ACCENT : uk_mix (card_c (), C_BG, 170), s ? 0x00FFFFFF : dim_ink (card_c ()));
 			uk_text_l (canvas, 52, y, RH, TR (c.name), C_FIELD_TEXT, s ? 2 : 0);
 			if (s) uk_glyph (canvas, WKG_CHECK, width - 32, y + RH / 2, 11, C_ACCENT);
 		}
 		int n = NCOUNTRIES, v = rows ();
-		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); uk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, 0x00FFFFFF); }
+		if (n > v) { int th = (height - 12) * v / n, ty = (height - 12 - th) * top / (n - v); uk_scroll_bar (canvas, width - 11, 6, 6, height - 12, true, ty, th, card_c ()); }
 	}
 	void pick (int i) { if (i < 0 || i >= NCOUNTRIES) return; sel = i; show (i); invalidate (true); if (cb) cb (*this); }
 	bool onMouse (int mx, int my, int bl, int, int, int wheel) override
@@ -594,8 +605,8 @@ public:
 		addChild (pass); addChild (go); addChild (autoc);
 		place ();
 	}
-	static unsigned sel_bg () { return uk_mix (0x00FFFFFF, C_ACCENT, 38); }
-	unsigned bgColor () override { return 0x00FFFFFF; }
+	static unsigned sel_bg () { return uk_mix (card_c (), C_ACCENT, 38); }
+	unsigned bgColor () override { return card_c (); }
 	bool open () const { return sel >= 0 && sel < g_nnets && state == NET_PASSWORD; }
 	bool needPass () const { return open () && g_nets[sel].sec != WLAN_SEC_OPEN; }
 	int openH () const { return open () ? (needPass () ? OPEN_H : OPEN_H0) : 0; }
@@ -620,37 +631,49 @@ public:
 		card (canvas, 0, 0, width, total ());
 		if (!g_nnets)
 		{
-			uk_text_c (canvas, 0, 4, width, RH, g_scanned ? TR ("No network found. Is the Wi-Fi router on?") : TR ("Looking for networks..."), dim_ink (0x00FFFFFF));
+			uk_text_c (canvas, 0, 4, width, RH, g_scanned ? TR ("No network found. Is the Wi-Fi router on?") : TR ("Looking for networks..."), dim_ink (card_c ()));
 			return;
 		}
 		for (int i = 0; i < g_nnets; i++)
 		{
 			const Net &n = g_nets[i]; int y = rowY (i); bool s = i == sel;
 			if (s && open ()) sel_row (canvas, 4, y, width - 8, RH + openH () - 4);
-			else if (i > 0 && !(sel == i - 1 && open ())) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
-			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, uk_mix (0x00FFFFFF, C_TEXT, 60));
+			else if (i > 0 && !(sel == i - 1 && open ())) canvas.fillRect (14, y, width - 28, 1, line_c (card_c ()));
+			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, uk_mix (card_c (), C_TEXT, 60));
 			uk_text_l (canvas, 54, y, RH, n.ssid, C_FIELD_TEXT, s ? 2 : 0);
 			int x = width - 18;
-			if (n.sec != WLAN_SEC_OPEN) { uk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (0x00FFFFFF)); x -= 22; }
+			if (n.sec != WLAN_SEC_OPEN) { uk_glyph (canvas, WKG_LOCK, x - 7, y + RH / 2, 13, dim_ink (card_c ())); x -= 22; }
 			const char *sec = n.sec == WLAN_SEC_OPEN ? TRC ("net", "Open") : n.sec == WLAN_SEC_WEP ? "WEP" : n.sec == WLAN_SEC_WPA ? "WPA" : "WPA2";
 			x -= uk_tw (sec, 2) + 12;
-			chip (canvas, x, y + 12, sec, uk_mix (0x00FFFFFF, C_BG, 150), dim_ink (0x00FFFFFF));
+			chip (canvas, x, y + 12, sec, uk_mix (card_c (), C_BG, 150), dim_ink (card_c ()));
 			int cx = 54 + uk_tw (n.ssid, 2) + 12;
 			if (n.con && (state == NET_CONNECTED || !s))
 			{
 				uk_glyph (canvas, WKG_CHECK, cx + 5, y + RH / 2, 11, OK_C);
 				uk_text_l (canvas, cx + 16, y, RH, TR ("Connected"), OK_C, 2);
 			}
-			else if (n.known && !s) { UkFaceScope sc (g_small); uk_text_l (canvas, cx, y, RH, TR ("Saved"), dim_ink (0x00FFFFFF)); }
+			else if (n.known && !s) { UkFaceScope sc (g_small); uk_text_l (canvas, cx, y, RH, TR ("Saved"), dim_ink (card_c ())); }
 			if (s && needPass ())
 			{
-				ftext (canvas, g_small, 54, y + RH - 4, 18, n.known ? TR ("Password (leave empty: the saved one)") : TR ("Password"), dim_ink (0x00FFFFFF));
+				ftext (canvas, g_small, 54, y + RH - 4, 18, n.known ? TR ("Password (leave empty: the saved one)") : TR ("Password"), dim_ink (card_c ()));
 				const char *sh = TR ("Shared with the Wi-Fi menu");
 				if (err[0]) ftext (canvas, g_small, width - 18 - ftw (g_small, err), y + RH + 58, 22, err, ERR_C);
-				else ftext (canvas, g_small, width - 18 - ftw (g_small, sh), y + RH + 58, 22, sh, dim_ink (0x00FFFFFF));
+				else ftext (canvas, g_small, width - 18 - ftw (g_small, sh), y + RH + 58, 22, sh, dim_ink (card_c ()));
 			}
 			else if (s && open () && err[0]) ftext (canvas, g_small, 54, y + RH + 8, 22, err, ERR_C);
 		}
+	}
+	bool onKey (long k) override			// (pocket: Up / Down a network -- its row opens, the password's field has the keys)
+	{
+		if (!g_pk || (k != KEY_UP && k != KEY_DOWN) || g_nnets <= 0 || state == NET_CONNECTING) return false;
+		int i = sel + (k == KEY_DOWN ? 1 : -1);
+		if (sel < 0) i = 0;
+		if (i < 0 || i >= g_nnets) return true;
+		if (g_nets[i].con && state == NET_CONNECTED) return true;
+		sel = i; state = NET_PASSWORD; err[0] = 0; pass->setText ("");
+		place (); invalidate (true);
+		if (needPass ()) pass->setFocus (); else go->setFocus ();
+		return true;
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
 	{
@@ -678,7 +701,7 @@ public:
 		what[0] = 0;
 		addChild (new Button (w / 2 - 55, 164, 110, 36, TR ("Cancel"), onCancel));
 	}
-	unsigned bgColor () override { return 0x00FFFFFF; }
+	unsigned bgColor () override { return card_c (); }
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
@@ -689,11 +712,11 @@ public:
 			static const int CS[12] = { 0, 50, 87, 100, 87, 50, 0, -50, -87, -100, -87, -50 };
 			int dx = CS[(k + 3) % 12] * 18 / 100, dy = CS[k] * 18 / 100;
 			int a = 40 + 215 * ((k - phase + 24) % 12) / 11;
-			disc (canvas, cx + dx - 3, cy + dy - 3, 6, uk_mix (0x00FFFFFF, C_ACCENT, a));
+			disc (canvas, cx + dx - 3, cy + dy - 3, 6, uk_mix (card_c (), C_ACCENT, a));
 		}
 		ftext (canvas, g_lead, (width - ftw (g_lead, what, 2)) / 2, 98, 26, what, C_FIELD_TEXT, 2);
 		const char *s = TR ("Authenticating  \xC2\xB7  getting an address");
-		uk_text_l (canvas, (width - uk_tw (s)) / 2, 126, 22, s, dim_ink (0x00FFFFFF));
+		uk_text_l (canvas, (width - uk_tw (s)) / 2, 126, 22, s, dim_ink (card_c ()));
 	}
 };
 
@@ -711,7 +734,7 @@ public:
 		addChild (new Button (w - 18 - 160 - 10 - 104, 150, 104, 38, TR ("Cancel"), onCancel));
 		addChild (new AccentButton (w - 18 - 160, 153, 160, 32, TR ("Connect"), onConnect));
 	}
-	unsigned bgColor () override { return 0x00FFFFFF; }
+	unsigned bgColor () override { return card_c (); }
 	void onDraw () override { canvas.clear (C_FIELD); card (canvas, 0, 0, width, height); }
 };
 
@@ -726,9 +749,9 @@ public:
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
-		unsigned bg = uk_mix (0x00FFFFFF, c, 30);
+		unsigned bg = uk_mix (card_c (), c, 30);
 		uk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
-		uk_rline (canvas, 0, 0, width, height, 8, uk_mix (0x00FFFFFF, c, 120));
+		uk_rline (canvas, 0, 0, width, height, 8, uk_mix (card_c (), c, 120));
 		unsigned ink = uk_tone (c, 70);
 		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); uk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
 		else
@@ -763,7 +786,7 @@ public:
 			const char *best = TR ("Best"), *now = TR ("now");
 			if (i == g_best) chip (canvas, width - 14 - uk_tw (best, 2) - 12, y + 7, best, OK_C, 0x00FFFFFF);
 			else if (i == g_curMode) { UkFaceScope sc (g_small); uk_text_l (canvas, width - 14 - uk_tw (now), y, RH, now, C_ACCENT); }
-			else { UkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); uk_text_l (canvas, width - 14 - uk_tw (a), y, RH, a, dim_ink (0x00FFFFFF)); }
+			else { UkFaceScope sc (g_small); const char *a = aspect (g_modes[i].w, g_modes[i].h); uk_text_l (canvas, width - 14 - uk_tw (a), y, RH, a, dim_ink (card_c ())); }
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -901,7 +924,14 @@ class SchemePicker : public Widget
 {
 public:
 	Action cb;
-	SchemePicker (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), cb (cb_) {}
+	SchemePicker (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), cb (cb_) { canFocus = g_pk; }
+	bool onKey (long k) override			// (pocket: Left / Right the colour)
+	{
+		if (!g_pk || (k != KEY_LEFT && k != KEY_RIGHT)) return false;
+		int i = g_scheme + (k == KEY_RIGHT ? 1 : -1);
+		if (i >= 0 && i < NSCHEMES) { g_scheme = i; invalidate (true); if (cb) cb (*this); }
+		return true;
+	}
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
@@ -935,7 +965,16 @@ class WallPicker : public Widget
 {
 public:
 	Action cb; unsigned *thumb[NWALLS]; int thumbTint; static const int TW = 58, TH = 40, G = 7, SW = 22, SG = 8, SY = TH + 16;
-	WallPicker (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), cb (cb_), thumbTint (-1) { for (int i = 0; i < NWALLS; i++) thumb[i] = 0; }
+	WallPicker (int l, int t, int w, int h, Action cb_) : Widget (l, t, w, h), cb (cb_), thumbTint (-1) { for (int i = 0; i < NWALLS; i++) thumb[i] = 0; canFocus = g_pk; }
+	bool onKey (long k) override			// (pocket: Left / Right the wallpaper, Shift + Left / Right its tint)
+	{
+		if (!g_pk || (k != KEY_LEFT && k != KEY_RIGHT)) return false;
+		int d = k == KEY_RIGHT ? 1 : -1;
+		if (kapi_get_modifiers () & MOD_SHIFT) { int i = g_tint + d; if (i >= 0 && i < NTINTS) g_tint = i; }
+		else { int i = g_wall + d; if (i >= 0 && i < NWALLS) g_wall = i; }
+		invalidate (true); if (cb) cb (*this);
+		return true;
+	}
 	void onDraw () override
 	{
 		canvas.clear (C_FIELD);
@@ -980,8 +1019,17 @@ class Services : public Widget
 {
 public:
 	Pic ic[4]; static const int RH = 56;
+	int kcur = 0;					// (pocket: the row the arrows are on)
 	Services (int l, int t, int w, int h) : Widget (l, t, w, h)
-	{ ic[0] = icon ("terminal"); ic[1] = icon ("displayconf"); ic[2] = icon ("taskman"); ic[3] = icon ("fileviewer"); }
+	{ ic[0] = icon ("terminal"); ic[1] = icon ("displayconf"); ic[2] = icon ("taskman"); ic[3] = icon ("fileviewer"); canFocus = g_pk; }
+	bool onKey (long k) override			// (pocket: Up / Down a service, Space or Left / Right its switch)
+	{
+		if (!g_pk) return false;
+		if (k == KEY_DOWN && kcur < 3) { kcur++; invalidate (true); return true; }
+		if (k == KEY_UP && kcur > 0) { kcur--; invalidate (true); return true; }
+		if (k == ' ' || k == KEY_LEFT || k == KEY_RIGHT) { g_services[kcur] = !g_services[kcur]; invalidate (true); return true; }
+		return false;
+	}
 	void onDraw () override
 	{
 		static const char *const T[] = { TRN ("Remote shell (telnet)"), TRN ("Remote desktop (VNC)"), TRN ("Remote windows (Onyx Remote)"), TRN ("File sharing (FTP)") };
@@ -992,10 +1040,11 @@ public:
 		for (int i = 0; i < 4; i++)
 		{
 			int y = i * RH;
-			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
+			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (card_c ()));
+			if (g_pk && hasFocus && i == kcur) uk_rline (canvas, 4, y + 4, width - 8, RH - 8, 6, C_ACCENT, 255);
 			draw_pic (canvas, ic[i], 14, y + 13, 30);
 			uk_text_l (canvas, 58, y + 8, 20, TR (T[i]), C_FIELD_TEXT, 2);
-			ftext (canvas, g_small, 58, y + 29, 18, TR (S[i]), dim_ink (0x00FFFFFF));
+			ftext (canvas, g_small, 58, y + 29, 18, TR (S[i]), dim_ink (card_c ()));
 			uk_switch_mark (canvas, width - 58, y + 17, 40, 22, g_services[i], UK_NORMAL);
 		}
 	}
@@ -1024,11 +1073,11 @@ public:
 		for (int i = 0; i < 5; i++)
 		{
 			int y = 4 + i * RH;
-			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (0x00FFFFFF));
+			if (i) canvas.fillRect (14, y, width - 28, 1, line_c (card_c ()));
 			draw_pic (canvas, ic[i], 14, y + 11, 30);
 			uk_text_l (canvas, 58, y + 6, 20, TR (T[i]), C_FIELD_TEXT, 2);
 			char fit[120]; { UkFaceScope sc (g_small); uk_text_fit (val[i], width - 58 - 90, fit, sizeof fit); }
-			ftext (canvas, g_small, 58, y + 27, 18, fit, dim_ink (0x00FFFFFF));
+			ftext (canvas, g_small, 58, y + 27, 18, fit, dim_ink (card_c ()));
 			bool hot = hover && hotRow == i;
 			uk_text_l (canvas, width - 18 - uk_tw (ch), y, RH, ch, hot ? uk_tone (C_ACCENT, 100) : C_ACCENT);
 			if (hot) canvas.fillRect (width - 18 - uk_tw (ch), y + RH / 2 + uk_fh () / 2, uk_tw (ch), 1, C_ACCENT);
@@ -1099,6 +1148,90 @@ static void fill_summary ()
 	g_sum->invalidate (true);
 }
 
+// Pocket: the bar over the page -- the step's title, "3 of 6", a segment a step.
+class StepBar : public Widget
+{
+public:
+	StepBar (int w) : Widget (0, 0, w, 40) {}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		unsigned ink = uk_ink_for (C_BG), dim = dim_ink (C_BG);
+		int n = NSTEPS - 2, at = g_page < 3 ? g_page : g_page - 2;	// (Display and Appearance are not steps here)
+		ftext (canvas, g_lead, 14, 0, height - 1, TR (STEPS[g_page]), ink, 2);
+		int sw = 22, gap = 4, x = width - 14 - n * (sw + gap) + gap;
+		for (int i = 0; i < n; i++) uk_rbox (canvas, x + i * (sw + gap), height / 2 - 2, sw, 4, 2, i <= at ? C_ACCENT : uk_mix (C_BG, ink, 50), i <= at ? C_ACCENT : uk_mix (C_BG, ink, 50));
+		char b[40]; snprintf (b, sizeof b, TR ("%d of %d"), at + 1, n);
+		ftext (canvas, g_small, x - 12 - ftw (g_small, b), 0, height - 1, b, dim);
+		canvas.fillRect (0, height - 1, width, 1, uk_mix (C_BG, C_TEXT, 60));
+	}
+};
+static StepBar *g_bar;
+// Pocket: the foot's hint -- Back is B, the next step is A.
+class FootHint : public Widget
+{
+public:
+	FootHint (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	unsigned bgColor () override { return C_BG; }
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		UkPadHint hs[2] = { { "B", TR ("Back") }, { "A", g_page == NSTEPS - 1 ? TR ("Start Onyx") : TR ("Continue") } };
+		if (g_page == 0) uk_pad_hints (canvas, 0, (height - 18) / 2, 18, hs + 1, 1, dim_ink (C_BG));
+		else uk_pad_hints (canvas, 0, (height - 18) / 2, 18, hs, 2, dim_ink (C_BG));
+	}
+};
+static FootHint *g_footHint;
+// Pocket: the welcome page -- the language (Left / Right), and the device's controls drawn once: what goes on, what
+// goes back, what moves, where the Menu is.
+static void choose_lang (int i);
+class PocketWelcome : public Widget
+{
+public:
+	PocketWelcome (int l, int t, int w, int h) : Widget (l, t, w, h) {}
+	void onDraw () override
+	{
+		canvas.clear (C_FIELD);
+		unsigned ink = C_FIELD_TEXT, dim = dim_ink (C_FIELD);
+		gem (canvas, 0, 2, 44, C_ACCENT, uk_tone (C_ACCENT, 200));
+		ftext (canvas, g_hero, 58, 0, 48, TR ("Welcome to Onyx"), ink, 2);
+		int y = fwrap (&canvas, g_lead, 0, 60, width, 22, TR ("A few choices and this device is ready. Everything can be changed later in the Control Panel."), dim);
+		y += 14;
+		int n = locale_language_count (), lw = 150;
+		ftext (canvas, g_small, 0, y, 44, TR ("Language"), dim);
+		int lx = ftw (g_small, TR ("Language")) + 14;
+		card (canvas, lx, y, 8 + n * lw, 44);
+		for (int i = 0; i < n; i++)
+		{
+			int x = lx + 4 + i * lw; bool s = i == g_lang;
+			if (s) sel_row (canvas, x, y + 4, lw, 36);
+			uk_radio_mark (canvas, x + 10, y + 4 + 10, 16, s, UK_NORMAL);
+			uk_text_l (canvas, x + 34, y + 4, 36, locale_language_name (i), ink, s ? 2 : 0);
+		}
+		{ UkPadHint h = { "-", "" }; uk_pad_hints (canvas, lx + 8 + n * lw + 12, y + 13, 18, &h, 1, dim); }
+		y += 44 + 20;
+		ftext (canvas, g_small, 0, y, 18, TR ("THIS DEVICE'S CONTROLS"), dim, 2);
+		y += 26;
+		static const char *const G[4] = { "+", "A", "B", "[CMD]" };
+		const char *const T[4] = { TR ("move, choose in a list"), TR ("go on, press what is chosen"), TR ("go back"), TR ("the Menu of the app in front") };
+		for (int i = 0; i < 4; i++)
+		{
+			int x = (i % 2) * (width / 2), yy = y + (i / 2) * 44;
+			card (canvas, x, yy, width / 2 - 10, 36);
+			UkPadHint h = { G[i], T[i] };
+			uk_pad_hints (canvas, x + 12, yy + 9, 18, &h, 1, ink);
+		}
+	}
+	bool onKey (long k) override
+	{
+		if (k != KEY_LEFT && k != KEY_RIGHT) return false;
+		choose_lang (g_lang + (k == KEY_RIGHT ? 1 : -1));
+		invalidate (true);
+		return true;
+	}
+};
+static PocketWelcome *g_pocketWelcome;
+
 static void update_nav ()
 {
 	int p = g_page;
@@ -1113,10 +1246,20 @@ static void update_nav ()
 static void show_net (int state);
 static void go (int p)
 {
+	// (pocket: no Display step -- the built-in screen has one size --, no Appearance step: its colours and wallpaper are
+	//  the desktop's; pocket's look is its own, SD:/etc/pocketui.ini)
+	if (g_pk && (p == 3 || p == 4)) p = p >= g_page ? 5 : 2;
 	if (p < 0 || p >= NSTEPS) return;
 	g_page = p;
 	for (int i = 0; i < NSTEPS; i++) g_pages[i]->hidden = i != p;
 	g_rail->cur = p; g_rail->invalidate (true);
+	if (g_pk)
+	{
+		g_bar->invalidate (true); g_footHint->invalidate (true);
+		if (g_footHint->parent) g_footHint->parent->invalidate (true);	// (the foot whole: a link that left it)
+		Widget *f = p == 0 ? (Widget *) g_pocketWelcome : p == 2 ? (Widget *) g_netlist : 0;
+		if (f) f->setFocus (); else { g_root->setFocus (); uk_focus_move (g_pages[p], 0, 1); }
+	}
 	char b[40]; snprintf (b, sizeof b, TR ("Step %d of %d"), p + 1, NSTEPS); g_stepOf->set (b);
 	if (p == 2 && !g_scanned && !g_demo) { g_scanPending = true; g_scanAt = kapi_get_ticks (); }	// (scanned in onTick, the page drawn first)
 	if (p == 1) g_countries->setFocus ();
@@ -1387,6 +1530,14 @@ class SetupRoot : public Root
 {
 public:
 	SetupRoot (int x, int y) : Root (x, y, W, H, TR ("Onyx Setup"), WIN_FLAG_FIXED) {}
+	bool onKey (long k) override			// pocket: A (Enter) the next step, B (Esc) the one before -- what no field took
+	{
+		if (!g_pk) return false;
+		if (k == KEY_ENTER && !((Widget *) g_next)->disabled) { on_next (*(Widget *) g_next); return true; }
+		if (k == KEY_ENTER && g_page == 2 && !((Widget *) g_skip)->hidden) { on_skip (*(Widget *) g_skip); return true; }	// (no network: Skip for now)
+		if (k == 27 && g_page > 0 && !((Widget *) g_back)->disabled) { on_back (*(Widget *) g_back); return true; }
+		return false;
+	}
 	void onTick () override
 	{
 		unsigned now = kapi_get_ticks ();
@@ -1496,6 +1647,8 @@ int main (void)
 
 	// the window: in the middle of the screen, where it stays (WIN_FLAG_FIXED)
 	int sw = 1024, sh = 768; kapi_screen_size (&sw, &sh);
+	g_pk = uk_mode () == UK_MODE_POCKET && sw < 800;
+	if (g_pk) { g_winW = sw; g_winH = sh - 30; g_railW = 0; g_top = 40; }	// (the window PocketUI gives: the screen under its band)
 	SetupRoot root ((sw - W - 8) / 2, (sh - H - 32) / 2);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
@@ -1505,7 +1658,9 @@ int main (void)
 	}
 	root.setBg (C_FIELD);
 
-	g_rail = new Rail (0, 0, RAIL_W, H); root.addChild (g_rail);
+	g_rail = new Rail (0, 0, RAIL_W > 0 ? RAIL_W : 1, H); root.addChild (g_rail);
+	int pageH = H - FOOT_H - g_top;
+	if (g_pk) { ((Widget *) g_rail)->hidden = true; g_bar = new StepBar (W); root.addChild (g_bar); }
 
 	// the footer
 	Panel *foot = new Panel (RAIL_W, H - FOOT_H, W - RAIL_W, FOOT_H, C_BG); root.addChild (foot);
@@ -1514,15 +1669,18 @@ int main (void)
 	g_next = new AccentButton (W - RAIL_W - PAD - 132, 14, 132, 32, TR ("Continue"), on_next); foot->addChild (g_next);
 	g_back = new Button (W - RAIL_W - PAD - 132 - 10 - 104, 11, 104, 38, TR ("Back"), on_back); foot->addChild (g_back);
 	g_skip = new Link (W - RAIL_W - PAD - 132 - 10 - 104 - 170, 14, 150, 32, TR ("Skip for now"), on_skip); g_skip->tag = 1; foot->addChild (g_skip);
+	if (g_pk) { ((Widget *) g_stepOf)->hidden = true; g_footHint = new FootHint (14, 1, 200, FOOT_H - 1); foot->addChild (g_footHint); }
 
 	// 0: welcome
 	Page *p = g_pages[0] = new Page (0, "");
+	if (g_pk) { g_pocketWelcome = new PocketWelcome (PX, 16, PW, pageH - 24); p->addChild (g_pocketWelcome); }
+	else
 	p->addChild (new Welcome (PX, 70, PW, H - FOOT_H - 90));
 	// 1: region & keyboard
 	p = g_pages[1] = new Page (TR ("Region & keyboard"), TR ("Your country sets the time zone and which Wi-Fi channels the radio may use; the keyboard layout is proposed from it."));
 	int y = p->bodyY, lw = 244, rx = PX + lw + 26, rw = PW - lw - 26;
 	p->addChild (new Text (PX, y, lw, 20, TR ("Country or region"), 2));
-	g_countries = new CountryList (PX, y + 26, lw, 8 + 9 * CountryList::RH, on_country); p->addChild (g_countries);
+	g_countries = new CountryList (PX, y + 26, lw, 8 + (g_pk ? 8 : 9) * CountryList::RH, on_country); p->addChild (g_countries);
 	g_countries->show (g_country);
 	p->addChild (new Text (rx, y, rw, 20, TR ("Keyboard layout"), 2));
 	g_keybDD = new Dropdown (rx, y + 24, rw, 30, g_keybOpts, NKEYB, g_keyb, on_keyb); p->addChild (g_keybDD);
@@ -1532,7 +1690,7 @@ int main (void)
 	p->addChild (new Checkbox (rx, y + 134, rw, 22, TR ("Set the clock from the Internet"), g_ntp, on_ntp, C_FIELD));
 	p->addChild (new Text (rx, y + 172, rw, 20, TR ("Try it"), 2));
 	Textbox *tryit = new Textbox (rx, y + 196, rw, 30, g_demo ? "O\xC3\xB9 est la gare ? H\xC3\xA9l\xC3\xA8ne \xC3\xA0 9h" : ""); p->addChild (tryit);
-	g_kbv = new KeyboardView (rx, y + 238, rw, 84); p->addChild (g_kbv);
+	g_kbv = new KeyboardView (rx, y + 238, rw, g_pk ? pageH - (y + 238) - 6 : 84); p->addChild (g_kbv);
 	g_kbv->set (g_keyb);
 	// 2: Wi-Fi
 	p = g_pages[2] = new Page (TR ("Connect to Wi-Fi"), TR ("Pick your network and type its password. You can skip this and connect later from the Wi-Fi icon in the menu bar."));
@@ -1540,11 +1698,11 @@ int main (void)
 	p->addChild (new Text (PX, y, 200, 24, TR ("Networks nearby"), 2));
 	g_rescan = new Button (PX + PW - 104, y - 6, 104, 34, TR ("Rescan"), on_rescan); p->addChild (g_rescan);
 	if (g_demo) scan_nets ();
-	g_netlist = new NetList (PX, y + 36, PW, 300, on_connect); p->addChild (g_netlist);
+	g_netlist = new NetList (PX, y + 36, PW, g_pk ? pageH - (y + 36) - 34 : 300, on_connect); p->addChild (g_netlist);
 	g_conn = new Connecting (PX, y + 36, PW, 216, on_cancel_join); g_conn->hidden = true; p->addChild (g_conn);
 	g_hiddenNet = new HiddenNet (PX, y + 36, PW, 206, on_other_connect, on_other_cancel); g_hiddenNet->hidden = true; p->addChild (g_hiddenNet);
-	g_online = new Banner (PX, y + 300, PW, 54, OK_C, 0, TR ("You are online"), ""); g_online->hidden = true; p->addChild (g_online);
-	g_hidden = new Link (PX, H - FOOT_H - 40, 260, 24, TR ("Other network (hidden name)..."), on_other); p->addChild (g_hidden);
+	g_online = new Banner (PX, g_pk ? pageH - 34 - 58 : y + 300, PW, 54, OK_C, 0, TR ("You are online"), ""); g_online->hidden = true; p->addChild (g_online);
+	g_hidden = new Link (PX, g_pk ? pageH - 30 : H - FOOT_H - 40, 260, 24, TR ("Other network (hidden name)..."), on_other); p->addChild (g_hidden);
 	// 3: display
 	char dsub[240];
 	if (g_best >= 0) snprintf (dsub, sizeof dsub, TR ("Onyx found a monitor able to show %d \xC3\x97 %d. Bigger means more room for windows; smaller means bigger text."), g_modes[g_best].w, g_modes[g_best].h);
@@ -1562,6 +1720,7 @@ int main (void)
 	p = g_pages[4] = new Page (TR ("Appearance"), TR ("Choose the colour of the window in front and the wallpaper. The preview shows the desktop you will get."));
 	y = p->bodyY - 8;
 	g_prev = new DesktopPreview (PX, y, PW, 132); p->addChild (g_prev);
+	if (g_pk) { ((Widget *) g_prev)->hidden = true; y -= 138; }	// (pocket: no preview of a desktop -- the colour and the wallpaper have the page)
 	p->addChild (new Text (PX, y + 142, 200, 20, TR ("Colour"), 2));
 	p->addChild (new SchemePicker (PX - 4, y + 164, PW, 68, on_look));
 	p->addChild (new Text (PX, y + 234, 200, 20, TR ("Wallpaper and its tint"), 2));
@@ -1574,9 +1733,13 @@ int main (void)
 	g_hostErr = new Text (PX + 274, y + 24, PW - 274, 30, TR ("Seen by that name on the network (from the next start)"), 0, g_small, true);
 	g_hostErr->lh = 15; p->addChild (g_hostErr);			// (two lines: the French, the error)
 	p->addChild (new Text (PX, y + 70, 200, 20, TR ("Remote access"), 2));
+	if (g_pk) p->addChild (new Services (PX, y + 94, PW, 4 * Services::RH));	// (pocket: the four switches; their warning is each one's own line)
+	else
+	{
 	p->addChild (new Banner (PX, y + 94, PW, 40, WARN_C, 1, TR ("Only file sharing asks for a password: turn on only what you use, on a network you trust."), ""));
 	p->addChild (new Services (PX, y + 144, PW, 4 * Services::RH));
 	p->addChild (new Text (PX, y + 144 + 4 * Services::RH + 12, PW, 20, TR ("Each one can be turned on or off later: its line in SD:/etc/autostart."), 0, g_small, true));
+	}
 	// 6: ready
 	p = g_pages[6] = new Page (0, "");
 	{
@@ -1593,9 +1756,11 @@ int main (void)
 				fwrap (&canvas, g_lead, 0, 114, width, 23, TR ("Here is what Onyx will use. Change any of it now, or later in the Control Panel."), dim_ink (C_FIELD));
 			}
 		};
-		p->addChild (new Done (PX, 34, PW, 170));
+		if (!g_pk) p->addChild (new Done (PX, 34, PW, 170));
 	}
-	g_sum = new Summary (PX, 204, PW, 8 + 5 * Summary::RH); p->addChild (g_sum);
+	g_sum = new Summary (PX, g_pk ? 12 : 204, PW, 8 + 5 * Summary::RH); p->addChild (g_sum);
+	if (g_pk) p->addChild (new Text (PX, 12 + 8 + 5 * Summary::RH + 10, PW, 20, TR ("A starts Onyx; this assistant does not come back."), 0, g_small, true));
+	else
 	p->addChild (new Text (PX, 204 + 8 + 5 * Summary::RH + 16, PW, 20, TR ("Start Onyx: the menu bar and the dock appear; this assistant does not come back."), 0, g_small, true));
 
 	for (int i = 0; i < NSTEPS; i++) root.addChild (g_pages[i]);
