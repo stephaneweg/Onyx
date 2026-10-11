@@ -197,6 +197,9 @@ static bool surface_fit (void)
 	g_sid = kapi_surface_create (w, h);
 	g_spx = g_sid > 0 ? kapi_surface_map (g_sid) : 0;
 	if (g_spx == 0) { g_sid = 0; g_sw = g_sh = 0; return false; }
+	// (the kernel caps a surface to the screen: on a 640 x 480 screen the pane asked, 700 x 470 at least, comes smaller --
+	// its real size, or the fill below writes past its pages: a data abort)
+	if (!kapi_surface_size (g_sid, &w, &h) || w <= 0 || h <= 0) { kapi_surface_destroy (g_sid); g_sid = 0; g_spx = 0; g_sw = g_sh = 0; return false; }
 	g_sw = w; g_sh = h; g_vx = g_vy = 0;
 	return true;
 }

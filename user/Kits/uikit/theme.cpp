@@ -243,11 +243,13 @@ static bool s_loaded = false;
 
 void uk_theme_reload () { s_loaded = false; uk_theme_load (); }
 
-#ifdef UK_PORT_POCKET
+// (Not under UK_PORT_POCKET: on the device lib/pocket/uikit.so shares every object but the port with lib/uikit.so --
+// the server says the mode; Elegant says none, and nothing changes there.)
 // PocketUI's UIKit, the pocket mode: the theme is SD:/etc/pocketui.ini's "[look] theme =" -- a named theme (its
 // colours over what SD:/etc/theme.txt says; theme.txt's metrics and scale stay), or "system" (theme.txt alone, as
 // the desktop); without the line: Onyx Noir, the flat and dark look made for a small screen. The console mode keeps
 // theme.txt.
+static bool starts (const char *l, const char *w) { while (*w) if (*l++ != *w++) return false; return true; }	// (no libc in the library)
 static void pocket_theme ()
 {
 	struct uk_win_server_info si;
@@ -270,8 +272,8 @@ static void pocket_theme ()
 			char *l = p; while (*p && *p != '\n') p++;
 			if (*p) *p++ = 0;
 			while (*l == ' ' || *l == '\t') l++;
-			if (*l == '[') { in = __builtin_strncmp (l, "[look]", 6) == 0; continue; }
-			if (!in || __builtin_strncmp (l, "theme", 5) != 0) continue;
+			if (*l == '[') { in = starts (l, "[look]"); continue; }
+			if (!in || !starts (l, "theme")) continue;
 			l += 5; while (*l == ' ' || *l == '\t' || *l == '=') l++;
 			int k = 0; while (l[k] && l[k] != '\r' && l[k] != '#' && k < 39) { name[k] = l[k]; k++; }
 			while (k > 0 && (name[k - 1] == ' ' || name[k - 1] == '\t')) k--;
@@ -289,7 +291,6 @@ static void pocket_theme ()
 			return;
 		}
 }
-#endif
 
 static void theme_file ();
 
@@ -298,9 +299,7 @@ void uk_theme_load ()
 	if (s_loaded) return;
 	s_loaded = true;
 	theme_file ();
-#ifdef UK_PORT_POCKET
 	pocket_theme ();
-#endif
 }
 
 static void theme_file ()
