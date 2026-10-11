@@ -48,22 +48,50 @@ struct Op
 struct List { const Op *ops; u32 nOps; };
 
 // What the program writes: VPM output i is write i.
-enum { W_RAW, W_ONE_MINUS, W_XS, W_YS, W_ZS, W_RW, W_XC, W_YC, W_ZC, W_WC };
-struct Write { u8 kind, reg, comp; };		// RAW / ONE_MINUS: output register reg's component comp (0 x); the others: of the position in output register reg
+enum { W_RAW, W_ONE_MINUS, W_XS, W_YS, W_ZS, W_RW, W_XC, W_YC, W_ZC, W_WC, W_LITP, W_LITS };
+struct Write { u8 kind, reg, comp; };		// RAW / ONE_MINUS: output register reg's component comp (0 x); the position's: of the position in
+						// output register reg (or build's `pos`); LITP / LITS: the lighting's primary / secondary colour's component comp (3: alpha)
+// An output register's component (reg 0xFF: none -- 0).
+struct Sem { u8 reg, comp; };
 // The uniforms it reads, in order: a list constant's component, or one of the view's values --
 // the clip position is (x KX + w CX, y KY + w CY, z KZ + w CZ, w); on the screen x / w * SX and y / w * SY
 // (rounded to the V3D's 24.8), z / w * SZ + OZ.
-enum { U_CONST, U_VIEW };
+enum { U_CONST, U_VIEW, U_LIGHT, U_TINY };	// (U_LIGHT: slot = a place in the lighting's values, below; U_TINY: 1e-30, under a square root)
 enum { V_KX, V_CX, V_KY, V_CY, V_KZ, V_CZ, V_SX, V_SY, V_SZ, V_OZ, V_COUNT };
 struct Uni { u8 kind, comp; u16 slot; };		// U_CONST: slot, comp; U_VIEW: slot = V_*
 // The VPM inputs it reads: input i is the input register's component.
 struct In { u8 reg, comp; };
 
+// The lighting worked out at the vertex (what the 3DS core does on the processor for the host GPU's frames: the
+// PICA's fragment lighting at the vertices, its two colours handed on as varyings): the normal from the
+// quaternion the shader gives, the view vector, each light's direction and half-way vector, the tables read at the
+// dot products the configuration names, the sums; the alphas from the Fresnel table. A table is not looked up:
+// it is given as a broken line -- y = a + b x + the sum of c[j] max (x - t[j], 0) over LUT_KNOTS knots --, its
+// scale folded in, x in 0..1 (abs) or -1..1.
+// The values (uniforms U_LIGHT, floats): the ambient colour (3); each light i at lightAt (i): its position or
+// direction (3), diffuse (3), ambient (3), specular 0 (3), specular 1 (3), the distance's bias and scale (2); each
+// table k at tableAt (k): a, b, then (t, c) a knot -- k: 0 D0, 1 D1, 2 FR, 3 RR, 4 RG, 5 RB, 6 + i light i's
+// distance attenuation.
+enum { LUT_KNOTS = 8, LIGHT_VALUES = 17, TABLE_VALUES = 2 + 2 * LUT_KNOTS, LIGHTS_MAX = 8, TABLES = 6 + LIGHTS_MAX };
+inline int lightAt (int i) { return 3 + i * LIGHT_VALUES; }
+inline int tableAt (int k) { return 3 + LIGHTS_MAX * LIGHT_VALUES + k * TABLE_VALUES; }
+enum { LIGHT_FLOATS = 3 + LIGHTS_MAX * LIGHT_VALUES + TABLES * TABLE_VALUES };
+struct Lighting
+{
+	u8 count;					// lights (1..8)
+	Sem quat[4], view[3];				// where the shader puts the normal's quaternion and the view vector
+	struct { u8 directional, twoSided, distance; } light[LIGHTS_MAX];
+	struct { u8 on, abs, input; } table[6];		// D0 D1 FR RR RG RB; input: 0 N.H, 1 V.H, 2 N.V, 3 L.N, else 0
+	u8 fresnel, clampHighlights;			// fresnel: bit 0 the primary alpha, bit 1 the secondary's
+};
+
 struct Result { u32 nUni, nIn; bool ok; const char *why; int values, regsPeak; };
 
 // The program for the version set (qpu::setVersion). -> false (r.why says): an instruction it does not do, too
 // many values alive at once, more uniforms or inputs than there is room for.
-bool build (qpu::Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r);
+// pos: where the position's x y z w are (0: the register a position write names); lit: the lighting (0: none).
+bool build (qpu::Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r,
+	    const Sem *pos = 0, const Lighting *lit = 0);
 }
 
 #endif

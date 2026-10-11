@@ -49,6 +49,7 @@
 #include "n3ds/n3ds.h"
 #include "v3d/picatev.h"
 #include "v3d/picavs.h"
+#include "v3d/picavs_ref.h"		// (the tests' check of the lighting; plain arithmetic)
 
 namespace n3ds {
 
@@ -2581,6 +2582,80 @@ static void shadeWorker (void *arg, int worker)
 }
 
 // ---- draws ---------------------------------------------------------------------------------------------------------------
+// ---- the lighting for a GPU's vertex shader (user/Libs/v3d/picavs.h) ---------------------------------------------------
+// Where each of the shader's meanings (A_*) is among its output registers.
+static void specSems (const Pica *p, picavs::Sem sem[A_COUNT])
+{
+	for (int i = 0; i < A_COUNT; i++) { sem[i].reg = 0xFF; sem[i].comp = 0; }
+	const u32 outMask = p->regs[R_VSH_OUTMASK];
+	const int total = (int) (p->regs[R_OUTMAP_TOTAL] & 7);
+	int slot = 0;
+	for (int o = 0; o < 16 && slot < total && slot < 7; o++)
+	{
+		if (!(outMask >> o & 1)) continue;
+		const u32 map = p->regs[R_OUTMAP + slot++];
+		for (int c = 0; c < 4; c++) { const u32 s = map >> (8 * c) & 0x1F; if (s < A_COUNT) { sem[s].reg = (u8) o; sem[s].comp = (u8) c; } }
+	}
+}
+// A lighting table (times its scale) as a broken line of LUT_KNOTS knots: the 256 steps are cut where a straight
+// piece is furthest from them, piece after piece. out: a, b, then (t, c) a knot -- y = a + b x + sum c max (x - t, 0).
+static void lutFit (const Pica *p, int table, bool abs, float scale, float *out)
+{
+	enum { N = 257 };
+	float x[N], f[N];
+	for (int i = 0; i < N; i++) { x[i] = abs ? (float) i / 256.0f : -1.0f + (float) i / 128.0f; f[i] = lutLook (p, table, x[i], abs) * scale; }
+	int cut[picavs::LUT_KNOTS + 2], n = 2;
+	cut[0] = 0; cut[1] = N - 1;
+	while (n < picavs::LUT_KNOTS + 2)
+	{
+		float worst = 1e-4f; int at = -1;
+		for (int s = 0; s + 1 < n; s++)
+			for (int i = cut[s] + 1; i < cut[s + 1]; i++)
+			{
+				const float line = f[cut[s]] + (f[cut[s + 1]] - f[cut[s]]) * (x[i] - x[cut[s]]) / (x[cut[s + 1]] - x[cut[s]]);
+				const float e = fabsf (f[i] - line);
+				if (e > worst) { worst = e; at = i; }
+			}
+		if (at < 0) break;
+		int k = n;
+		while (k > 0 && cut[k - 1] > at) { cut[k] = cut[k - 1]; k--; }
+		cut[k] = at; n++;
+	}
+	float slope[picavs::LUT_KNOTS + 1];
+	for (int s = 0; s + 1 < n; s++) slope[s] = (f[cut[s + 1]] - f[cut[s]]) / (x[cut[s + 1]] - x[cut[s]]);
+	out[1] = slope[0]; out[0] = f[0] - slope[0] * x[0];
+	for (int j = 0; j < picavs::LUT_KNOTS; j++)
+	{
+		if (j + 2 < n) { out[2 + 2 * j] = x[cut[j + 1]]; out[3 + 2 * j] = slope[j + 1] - slope[j]; }
+		else { out[2 + 2 * j] = 4.0f; out[3 + 2 * j] = 0.0f; }		// (no knot: past every x)
+	}
+}
+// The lighting's configuration and its values (the broken lines among them) as picavs wants them.
+static void specLighting (const Pica *p, const Lighting &l, const picavs::Sem *sem, picavs::Lighting &L, float *lv)
+{
+	memset (&L, 0, sizeof L);
+	memset (lv, 0, sizeof (float) * picavs::LIGHT_FLOATS);
+	L.count = (u8) l.count; L.fresnel = (u8) l.fresnel; L.clampHighlights = l.clampHighlights;
+	for (int i = 0; i < 4; i++) L.quat[i] = sem[A_QUAT + i];
+	for (int i = 0; i < 3; i++) L.view[i] = sem[A_VIEW + i];
+	for (int c = 0; c < 3; c++) lv[c] = l.ambient[c];
+	for (int i = 0; i < l.count && i < picavs::LIGHTS_MAX; i++)
+	{
+		const Lighting::Light &g = l.light[i];
+		float *o = lv + picavs::lightAt (i);
+		L.light[i].directional = g.directional; L.light[i].twoSided = g.twoSided; L.light[i].distance = g.distance;
+		for (int c = 0; c < 3; c++) { o[c] = g.pos[c]; o[3 + c] = g.diff[c]; o[6 + c] = g.amb[c]; o[9 + c] = g.spec0[c]; o[12 + c] = g.spec1[c]; }
+		o[15] = g.bias; o[16] = g.scale;
+		if (g.distance) lutFit (p, LUT_DA + g.id, true, 1.0f, lv + picavs::tableAt (6 + i));
+	}
+	const struct { const Lighting::Lut *t; int table; } T[6] = { { &l.d0, LUT_D0 }, { &l.d1, LUT_D1 }, { &l.fr, LUT_FR }, { &l.rr, LUT_RR }, { &l.rg, LUT_RG }, { &l.rb, LUT_RB } };
+	for (int k = 0; k < 6; k++)
+	{
+		L.table[k].on = T[k].t->on; L.table[k].abs = T[k].t->abs; L.table[k].input = (u8) (T[k].t->input < 4 ? T[k].t->input : 4);
+		if (T[k].t->on) lutFit (p, T[k].table, T[k].t->abs, T[k].t->scale, lv + picavs::tableAt (k));
+	}
+}
+
 // The survey (Machine::surveyShaders): a draw counted for its shader -- the entry and the uniforms that decide its
 // flow; a new one is run once, on a vertex of zeros, to see what it is made of.
 static void surveyDraw (Pica *p, u32 count)
@@ -2786,6 +2861,41 @@ static void draw (Pica *p, bool indexed)
 				load (n, sl); specRun (sp, sl.reg, sl.out);
 				st.checked++;
 				if (memcmp (si.out, sl.out, sizeof si.out) != 0) st.wrong++;
+				// (the lighting as the GPU's shader will do it -- the tables as broken lines -- beside the processor's)
+				if (p->regs[R_LIGHTING] & 1)
+				{
+					static Lighting cl; static picavs::Lighting gl; static float lv[picavs::LIGHT_FLOATS]; static picavs::Sem sem[A_COUNT];
+					if (!p->scratch) p->scratch = (Scratch *) malloc (sizeof (Scratch) * 8);
+					if (p->scratch)
+					{
+						lightingState (p, cl); specSems (p, sem); specLighting (p, cl, sem, gl, lv);
+						Vertex lvx; memset (&lvx, 0, sizeof lvx);
+						for (int j = 0; j < 4; j++) lvx.a[A_QUAT + j] = sem[A_QUAT + j].reg == 0xFF ? 0.0f : si.out[sem[A_QUAT + j].reg][sem[A_QUAT + j].comp];
+						for (int j = 0; j < 3; j++) lvx.a[A_VIEW + j] = sem[A_VIEW + j].reg == 0xFF ? 0.0f : si.out[sem[A_VIEW + j].reg][sem[A_VIEW + j].comp];
+						lightVertices (p, cl, &lvx, 1, p->scratch[7]);
+						float gp[4], gs[4];
+						picavs::refLight (gl, lv, si.out, gp, gs);
+						double worst = 0;
+						for (int c = 0; c < 4; c++)
+						{
+							const double e0 = fabs ((double) gp[c] - lvx.a[A_LITP + c]) * 255.0, e1 = fabs ((double) gs[c] - lvx.a[A_LITS + c]) * 255.0;
+							if (e0 == e0 && e0 > worst) worst = e0;
+							if (e1 == e1 && e1 > worst) worst = e1;
+						}
+						for (int c = 0; c < 4; c++)			// (where the big differences are: diffuse, specular, the two alphas; a zero normal or view)
+						{
+							if (fabs ((double) gp[c] - lvx.a[A_LITP + c]) * 255.0 > 8.0) st.litWhere[c < 3 ? 0 : 2]++;
+							if (fabs ((double) gs[c] - lvx.a[A_LITS + c]) * 255.0 > 8.0) st.litWhere[c < 3 ? 1 : 3]++;
+						}
+						if (worst > 8.0)
+						{
+							const float *q = lvx.a + A_QUAT, *w = lvx.a + A_VIEW;
+							if (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3] < 1e-12f) st.litWhere[4]++;
+							if (w[0] * w[0] + w[1] * w[1] + w[2] * w[2] < 1e-12f) st.litWhere[5]++;
+						}
+						st.litChecked++; st.litErrSum += worst; if (worst > st.litErrMax) st.litErrMax = worst; if (worst > 8.0) st.litBad++;
+					}
+				}
 				if (dumpIt && dumped < 8) { load (n, sl); memcpy (dumpV[dumped], sl.reg, sizeof (float) * 64); memcpy (dumpV[dumped] + 64, si.out, sizeof (float) * 64); dumped++; }
 			}
 			if (dumpIt)

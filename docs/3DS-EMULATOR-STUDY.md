@@ -897,6 +897,36 @@ through the near and the far planes, uneven w -- drawn with the stock shaders th
 The flag is in the sources only: **the kernel is not published** (it goes with S5, when something uses it; the
 Pi 5's kernel is to be built then too).
 
+## 9w. S4, the lighting in the generated vertex shader (2026-10-11)
+
+On the host GPU's frames the core works the PICA's fragment lighting out at the vertices, on the processor
+(`lightVertices`), and hands its two colours on as varyings. A draw whose vertex shader runs on the V3D must do
+that there too: **`picavs::build` takes a `Lighting`** and two new writes, `W_LITP` and `W_LITS` (the primary and
+the secondary colour's components). The program then goes on from the shader's outputs: the normal from the
+quaternion, the view vector, each light's direction and half-way vector, the dot products the configuration names,
+the sums, the alphas from the Fresnel table; two-sided lights, the highlights' clamp, the distance attenuation.
+Its values come as uniforms (`U_LIGHT`: the colours, the lights' positions, the tables).
+
+**A table is not looked up** (a vertex shader has no texture here): the core gives each one as a **broken line**
+-- `y = a + b x + sum c[j] max (x - t[j], 0)` over `LUT_KNOTS` = 8 knots, the scale folded in -- fitted by
+`lutFit` (the 256 steps cut, piece after piece, where a straight piece is furthest from them). A vector of
+length 0 stays 0, as on the processor (the square kept above 1e-30 under the inverse square root: `U_TINY`).
+
+**Checked.** The generator in the simulator (`picavs_test.cpp`, in `run_qpu_test.sh`): random lists with a random
+lighting (1 or 2 lights, every table on or off, each input), against `picavs_ref.h`'s `refLight` -- V3D 4.2 and
+7.1, none wrong (a comparison that falls the other way on a rounding is allowed on 3 outputs of a run). **And the
+broken lines against the processor's lighting in the games** (`N3DS_SPECCHECK=1`: each checked vertex lit both
+ways): *Super Mario 3D Land*, 2 811 903 vertices up to the first level -- the worst colour component off by
+**0.63 of 255 on average, 4.3 at most**; *A Link Between Worlds*, 857 288 vertices -- **0.89 on average, 2.8 at
+most**. (With 6 knots and no care for the null vectors: 1.7 on average, up to 119, 2.7 % of Mario's vertices off
+by more than 8 -- half of them vertices with no normal and no view vector, the rest the specular and the Fresnel
+alpha, steep tables.)
+
+Not done here: nothing draws with it yet -- **S5**: the recorder gives a translatable draw's raw attributes with
+the generated vertex and coordinate shaders (`KAPI_GPU_B_NOCLIP`), the kernel published for both boards, the
+speed measured on the Pi. The lighting makes a program longer (more values alive at once): how many of the
+games' lists are then refused for registers is to be counted in S5.
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

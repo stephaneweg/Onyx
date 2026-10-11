@@ -77,11 +77,80 @@ inline void refRun (const List &l, const float consts[][4], float regs[32][4], f
 		for (int i = 0; i < 4; i++) if (o.writes & (8u >> i)) dst[i] = v[i];
 	}
 }
+// The lighting at a vertex (picavs.h), from the outputs: the two colours.
+inline float refTable (const float *lv, int k, float x, bool abs)
+{
+	if (abs) x = fmaxf (x, -x);
+	const float *t = lv + tableAt (k);
+	float y = t[0] + x * t[1];
+	for (int j = 0; j < LUT_KNOTS; j++) y = y + fmaxf (x + -t[2 + 2 * j], 0.0f) * t[3 + 2 * j];
+	return y;
+}
+inline void refLight (const Lighting &L, const float *lv, const float out[16][4], float litP[4], float litS[4])
+{
+	auto S = [&] (const Sem &q) { return q.reg == 0xFF ? 0.0f : out[q.reg & 15][q.comp & 3]; };
+	auto rsq = [] (float square) { return 1.0f / sqrtf (fmaxf (square, 1e-30f)); };
+	auto unit = [&] (float v[3]) { const float inv = rsq (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]); for (int c = 0; c < 3; c++) v[c] = v[c] * inv; };
+	auto dot = [] (const float a[3], const float b[3]) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
+	float q[4];
+	for (int c = 0; c < 4; c++) q[c] = S (L.quat[c]);
+	{ const float inv = rsq ((q[0] * q[0] + q[1] * q[1]) + (q[2] * q[2] + q[3] * q[3])); for (int c = 0; c < 4; c++) q[c] = q[c] * inv; }
+	float n[3], v[3], raw[3];
+	{ const float t = q[0] * q[2] + q[3] * q[1]; n[0] = t + t; }
+	{ const float t = q[1] * q[2] + -(q[3] * q[0]); n[1] = t + t; }
+	{ const float t = q[0] * q[0] + q[1] * q[1]; n[2] = 1.0f + -(t + t); }
+	for (int c = 0; c < 3; c++) { raw[c] = S (L.view[c]); v[c] = raw[c]; }
+	unit (v);
+	float dif[3], spe[3] = { 0, 0, 0 }, aP = 1.0f, aS = 1.0f;
+	for (int c = 0; c < 3; c++) dif[c] = lv[c];
+	for (int li = 0; li < L.count && li < LIGHTS_MAX; li++)
+	{
+		const float *g = lv + lightAt (li);
+		float l[3];
+		for (int c = 0; c < 3; c++) l[c] = L.light[li].directional ? g[c] : g[c] + raw[c];
+		const float ld = dot (l, l), linv = rsq (ld);
+		float att = 1.0f;
+		if (L.light[li].distance)
+		{
+			float x = ld * linv * g[16] + g[15];
+			x = fminf (fmaxf (x, 0.0f), 1.0f);
+			att = refTable (lv, 6 + li, x, true);
+		}
+		for (int c = 0; c < 3; c++) l[c] = l[c] * linv;
+		float h[3];
+		for (int c = 0; c < 3; c++) h[c] = v[c] + l[c];
+		unit (h);
+		const float nl = dot (n, l), lightOn = L.light[li].twoSided ? fmaxf (nl, -nl) : fmaxf (nl, 0.0f);
+		const float in[4] = { dot (n, h), dot (v, h), dot (n, v), nl };
+		auto look = [&] (int k) { return !L.table[k].on ? 1.0f : refTable (lv, k, L.table[k].input < 4 ? in[L.table[k].input] : 0.0f, L.table[k].abs != 0); };
+		const float d0 = look (0), d1 = look (1), rr = look (3), rg = L.table[4].on ? look (4) : rr, rb = L.table[5].on ? look (5) : rr;
+		const float refl[3] = { rr, rg, rb };
+		const float high = L.clampHighlights ? (nl > 0.0f ? 1.0f : 0.0f) : 1.0f;
+		for (int c = 0; c < 3; c++)
+		{
+			dif[c] = dif[c] + (g[3 + c] * lightOn + g[6 + c]) * att;
+			spe[c] = spe[c] + (g[9 + c] * d0 + g[12 + c] * d1 * refl[c]) * high * att;
+		}
+		if (li == L.count - 1 && L.table[2].on)
+		{
+			const float fr = look (2);
+			if (L.fresnel & 1) aP = fr;
+			if (L.fresnel & 2) aS = fr;
+		}
+	}
+	for (int c = 0; c < 4; c++)
+	{
+		litP[c] = fminf (fmaxf (c < 3 ? dif[c] : aP, 0.0f), 1.0f);
+		litS[c] = fminf (fmaxf (c < 3 ? spe[c] : aS, 0.0f), 1.0f);
+	}
+}
 // What write x gives for the outputs: a float, or (isInt) the screen's fixed-point integer.
-inline float refWrite (const Write &x, const float out[16][4], const float view[V_COUNT], bool &isInt)
+inline float refWrite (const Write &x, const float out[16][4], const float view[V_COUNT], bool &isInt, const float *litP = 0, const float *litS = 0)
 {
 	const float *q = out[x.reg & 15];
 	isInt = false;
+	if (x.kind == W_LITP) return litP ? litP[x.comp & 3] : 0.0f;
+	if (x.kind == W_LITS) return litS ? litS[x.comp & 3] : 0.0f;
 	if (x.kind == W_RAW) return q[x.comp & 3];
 	if (x.kind == W_ONE_MINUS) return 1.0f + -q[x.comp & 3];
 	const float xc = q[0] * view[V_KX] + q[3] * view[V_CX], yc = q[1] * view[V_KY] + q[3] * view[V_CY], zc = q[2] * view[V_KZ] + q[3] * view[V_CZ];

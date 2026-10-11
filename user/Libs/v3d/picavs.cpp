@@ -16,7 +16,7 @@ namespace picavs
 
 namespace
 {
-enum { K_IN, K_UNI, K_ZERO, K_ONES, K_ADD, K_MUL, K_MAX, K_MIN, K_FLR, K_NEG, K_RCP, K_RSQ, K_EX2, K_LG2,
+enum { K_IN, K_UNI, K_ZERO, K_ONES, K_ONE, K_ADD, K_MUL, K_MAX, K_MIN, K_FLR, K_NEG, K_RCP, K_RSQ, K_EX2, K_LG2,
        K_CMP, K_AND, K_OR, K_NOT, K_SEL, K_M2F, K_FTOIN, K_OUT };
 enum { C_EQ, C_NE, C_LT, C_GE };
 enum { NODES_MAX = 6144, REGS = 32 };
@@ -82,7 +82,7 @@ struct Gen
 static Gen G;
 }
 
-bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r)
+bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r, const Sem *pos, const Lighting *lit)
 {
 	Gen &g = G;
 	g.nn = 0; g.fail = false; g.why = 0; g.clipOf = -1; g.rw = -1;
@@ -161,6 +161,101 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 				g.cur[dreg][i] = (short) (gd >= 0 ? g.add (K_SEL, gd, res[i], g.val (dreg, i)) : res[i]);
 	}
 
+	// ---- 1b. the lighting at the vertex (see picavs.h; the 3DS core's lightRows, value by value)
+	int litP[4] = { -1, -1, -1, -1 }, litS[4] = { -1, -1, -1, -1 };
+	if (lit && !g.fail)
+	{
+		auto S = [&] (const Sem &q) { return q.reg == 0xFF ? g.add (K_ZERO) : g.val (32 + (q.reg & 15), q.comp & 3); };
+		auto U = [&] (int slot) { return g.uni (U_LIGHT, slot, 0); };
+		auto mul = [&] (int a, int b) { return g.add (K_MUL, a, b); };
+		auto sum = [&] (int a, int b) { return g.add (K_ADD, a, b); };
+		auto dot = [&] (const int a[3], const int b[3]) { return sum (sum (mul (a[0], b[0]), mul (a[1], b[1])), mul (a[2], b[2])); };
+		// (a vector of length 0 stays 0, as on the processor: the square is kept above 1e-30)
+		auto rsq = [&] (int square) { return g.add (K_RSQ, g.add (K_MAX, square, g.uni (U_TINY, 0, 0))); };
+		auto unit = [&] (int v[3]) { const int inv = rsq (dot (v, v)); for (int c = 0; c < 3; c++) v[c] = mul (v[c], inv); };
+		auto abs_ = [&] (int a) { return g.add (K_MAX, a, g.add (K_NEG, a)); };
+		// a table as its broken line
+		auto table = [&] (int k, int x, bool abs)
+		{
+			if (abs) x = abs_ (x);
+			int y = sum (U (tableAt (k)), mul (x, U (tableAt (k) + 1)));
+			for (int j = 0; j < LUT_KNOTS; j++)
+				y = sum (y, mul (g.add (K_MAX, sum (x, g.add (K_NEG, U (tableAt (k) + 2 + 2 * j))), g.add (K_ZERO)), U (tableAt (k) + 3 + 2 * j)));
+			return y;
+		};
+		int q[4];
+		for (int c = 0; c < 4; c++) q[c] = S (lit->quat[c]);
+		{ const int inv = rsq (sum (sum (mul (q[0], q[0]), mul (q[1], q[1])), sum (mul (q[2], q[2]), mul (q[3], q[3])))); for (int c = 0; c < 4; c++) q[c] = mul (q[c], inv); }
+		int n[3], v[3], raw[3];
+		{ const int t = sum (mul (q[0], q[2]), mul (q[3], q[1])); n[0] = sum (t, t); }
+		{ const int t = sum (mul (q[1], q[2]), g.add (K_NEG, mul (q[3], q[0]))); n[1] = sum (t, t); }
+		{ const int t = sum (mul (q[0], q[0]), mul (q[1], q[1])); n[2] = sum (g.add (K_ONE), g.add (K_NEG, sum (t, t))); }
+		for (int c = 0; c < 3; c++) { raw[c] = S (lit->view[c]); v[c] = raw[c]; }
+		unit (v);
+		int dif[3], spe[3];
+		for (int c = 0; c < 3; c++) { dif[c] = U (c); spe[c] = -1; }
+		int in[4] = { -1, -1, -1, -1 };
+		for (int li = 0; li < lit->count && li < LIGHTS_MAX && !g.fail; li++)
+		{
+			const int at = lightAt (li);
+			int lv[3];
+			for (int c = 0; c < 3; c++) { lv[c] = U (at + c); if (!lit->light[li].directional) lv[c] = sum (lv[c], raw[c]); }
+			const int ld = dot (lv, lv), linv = rsq (ld);
+			int att = -1;
+			if (lit->light[li].distance)				// the table at clamp (scale x distance + bias, 0, 1)
+			{
+				int x = sum (mul (mul (ld, linv), U (at + 16)), U (at + 15));
+				x = g.add (K_MIN, g.add (K_MAX, x, g.add (K_ZERO)), g.add (K_ONE));
+				att = table (6 + li, x, true);
+			}
+			for (int c = 0; c < 3; c++) lv[c] = mul (lv[c], linv);
+			int h[3];
+			for (int c = 0; c < 3; c++) h[c] = sum (v[c], lv[c]);
+			unit (h);
+			const int nl = dot (n, lv);
+			const int lightOn = lit->light[li].twoSided ? abs_ (nl) : g.add (K_MAX, nl, g.add (K_ZERO));
+			in[0] = dot (n, h); in[1] = dot (v, h); in[2] = dot (n, v); in[3] = nl;
+			auto look = [&] (int k) -> int				// -1: the table is off (1)
+			{
+				if (!lit->table[k].on) return -1;
+				const int x = lit->table[k].input < 4 ? in[lit->table[k].input] : g.add (K_ZERO);
+				return table (k, x, lit->table[k].abs != 0);
+			};
+			const int d0 = look (0), d1 = look (1), rr = look (3);
+			const int rg = lit->table[4].on ? look (4) : rr, rb = lit->table[5].on ? look (5) : rr;
+			const int refl[3] = { rr, rg, rb };
+			const int high = lit->clampHighlights ? g.add (K_M2F, g.cmp (4, nl, g.add (K_ZERO))) : -1;	// (0 where the light is behind)
+			for (int c = 0; c < 3; c++)
+			{
+				int a = sum (mul (U (at + 3 + c), lightOn), U (at + 6 + c));
+				if (att >= 0) a = mul (a, att);
+				dif[c] = sum (dif[c], a);
+				int b0 = U (at + 9 + c), b1 = U (at + 12 + c);
+				if (d0 >= 0) b0 = mul (b0, d0);
+				if (d1 >= 0) b1 = mul (b1, d1);
+				if (refl[c] >= 0) b1 = mul (b1, refl[c]);
+				int b = sum (b0, b1);
+				if (high >= 0) b = mul (b, high);
+				if (att >= 0) b = mul (b, att);
+				spe[c] = spe[c] < 0 ? b : sum (spe[c], b);
+			}
+			if (li == lit->count - 1 && lit->table[2].on)
+			{
+				const int fr = look (2);
+				if (lit->fresnel & 1) litP[3] = fr;
+				if (lit->fresnel & 2) litS[3] = fr;
+			}
+		}
+		for (int c = 0; c < 4; c++)				// each colour brought into 0..1
+		{
+			int a = c < 3 ? dif[c] : litP[3], b = c < 3 ? spe[c] : litS[3];
+			if (a < 0) a = g.add (K_ONE);
+			if (b < 0) b = g.add (c < 3 ? K_ZERO : K_ONE);
+			litP[c] = g.add (K_MIN, g.add (K_MAX, a, g.add (K_ZERO)), g.add (K_ONE));
+			litS[c] = g.add (K_MIN, g.add (K_MAX, b, g.add (K_ZERO)), g.add (K_ONE));
+		}
+	}
+
 	// ---- 2. what is written
 	for (u32 k = 0; k < nw && !g.fail; k++)
 	{
@@ -168,14 +263,16 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 		const int oreg = 32 + (x.reg & 15);
 		int v;
 		if (x.kind == W_RAW) v = g.val (oreg, x.comp & 3);
+		else if (x.kind == W_LITP || x.kind == W_LITS) { v = (x.kind == W_LITP ? litP : litS)[x.comp & 3]; if (v < 0) { g.fail = true; g.why = "the lighting's colour asked without the lighting"; v = 0; } }
 		else if (x.kind == W_ONE_MINUS) { const int one = g.add (K_M2F, g.add (K_ONES)); v = g.add (K_ADD, one, g.add (K_NEG, g.val (oreg, x.comp & 3))); }
 		else
 		{
 			if (g.clipOf != oreg)				// the clip position: (x KX + w CX, y KY + w CY, z KZ + w CZ, w)
 			{
-				const int pw = g.val (oreg, 3);
+				auto P = [&] (int c) { return !pos ? g.val (oreg, c) : pos[c].reg == 0xFF ? g.add (c == 3 ? K_ONE : K_ZERO) : g.val (32 + (pos[c].reg & 15), pos[c].comp & 3); };
+				const int pw = P (3);
 				for (int c = 0; c < 3; c++)
-					g.clip[c] = (short) g.add (K_ADD, g.add (K_MUL, g.val (oreg, c), g.uni (U_VIEW, V_KX + 2 * c, 0)), g.add (K_MUL, pw, g.uni (U_VIEW, V_CX + 2 * c, 0)));
+					g.clip[c] = (short) g.add (K_ADD, g.add (K_MUL, P (c), g.uni (U_VIEW, V_KX + 2 * c, 0)), g.add (K_MUL, pw, g.uni (U_VIEW, V_CX + 2 * c, 0)));
 				g.clip[3] = (short) pw; g.rw = (short) g.add (K_RCP, pw); g.clipOf = oreg;
 			}
 			switch (x.kind)
@@ -265,6 +362,7 @@ bool build (Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax
 				break;
 			case K_ZERO: p << I ().m (V3D_QPU_M_MOV, D, imm (0)); break;
 			case K_ONES: p << I ().m (V3D_QPU_M_MOV, D, imm ((u32) -1)); break;
+			case K_ONE: p << I ().m (V3D_QPU_M_MOV, D, imm (0x3f800000)); break;
 			case K_ADD: p << I ().a (V3D_QPU_A_FADD, D, R_ (x.a), R_ (x.b)); break;
 			case K_MUL: p << I ().m (V3D_QPU_M_FMUL, D, R_ (x.a), R_ (x.b)); break;
 			case K_MAX: p << I ().a (V3D_QPU_A_FMAX, D, R_ (x.a), R_ (x.b)); break;
