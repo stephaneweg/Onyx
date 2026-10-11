@@ -169,6 +169,21 @@ void force_class (int mode, int size_class, int profile)
 
 bool ring_on () { load (); return s_cls != UK_SC_REGULAR; }
 
+static bool s_pointer;
+bool pointer_seen () { return s_pointer; }
+void pointer_note ()
+{
+	if (s_pointer) return;
+	s_pointer = true;
+	if (!ring_on ()) return;				// (the desktop: nothing depends on it)
+	for (ExtHead *h = s_adaptive; h; )
+	{
+		ExtHead *n = h->nextAdaptive;
+		if (h->onClass) h->onClass (h->owner, h);
+		h = n;
+	}
+}
+
 static void invalidate_all (Widget *w)
 {
 	w->invalidate (true);

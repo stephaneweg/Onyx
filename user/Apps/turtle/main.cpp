@@ -1557,7 +1557,7 @@ static void layout ()
 	bool narrow = W < 920;
 	int listW = narrow ? 170 : LISTW;
 	if (narrow) mid = PAD + listW + PAD;
-	if (g_pk) { g_side->place (0, 0, LISTW + 2 * PAD, H); mid = g_side->reservedWidth () + (g_side->presentation () == UK_SP_DRAWER ? 24 : PAD); }	// (the levels: a drawer -- its tab's room at the edge)
+	if (g_pk) { g_side->place (0, 0, LISTW + 2 * PAD, H); mid = g_side->reservedWidth () + PAD; }	// (the levels: a drawer -- no tab without a pointer: the band names it)
 	int edw = narrow ? 270 : EDW;
 	if (g_pk && narrow) edw = 290;			// (the count's line whole: its two star thresholds)
 	if (W > 1000)
@@ -1778,6 +1778,7 @@ int main (void)
 		leftPane->place ();
 		g_side = new SidePanel (0, 0, LISTW + 2 * PAD, 600, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_side->setContent (leftPane);
+		g_side->setName (L2 ("Levels", "Niveaux"));
 		g_side->onPresentation = [] (SidePanel &, int) { ::layout (); };
 		root.addChild (g_side);
 	}

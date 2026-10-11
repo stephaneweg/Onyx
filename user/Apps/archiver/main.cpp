@@ -1067,6 +1067,7 @@ int main (void)
 		body->anchor = ANCHOR_FILL;
 		g_sp = new SidePanel (0, 0, 240, bodyH, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_sp->setContent (left);
+		g_sp->setName (TR ("Folders"));
 		g_sp->onPresentation = [] (SidePanel &, int) { body_lay_out (); };
 		body->addChild (g_list); body->addChild (g_sp);
 		root.addChild (body);

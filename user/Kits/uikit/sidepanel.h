@@ -112,6 +112,10 @@ public:
 	void setWidths (int minW, int prefW, int maxW);		// the desktop: a splitter's range; prefW the panel's width
 	// false: never a rail -- in pocket's landscape a navigation panel whose labels matter (a settings list) stays whole
 	void setRail (bool allowed);
+	// Its name when it is a drawer (pocket, console; 12 characters shown at most; copied): the shell's band writes it
+	// beside the button that opens it -- "L Levels" at the left, "Inspector R" at the right --, lit while it is open.
+	// Not named: "Panel" (a navigation panel), "Inspector". A closed drawer shows NO tab until a pointer exists.
+	void setName (const char *name);
 	int  presentation ();				// UK_SP_* now (the desktop: UK_SP_FULL)
 	int  reservedWidth ();				// what the app leaves for it at its side now (a rail: its width; 0: overlaid)
 	void open (bool on);				// a drawer, a slide-over, a sheet opened / closed (the rail: expanded)

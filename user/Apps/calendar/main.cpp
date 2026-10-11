@@ -535,6 +535,7 @@ int main (void)
 	g_sp = new SidePanel (0, TB_H, SIDE_W, bodyH, UK_SP_LEFT, UK_SP_NAVIGATION);
 	g_sp->setColors (C_BG, UK_AUTO);
 	g_sp->setContent (g_side);
+	g_sp->setName (TR ("Calendars"));
 	g_sp->onPresentation = [] (SidePanel &, int) { lay_out (); };
 	int sy = 10;
 	int yy, mm, dd; civil_from_days (g_anchor, yy, mm, dd);

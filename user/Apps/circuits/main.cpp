@@ -724,6 +724,7 @@ int main (void)
 	{
 		g_side = new SidePanel (0, 0, 230, 600, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_side->setContent (g_list);
+		g_side->setName (TR ("Levels"));
 		g_side->onPresentation = [] (SidePanel &, int) { layout (); };
 		root.addChild (g_side);
 	}

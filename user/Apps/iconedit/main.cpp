@@ -538,6 +538,7 @@ int main (void)
 	if (pocket)
 	{
 		g_sp = new SidePanel (W - SIDE_W, 0, SIDE_W, H - fh - 14, UK_SP_RIGHT, UK_SP_INSPECTOR);
+		g_sp->setName (TR ("Colours"));
 		g_sp->setColors (C_BG, UK_AUTO);
 		g_sp->addPage (TR ("Colours"), -1, side);
 		g_sp->onPresentation = [] (SidePanel &, int) { lay_out (); };

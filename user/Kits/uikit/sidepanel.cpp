@@ -40,6 +40,7 @@ struct SpExt : internal::ExtHead
 	int	 revealAt = -1;			// ... or this item: the one the arrows are on (pocket, console: no wheel to scroll with)
 	int	 side = UK_SP_LEFT, role = UK_SP_NAVIGATION;	// (the panel's: for sp_step, which is not a member)
 	Widget	*before = 0;			// what had the keys when the keys opened it: given them back when it closes
+	char	 name[24] = "";			// (setName) the drawer's name in the shell's band
 	SpItem	*items = 0; int n = 0, cap = 0;
 	int	 nextId = 1000000;
 	int	 sel = -1, hot = -1, cursor = -1;	// the chosen item (its id); under the pointer, the keys' (indexes)
@@ -96,6 +97,33 @@ public:
 bool sp_step (Widget *w, int dir);
 }
 
+// ---- the drawers told to the shell (Q3 of docs/compact-shell/mockups/pocketterm/apps/ANSWERS.md): a closed drawer
+// takes no pixel of the content where there is no pointer -- the band names it beside its button, L or R ------------
+static SidePanel *s_panels[8];
+static void sp_tell ()
+{
+	char b[96]; int n = 0;
+	for (int i = 0; i < 8; i++)
+	{
+		SidePanel *p = s_panels[i];
+		if (p == 0 || p->parent == 0) continue;
+		int pres = p->presentation ();
+		if (pres != UK_SP_DRAWER && pres != UK_SP_SLIDEOVER && pres != UK_SP_SHEET) continue;
+		bool shown = true;
+		for (Widget *w = p->parent; w; w = w->parent) if (w->hidden) shown = false;
+		if (!shown) continue;
+		SpExt *e = sp (p);
+		const char *nm = e->name[0] ? e->name : e->role == UK_SP_INSPECTOR ? "Inspector" : "Panel";
+		if (n + 30 > (int) sizeof b) break;
+		b[n++] = 'D'; b[n++] = e->side == UK_SP_RIGHT ? 'R' : 'L'; b[n++] = e->open ? '1' : '0'; b[n++] = '\t';
+		for (int k = 0; nm[k] && k < 23; k++) b[n++] = nm[k];
+		b[n++] = '\n';
+	}
+	b[n] = 0;
+	internal::menu_extra (b);
+}
+void SidePanel::setName (const char *name) { SpExt *e = sp (this); int i = 0; for (; name && name[i] && i < (int) sizeof e->name - 1; i++) e->name[i] = name[i]; e->name[i] = 0; sp_tell (); }
+
 // ---- the colours, the faces ------------------------------------------------------------------------------------
 static bool console () { return uk_size_class () == UK_SC_CONSOLE; }
 static unsigned sp_bg (SpExt *e) { return console () ? (unsigned) CON_BG : e->bg != UK_AUTO ? e->bg : uk_mix (C_BG, C_FIELD, 70); }
@@ -109,17 +137,21 @@ SidePanel::SidePanel (int l, int t, int w, int h, int side, int role)
 	SpExt *e = internal::ext_of<SpExt> (this, internal::EXT_SIDEPANEL);
 	e->homeL = e->setL = l; e->homeT = e->setT = t; e->homeW = e->setW = w; e->homeH = e->setH = h;
 	e->minW = w / 2; e->prefW = w; e->maxW = w * 2;
-	e->onClass = [] (Widget *x, internal::ExtHead *) { ((SidePanel *) x)->layout (); x->invalidate (true); };
+	// (the class changed, or a pointer came -- a drawer's tab with it: placed again)
+	e->onClass = [] (Widget *x, internal::ExtHead *h) { ((SpExt *) h)->told = -1; ((SidePanel *) x)->layout (); x->invalidate (true); };
 	e->destroy = [] (internal::ExtHead *x)
 	{
 		SpExt *s = (SpExt *) x;
 		internal::nav_unregister (x->owner);
+		for (int i = 0; i < 8; i++) if (s_panels[i] == x->owner) s_panels[i] = 0;
+		sp_tell ();
 		for (int i = 0; i < s->n; i++) delete [] s->items[i].thumb;
 		delete [] s->items; delete [] s->scrim;
 		delete s;
 	};
 	internal::adaptive_add (e);
 	e->side = m_side; e->role = m_role;
+	for (int i = 0; i < 8; i++) if (s_panels[i] == 0) { s_panels[i] = this; break; }
 	internal::nav_register (this, m_role == UK_SP_NAVIGATION ? 1 : 0, sp_step);	// (an inspector: after the tabs and the places)
 	canFocus = true;
 }
@@ -392,7 +424,7 @@ static void sp_rect (SidePanel *p, SpExt *e, int pres, int side, int *x, int *y,
 		break;
 	case UK_SP_DRAWER: case UK_SP_SLIDEOVER: case UK_SP_SHEET:
 		if (e->open) { *x = 0; *y = 0; *w = pw; *h = ph; break; }
-		if (e->toggle) { *w = 0; *h = 0; break; }	// (the app's button opens it: no tab)
+		if (e->toggle || !internal::pointer_seen ()) { *w = 0; *h = 0; break; }	// (the app's button opens it; no pointer to press a tab: none)
 		if (pres == UK_SP_SHEET) { *w = TAB_H + 20; *h = 16; *x = (pw - *w) / 2; *y = ph - *h; }
 		else { *w = TAB_W; *h = TAB_H; *y = e->homeT + (e->homeH - TAB_H) / 2; *x = side == UK_SP_RIGHT ? e->homeL + e->homeW - TAB_W : e->homeL; }
 		break;
@@ -438,6 +470,7 @@ static void sp_apply (SidePanel *p, SpExt *e, int pres, int side)
 	if ((overlay (pres) && e->open) || (pres == UK_SP_RAIL && e->open)) p->bringToFront ();
 	e->applying = false;
 	if (p->parent) p->parent->invalidate (true);
+	sp_tell ();
 }
 
 void SidePanel::resizeTo (int w, int h)

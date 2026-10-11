@@ -1976,6 +1976,7 @@ int main (void)
 	{
 		g_sp = new SidePanel (0, TABS_H + TB_H, SIDE_W, 640 - TABS_H - TB_H, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_sp->setContent (g_side);
+		g_sp->setName (TR ("Pages"));
 		g_sp->onPresentation = [] (SidePanel &, int) { invalidate_layout (); refresh_all (); };
 		root.addChild (g_sp);
 	}

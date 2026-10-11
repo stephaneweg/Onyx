@@ -1453,6 +1453,7 @@ int main (void)
 		g_sp = new SidePanel (0, TOOL_H, SIDE0 - 1, H - TOOL_H - ST_H, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_sp->setColors (sbg, UK_AUTO);
 		g_sp->setContent (side);
+		g_sp->setName (TR ("Patterns"));
 		g_sp->onPresentation = [] (SidePanel &, int) { if (g_root) ((TrackerRoot *) g_root)->onResized (); };
 		root.addChild (g_sp);
 	}

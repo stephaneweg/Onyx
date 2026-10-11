@@ -202,6 +202,18 @@ if want drawers; then
 	for i in 0 1 2; do out pt-drawer-iconedit-$i; done
 	differ pt-drawer-iconedit-0 pt-drawer-iconedit-1 "the Icon Editor: R opens its colours"
 	same pt-drawer-iconedit-0 pt-drawer-iconedit-2 "the Icon Editor: R again closes them"
+	# no pointer: a closed drawer shows no tab (the window's left edge is the content's); a pointer seen: the tab is back
+	run pocket_calendar pt-drawer-pointer "$WWW;move 300 200;$W;move 302 202;$W;dump $OUT/pt-drawer-calendar-pointer.elsm" $P640 SIM_APPNAME=calendar SIM_APP=calendar SIM_WRITES=$WR SIM_DATE=20260930 SIM_TIME=1042
+	out pt-drawer-calendar-pointer
+	differ pt-drawer-calendar-0 pt-drawer-calendar-pointer "a pointer seen: the drawer's tab comes back"
+	python3 -c "from PIL import Image; import sys; im = Image.open ('$OUT/pt-drawer-calendar-0.png').convert ('RGB').crop ((0, 230, 4, 330)); sys.exit (0 if len (im.getcolors (1000)) <= 3 else 1)" && echo "  no pointer: no tab on the edge: ok" || { echo "  no pointer: no tab on the edge: FAILED"; FAIL=1; }
+	# the band names the drawers beside their buttons (the menu bar given the lines UIKit's SidePanel sends with the menus)
+	ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
+	WR=$(langdir "")
+	DM='DL0~Levels|DR1~Inspector|MFile|I1~Open...~^O|MEdit|I2~Undo~^Z'
+	run pocket_menubar pt-drawer-band "$W;other 640 450 Slides;othermenu $DM;$W;$W;$W;dump $OUT/pt-drawer-band.elsm" SIM_SCREEN=640x480 SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR SIM_SERVICES=shell
+	out pt-drawer-band
+	busy pt-drawer-band 190 4 300 26 "the band names the left drawer after Menu"
 fi
 
 # ---- the audit: every other app with a window, as it is at 640 x 480 pocket (AUDIT-640.md beside the pictures) ----------

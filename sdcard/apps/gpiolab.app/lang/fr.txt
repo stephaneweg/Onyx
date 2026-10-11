@@ -163,3 +163,4 @@ another program has it	un autre programme l'a prise
 no GPIO on this system (update it, or use the simulator)	pas de GPIO sur ce système (mettez-le à jour, ou utilisez le simulateur)
 not possible on this pin, or a value out of range	impossible sur cette broche, ou une valeur hors limites
 failed	échec
+Header	Connecteur

@@ -1311,7 +1311,7 @@ static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_a
 void LabRoot::onResized ()
 {
 	W = width; H = height;
-	int rx = g_pk ? 24 : 436, rw = W - rx - 12;		// (pocket's drawer: its tab's room at the edge)
+	int rx = g_pk ? 12 : 436, rw = W - rx - 12;		// (pocket: the header is a drawer, named in the band)
 	if (g_pk) g_side->place (0, 0, 412, H);
 	else g_header->resizeTo (412, H - BANNER - 44);
 	g_panel->resizeTo (rw, 214);
@@ -1375,7 +1375,7 @@ int main (void)
 	headOf->addChild (g_simSw);
 	sync_sim_switch ();
 
-	int rx = g_pk ? 24 : 436, rw = W - rx - 12;		// (pocket's drawer: its tab's room at the edge)
+	int rx = g_pk ? 12 : 436, rw = W - rx - 12;		// (pocket: the header is a drawer, named in the band)
 	g_panel = new PinPanel (rx, BANNER + 6, rw, 214);
 	root.addChild (g_panel);
 	int py = BANNER + 6;
@@ -1500,6 +1500,7 @@ int main (void)
 		headPane->place ();
 		g_side = new SidePanel (0, 0, 412, H, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_side->setContent (headPane);
+		g_side->setName (TR ("Header"));
 		root.addChild (g_side);
 	}
 	if (g_view == 1) g_ed->setFocus (); else if (g_pk) ((Widget *) g_modes)->setFocus (); else g_header->setFocus ();

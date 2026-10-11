@@ -400,6 +400,7 @@ void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 		r->m_tipDone = ev != GUI_EVENT_PTR_MOVE && ev != GUI_EVENT_PTR_ENTER;	// clicks: no tip
 	}
 	int c = GUI_PTR_CHANGED (v);
+	if (ev != GUI_EVENT_PTR_LEAVE) internal::pointer_note ();	// (a pointer exists: pocket shows what only a pointer uses)
 	switch (ev)
 	{
 	case GUI_EVENT_PTR_DOWN:

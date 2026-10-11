@@ -62,6 +62,14 @@ void adaptive_remove (ExtHead *h);
 void class_dirty ();			// asked again at the next uk_size_class (a resize, the screen changed)
 void class_check ();			// (Root::step) changed: each Root's onSizeClass, each adaptive widget's onClass
 bool ring_on ();			// the focus ring drawn, the arrows move the focus (pocket, console)
+// A POINTER EXISTS: a pointer event reached a Root of this program (Root::ptrEvent: a mouse is plugged in and moved,
+// a finger touched). Until then, in pocket and console, nothing is drawn that only a pointer can use (a closed
+// drawer's tab). The first one lays the adaptive widgets out again.
+bool pointer_seen ();
+void pointer_note ();
+// The drawers of the window, told to the shell with the app's menus (uikit/menu.cpp: lines "D<L|R><0|1>\t<name>"
+// before the menus' own -- the band names each beside its button, lit while it is open). "": none.
+void menu_extra (const char *lines);
 // (tests on the PC: the mode, the class and the profile forced; -1 -1 -1: the server's again)
 void force_class (int mode, int size_class, int profile);
 

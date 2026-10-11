@@ -267,9 +267,16 @@ static void onyx_menu (void)			// no active app: just the system menu
 	add_onyx_menu ();
 }
 
+// Pocket: the front window's DRAWERS, told with its menus (UIKit's SidePanel: a line "D<L|R><0|1>\t<name>") -- the
+// band names each beside the button that opens it, "[L] Levels" after Menu, "Inspector [R]" before the status icons,
+// lit while it is open. No tab on the window's edge where nothing can press it.
+static struct { bool on, open; char name[24]; } g_drawer[2];	// [0] the left one (L), [1] the right one (R)
+// (UIKit's names for a drawer the app did not name: said in the language here)
+static const char *const DRAWER_WORDS[2] __attribute__ ((unused)) = { TRN ("Panel"), TRN ("Inspector") };
 static void parse (const char *spec, const char *title)
 {
 	g_nmenus = 0; g_onyx = false;
+	g_drawer[0].on = g_drawer[1].on = false;
 	scopy (g_app, title[0] ? title : "App", sizeof g_app);
 	if (g_app[0] >= 'a' && g_app[0] <= 'z') g_app[0] = (char) (g_app[0] - 32);	// "tinypad" -> "Tinypad"
 	add_onyx_menu ();
@@ -284,6 +291,13 @@ static void parse (const char *spec, const char *title)
 			cur = &g_menus[g_nmenus++]; cur->count = 0;
 			int n = 0; for (const char *q = p + 1; q < e && n < (int) sizeof cur->title - 1; q++) cur->title[n++] = *q;
 			cur->title[n] = '\0';
+		}
+		else if (*p == 'D' && e - p >= 4 && (p[1] == 'L' || p[1] == 'R'))
+		{
+			int k = p[1] == 'R' ? 1 : 0, n = 0;
+			g_drawer[k].on = true; g_drawer[k].open = p[2] == '1';
+			for (const char *q = p + 4; q < e && n < (int) sizeof g_drawer[k].name - 1; q++) g_drawer[k].name[n++] = *q;
+			g_drawer[k].name[n] = '\0';
 		}
 		else if (*p == '-' && cur && cur->count < MAXITEMS)
 		{
@@ -951,6 +965,31 @@ static void draw (void)
 		else if (g_titleHot == -2) { unsigned f = uk_flat () ? (unsigned) UK_N_BG2 : uk_tone (C_MENUBAR, 220); uk_rbox (g_cv, x - 4, y, w, h, 6, f, f); }
 		for (int k = 0; k < 3; k++) g_cv.fillRect (x + 2, y + 6 + k * 4, 12, 2, ink);
 		uk_text_l (g_cv, x + 22, 0, BAR_H - (uk_flat () ? 0 : 1), TR ("Menu"), ink);
+	}
+	if (g_pocket && !g_onyx && !g_col && (g_drawer[0].on || g_drawer[1].on))	// pocket: the drawers' chips
+	{
+		unsigned dim = uk_flat () ? (unsigned) UK_N_TEXT2 : C_BARDIM;
+		int lx = pk_has_menu () ? pk_menu_x () + pk_menu_w () + 10 : g_menus[0].x + g_menus[0].w + 14, lend = lx;
+		if (g_drawer[0].on)
+		{
+			const char *nm = TR (g_drawer[0].name);
+			int kw = uk_pad_key (g_cv, lx, 5, 20, "L");
+			uk_text_l (g_cv, lx + kw + 6, 0, BAR_H - (uk_flat () ? 0 : 1), nm, g_drawer[0].open ? C_ACCENT : dim, g_drawer[0].open ? 2 : 0);
+			lend = lx + kw + 6 + uk_tw (nm, 2) + 12;
+		}
+		if (g_drawer[1].on)
+		{
+			int rx = spk_x ();
+			if (usb_shown ()) rx = usb_x ();
+			for (int i = 0; i < g_ntray; i++) if (tray_x (i) < rx) rx = tray_x (i);
+			rx -= 12;
+			const char *nm = TR (g_drawer[1].name);
+			int kw = uk_pad_key (g_cv, 0, 5, 20, "R", true);
+			uk_pad_key (g_cv, rx - kw, 5, 20, "R");
+			int tw = uk_tw (nm, g_drawer[1].open ? 2 : 0);
+			if (rx - kw - 6 - tw > lend)			// (no room: the name goes first, the button stays)
+				uk_text_l (g_cv, rx - kw - 6 - tw, 0, BAR_H - (uk_flat () ? 0 : 1), nm, g_drawer[1].open ? C_ACCENT : dim, g_drawer[1].open ? 2 : 0);
+		}
 	}
 	int hh = 0, mm = 0;
 	kapi_get_datetime (0, 0, 0, &hh, &mm, 0);

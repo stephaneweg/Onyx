@@ -48,3 +48,5 @@ close	fermer
 Home	Accueil
 Open apps	Applis ouvertes
 Quick settings	Réglages rapides
+Panel	Panneau
+Inspector	Inspecteur

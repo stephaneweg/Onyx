@@ -6,6 +6,7 @@
 #include "uikit/menu.h"
 #include "uikit/root.h"
 #include "uikit/win.h"		// uk_win_menu_set, uk_win_menu_command
+#include "uikit/internal/adapt_int.h"
 
 namespace uikit {
 
@@ -38,10 +39,30 @@ void Menu::item (const char *label, const char *shortcutText, long key, MenuActi
 	m_count++;
 }
 
+// The window's drawers (uikit/internal/adapt_int.h menu_extra): their lines go before the menus' -- a menu bar that
+// does not know them skips them (a line is a menu "M", an item "I" or a separator "-").
+static char s_extra[96];
+static char s_pub[WIN_MENU_MAX_USER];
 void Menu::publish ()
 {
 	s_current = this;
-	uk_win_menu_set (m_spec, handler);
+	if (s_extra[0] == 0) { uk_win_menu_set (m_spec, handler); return; }
+	int n = 0;
+	for (int i = 0; s_extra[i] && n < (int) sizeof s_pub - 1; i++) s_pub[n++] = s_extra[i];
+	for (int i = 0; m_spec[i] && n < (int) sizeof s_pub - 1; i++) s_pub[n++] = m_spec[i];
+	s_pub[n] = 0;
+	uk_win_menu_set (s_pub, handler);
+}
+namespace internal {
+void menu_extra (const char *lines)
+{
+	int i = 0; bool same = true;
+	for (; lines[i] && i < (int) sizeof s_extra - 1; i++) { if (s_extra[i] != lines[i]) same = false; }
+	if (same && s_extra[i] == 0) return;
+	for (i = 0; lines[i] && i < (int) sizeof s_extra - 1; i++) s_extra[i] = lines[i];
+	s_extra[i] = 0;
+	if (s_current) s_current->publish ();
+}
 }
 
 Menu *Menu::current () { return s_current; }
