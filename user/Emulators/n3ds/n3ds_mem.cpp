@@ -17,7 +17,7 @@ bool Memory::init ()
 	perms = (u8 *) calloc (PAGE_COUNT, 1);
 	fcram = (u8 *) calloc (FCRAM_SIZE, 1);
 	vram = (u8 *) calloc (VRAM_SIZE, 1);
-	linearUsed = topUsed = 0; appMem = APP_MEM_DEFAULT; missing = 0; missingUser = 0; faults = 0; faultAddr = 0;
+	linearUsed = topUsed = 0; appMem = APP_MEM_DEFAULT; missing = 0; missingUser = 0; faults = 0; faultAddr = 0; watchN = 0; watchP0 = 0; watchBase = 0; watchSaid = 0;
 	if (!pages || !perms || !fcram || !vram) { quit (); return false; }
 	map (VA_VRAM, VRAM_SIZE, vram, PERM_RW);
 	return true;
@@ -55,13 +55,23 @@ void Memory::unmap (u32 va, u32 size)
 	for (u32 i = 0; i < n && p + i < PAGE_COUNT; i++) { pages[p + i] = 0; perms[p + i] = 0; }
 }
 
+void Memory::watch (u32 va, u32 n)
+{
+	if (watchN || !n) return;
+	const u32 p0 = va >> PAGE_BITS, p1 = (va + n - 1) >> PAGE_BITS;
+	if (p1 - p0 + 1 > 64) return;
+	for (u32 p = p0; p <= p1; p++) if (!pages[p]) return;
+	for (u32 p = p0; p <= p1; p++) { watchPg[p - p0] = pages[p]; pages[p] = 0; }
+	watchP0 = p0; watchN = p1 - p0 + 1; watchBase = va;
+}
+
 bool Memory::mapped (u32 va, u32 size) const
 {
 	if (!size) return true;
 	u32 p0 = va >> PAGE_BITS, p1 = (va + size - 1) >> PAGE_BITS;
 	if (va + size - 1 < va) return false;
 	for (u32 p = p0; p <= p1; p++)
-		if (!pages[p] && !(missing && missing (missingUser, p << PAGE_BITS) && pages[p])) return false;
+		if (!pages[p] && !watched (p << PAGE_BITS) && !(missing && missing (missingUser, p << PAGE_BITS) && pages[p])) return false;
 	return true;
 }
 
@@ -73,6 +83,7 @@ bool Memory::read (u32 va, void *dst, u32 n) const
 	{
 		u8 *p = ptr (va);
 		u32 k = PAGE_SIZE - (va & (PAGE_SIZE - 1)); if (k > n) k = n;
+		if (!p) p = watched (va);
 		if (!p && missing && missing (missingUser, va)) p = ptr (va);
 		if (!p) { memset (d, 0, n); const_cast<Memory *> (this)->faults++; const_cast<Memory *> (this)->faultAddr = va; return false; }
 		memcpy (d, p, k); d += k; va += k; n -= k;
@@ -87,6 +98,7 @@ bool Memory::write (u32 va, const void *src, u32 n)
 	{
 		u8 *p = ptr (va);
 		u32 k = PAGE_SIZE - (va & (PAGE_SIZE - 1)); if (k > n) k = n;
+		if (!p) p = watched (va);
 		if (!p && missing && missing (missingUser, va)) p = ptr (va);
 		if (!p) { faults++; faultAddr = va; return false; }
 		memcpy (p, s, k); s += k; va += k; n -= k;
@@ -100,6 +112,7 @@ bool Memory::fill (u32 va, u8 v, u32 n)
 	{
 		u8 *p = ptr (va);
 		u32 k = PAGE_SIZE - (va & (PAGE_SIZE - 1)); if (k > n) k = n;
+		if (!p) p = watched (va);
 		if (!p && missing && missing (missingUser, va)) p = ptr (va);
 		if (!p) { faults++; faultAddr = va; return false; }
 		memset (p, v, k); va += k; n -= k;

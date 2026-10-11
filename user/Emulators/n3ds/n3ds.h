@@ -119,6 +119,11 @@ struct Memory
 	bool fill (u32 va, u8 v, u32 n);
 	// a page is not there: the host may put it back (a buffer the renderer kept from the program: n3ds_pica.cpp) -> true
 	bool (*missing) (void *user, u32 va); void *missingUser;
+	// (to study a program: pages taken out of its table -- every access to them comes to the processor's slow path,
+	// which says it (n3ds_cpu.cpp) and reads or writes them here)
+	u8 *watchPg[64]; u32 watchP0, watchN, watchBase, watchSaid;
+	u8 *watched (u32 va) const { const u32 p = va >> PAGE_BITS; return watchN && p - watchP0 < watchN ? watchPg[p - watchP0] + (va & (PAGE_SIZE - 1)) : 0; }
+	void watch (u32 va, u32 n);
 	u32 faults;				// accesses outside the mapped pages (read as 0, writes dropped)
 	u32 faultAddr;
 };
@@ -400,6 +405,7 @@ struct Machine
 	bool gpuIndexed;			// ... and indexed ones (GpuBatch::nVerts)
 	u32 gpuSubpixels;			// ... and its screen positions' unit: 256 a pixel (V3D 4.2), 64 (V3D 7.1)
 	u32 vsDebug;				// (to find a fault: kinds of draws kept on the processor -- n3ds_pica.cpp, vsChunk)
+	bool watchMade;				// (to study a program: the stand-in archive's file, once read by the program, is watched)
 	bool vsCheck;				// (tests: what each draw's vertex program would give, beside the processor's path)
 	struct { u64 noState, notVerts[4], chunks, inputs, uniforms, checked, wrong, wrongLit, tplChecked, tplWrong; u32 said; } vsStat;
 	bool trace;				// the system calls and the requests, on stderr (tests)

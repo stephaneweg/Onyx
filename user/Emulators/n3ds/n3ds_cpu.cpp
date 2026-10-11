@@ -106,14 +106,31 @@ struct DynCpu final : Cpu, Dynarmic::A32::UserCallbacks
 		if (m->trace && !m->mem.pages[va >> PAGE_BITS])
 			fprintf (stderr, "    %s %08x: nothing there (pc %08x, lr %08x)%c", what, (unsigned) va, (unsigned) jit->Regs ()[15], (unsigned) jit->Regs ()[14], 10);
 	}
-	u8 MemoryRead8 (u32 va) override { missing (va, "read"); return m->mem.r8 (va); }
-	u16 MemoryRead16 (u32 va) override { missing (va, "read"); return m->mem.r16 (va); }
-	u32 MemoryRead32 (u32 va) override { missing (va, "read"); return m->mem.r32 (va); }
-	u64 MemoryRead64 (u32 va) override { missing (va, "read"); return m->mem.r64 (va); }
-	void MemoryWrite8 (u32 va, u8 v) override { missing (va, "write"); m->mem.w8 (va, v); }
-	void MemoryWrite16 (u32 va, u16 v) override { missing (va, "write"); m->mem.w16 (va, v); }
-	void MemoryWrite32 (u32 va, u32 v) override { missing (va, "write"); m->mem.w32 (va, v); }
-	void MemoryWrite64 (u32 va, u64 v) override { missing (va, "write"); m->mem.w64 (va, v); }
+	// (a watched page -- Memory::watch --: the access said, with where the program is, and done on the page itself)
+	bool watchedRead (u32 va, void *out, u32 n)
+	{
+		u8 *w = m->mem.watched (va);
+		if (!w) return false;
+		memcpy (out, w, n);
+		if (m->mem.watchSaid < 3000) { m->mem.watchSaid++; u64 v = 0; memcpy (&v, w, n); fprintf (stderr, "W read%u +%05x = %llx (pc %08x, lr %08x)%c", (unsigned) n * 8, (unsigned) (va - m->mem.watchBase), (unsigned long long) v, (unsigned) jit->Regs ()[15], (unsigned) jit->Regs ()[14], 10); }
+		return true;
+	}
+	bool watchedWrite (u32 va, const void *in, u32 n)
+	{
+		u8 *w = m->mem.watched (va);
+		if (!w) return false;
+		memcpy (w, in, n);
+		if (m->mem.watchSaid < 3000) { m->mem.watchSaid++; u64 v = 0; memcpy (&v, in, n); fprintf (stderr, "W write%u +%05x = %llx (pc %08x, lr %08x)%c", (unsigned) n * 8, (unsigned) (va - m->mem.watchBase), (unsigned long long) v, (unsigned) jit->Regs ()[15], (unsigned) jit->Regs ()[14], 10); }
+		return true;
+	}
+	u8 MemoryRead8 (u32 va) override { u8 v; if (watchedRead (va, &v, 1)) return v; missing (va, "read"); return m->mem.r8 (va); }
+	u16 MemoryRead16 (u32 va) override { u16 v; if (watchedRead (va, &v, 2)) return v; missing (va, "read"); return m->mem.r16 (va); }
+	u32 MemoryRead32 (u32 va) override { u32 v; if (watchedRead (va, &v, 4)) return v; missing (va, "read"); return m->mem.r32 (va); }
+	u64 MemoryRead64 (u32 va) override { u64 v; if (watchedRead (va, &v, 8)) return v; missing (va, "read"); return m->mem.r64 (va); }
+	void MemoryWrite8 (u32 va, u8 v) override { if (watchedWrite (va, &v, 1)) return; missing (va, "write"); m->mem.w8 (va, v); }
+	void MemoryWrite16 (u32 va, u16 v) override { if (watchedWrite (va, &v, 2)) return; missing (va, "write"); m->mem.w16 (va, v); }
+	void MemoryWrite32 (u32 va, u32 v) override { if (watchedWrite (va, &v, 4)) return; missing (va, "write"); m->mem.w32 (va, v); }
+	void MemoryWrite64 (u32 va, u64 v) override { if (watchedWrite (va, &v, 8)) return; missing (va, "write"); m->mem.w64 (va, v); }
 	// (one emulated core: an exclusive store succeeds when the value is still the one read)
 	bool MemoryWriteExclusive8 (u32 va, u8 v, u8 expected) override { if (m->mem.r8 (va) != expected) return false; m->mem.w8 (va, v); return true; }
 	bool MemoryWriteExclusive16 (u32 va, u16 v, u16 expected) override { if (m->mem.r16 (va) != expected) return false; m->mem.w16 (va, v); return true; }

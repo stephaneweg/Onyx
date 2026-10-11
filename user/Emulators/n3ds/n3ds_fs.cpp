@@ -21,7 +21,9 @@ namespace n3ds {
 enum : u32
 {
 	ARCHIVE_ROMFS = 3, ARCHIVE_SAVE = 4, ARCHIVE_EXT = 6, ARCHIVE_SHARED_EXT = 7, ARCHIVE_SDMC = 9, ARCHIVE_SDMC_WRITE = 10,
-	FS_NOT_FOUND      = 0xC8804478,		// no such file or folder
+	FS_NOT_FOUND      = 0xC8804478,		// no such thing (an archive's content, a title)
+	FS_NO_FILE        = 0xC8804470,		// no such file (its folder is there) -- what a game tests before it makes its save file
+	FS_NO_PATH        = 0xC8804471,		// no such folder, or a file's folder missing
 	FS_ALREADY_THERE  = 0xC82044BE,
 	FS_NOT_FORMATTED  = 0xC8A04554,		// the save data, or shared extra data, was never made
 	FS_NO_EXT_DATA    = 0xC8A04478,		// extra data that does not exist
@@ -182,8 +184,10 @@ static bool fullName (Machine *m, u32 archive, u32 type, u32 size, u32 va, char 
 	const char *root = archiveRoot (m, archive);
 	char path[280];
 	if (!root || !pathText (m, type, size, va, path, sizeof path)) return false;
+	{ char *w = path; for (const char *r = path; *r; r++) if (!(r[0] == '/' && r[1] == '/')) *w++ = *r; *w = 0; }	// ("//system0.dat", Mario Kart 7's: one slash)
 	if (!strcmp (path, "/")) path[0] = 0;
 	snprintf (out, cap, "%s%s%s", root, path[0] && path[0] != '/' ? "/" : "", path);
+	if (m->trace) fprintf (stderr, "    (the path: %s)%c", out, 10);
 	return true;
 }
 
@@ -198,17 +202,18 @@ static void extRoot (Machine *m, u32 va, u32 size, bool shared, char *out, u32 c
 // A game may open the content of a system title (archive 0x2345678A): Nintendo's data, not ours to ship. For the Mii
 // data (0004009B00010202: Mario Kart 7 stops at a fatal error without it) a RomFS of our own making is given, with
 // the one file the games look for -- CFL_Res.dat -- EMPTY: a try, to see what a game does with no Mii shapes at all.
-// (Mario Kart 7, 2026-10-11: it finds the file, reads it, and shows its own "An error has occurred" screen instead of
-// waiting for ever -- the same with 64 KB of zeros in it, and whether or not its extra save data opens: it wants the
-// real shapes.)
+// (Mario Kart 7, 2026-10-11: it finds the file and reads its head -- two 16-bit numbers, then twenty offsets, each to a
+// part's two 16-bit numbers and its data --, and goes on to its menus: with no shapes it has no Mii to show, that is all.)
 // The image is what a program is given of a RomFS: its level 3 alone (the hashed levels above are the system's) --
 // the header, one bucket for the folders and one for the files, the root folder, the file.
-static u8 g_standIn[0x1000]; static u32 g_standInSize;
+static u8 g_standIn[0x12000]; static u32 g_standInSize;
+static u8 g_standInFile[0x10000]; static u32 g_standInFileSize;	// (the file's contents: none -- or a try's, n3dstest)
 static void put32 (u8 *p, u32 v) { p[0] = (u8) v; p[1] = (u8) (v >> 8); p[2] = (u8) (v >> 16); p[3] = (u8) (v >> 24); }
-static bool standIn (u32 titleHigh, u32 titleLow)
+static bool standIn (Machine *m, u32 titleHigh, u32 titleLow)
 {
 	if (titleHigh != 0x0004009B || titleLow != 0x00010202) return false;
 	if (g_standInSize) return true;
+	if (m->watchMade && !g_standInFileSize) g_standInFileSize = sizeof g_standInFile;	// (zeros, to see what a program reads of them)
 	static const char NAME[] = "CFL_Res.dat";
 	const u32 nameBytes = (u32) (sizeof NAME - 1) * 2, fileMeta = 0x20 + ((nameBytes + 3) & ~3u);
 	u8 *b = g_standIn;
@@ -224,8 +229,10 @@ static bool standIn (u32 titleHigh, u32 titleLow)
 	put32 (l + fileHash, 0);									// the one file bucket: the file, at 0
 	u8 *f = l + fileMetaAt;										// the file: in the root, no sibling, its data at 0, 0 bytes, its name
 	put32 (f, 0); put32 (f + 4, 0xFFFFFFFF); put32 (f + 0x18, 0xFFFFFFFF); put32 (f + 0x1C, nameBytes);
+	put32 (f + 0x10, g_standInFileSize);
 	for (u32 i = 0; NAME[i]; i++) f[0x20 + i * 2] = (u8) NAME[i];
-	g_standInSize = (data + 16 + 0xFFF) & ~0xFFFu;
+	memcpy (l + data, g_standInFile, g_standInFileSize);
+	g_standInSize = (data + g_standInFileSize + 16 + 0xFFF) & ~0xFFFu;
 	return true;
 }
 
@@ -254,6 +261,7 @@ static void fileRequest (Machine *m, Session *s, u32 *cmd)
 		else if (s->kind == KIND_MADE)
 		{
 			if (n && m->mem.write (dst, g_standIn + off, n)) done = n;
+			if (m->watchMade && done >= 0x1000) m->mem.watch (dst, done);
 		}
 		else
 		{
@@ -358,7 +366,8 @@ static void openStored (Machine *m, u32 id, u32 *cmd, const char *name, u32 flag
 	Storage *st = storage (m);
 	int i = st ? nodeFind (st, name) : -1;
 	if (i < 0 && (flags & 4) && st && parentThere (st, name)) { i = nodeAdd (st, name, false); m->storageDirty = true; }	// "create"
-	if (i < 0 || st->nodes[i].dir) { cmd[0] = ipcHeader (id, 1, 0); cmd[1] = FS_NOT_FOUND; return; }
+	// (Mario Kart 7 takes "not found" in its other form for a damaged save, and stops: the console says "no such file")
+	if (i < 0 || st->nodes[i].dir) { cmd[0] = ipcHeader (id, 1, 0); cmd[1] = st && parentThere (st, name) ? (u32) FS_NO_FILE : (u32) FS_NO_PATH; return; }
 	Session *f = new Session (fileRequest, "file"); f->kind = KIND_FILE;
 	f->path = (char *) malloc (strlen (name) + 1);
 	if (f->path) strcpy (f->path, name);
@@ -417,7 +426,7 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 		if (!name[0]) { m->note ("fs:USER archive %08x", (unsigned) cmd[1]); REPLY (missing); break; }
 		if (nodeFind (st, name) < 0)
 		{
-			if (missing) { REPLY (missing); break; }
+			if (missing) { if (m->trace) fprintf (stderr, "    (the archive %s is not there)%c", name, 10); REPLY (missing); break; }
 			nodeAdd (st, name, true);				// (the SD card is always there)
 		}
 		const u32 h = archiveOpen (m, name);
@@ -468,7 +477,7 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 			u32 t[4] = { 0, 0, 0, 0 }, f[5] = { 0, 0, 0, 0, 0 };
 			for (u32 i = 0; i < 4 && i * 4 + 4 <= cmd[4]; i++) t[i] = m->mem.r32 (cmd[10] + i * 4);
 			for (u32 i = 0; i < 5 && i * 4 + 4 <= cmd[6]; i++) f[i] = m->mem.r32 (cmd[12] + i * 4);
-			if (f[2] == 0 && standIn (t[1], t[0]))			// (its RomFS: one of ours stands in)
+			if (f[2] == 0 && standIn (m, t[1], t[0]))			// (its RomFS: one of ours stands in)
 			{
 				m->note ("fs:USER the Mii data archive: ours, with no shapes in it");
 				Session *fl = new Session (fileRequest, "file"); fl->base = 0; fl->size = g_standInSize; fl->kind = KIND_MADE;
@@ -486,6 +495,7 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 		char path[280];
 		if (!pathText (m, cmd[5], cmd[6], cmd[12], path, sizeof path)) { REPLY (FS_NOT_FOUND); break; }
 		snprintf (other, sizeof other, "%s%s%s", name, path[0] && path[0] != '/' ? "/" : "", path);
+		if (m->trace) fprintf (stderr, "    (the path: %s, archive %x)%c", other, (unsigned) cmd[2], 10);
 		openStored (m, id, cmd, other, cmd[7]);
 		break;
 	}
@@ -549,7 +559,7 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 	{
 		if (!fullName (m, cmd[1], cmd[3], cmd[4], cmd[6], name, sizeof name)) { REPLY (FS_NOT_FOUND); break; }
 		const int i = nodeFind (st, name);
-		if (i < 0 || !st->nodes[i].dir) { REPLY (FS_NOT_FOUND); break; }
+		if (i < 0 || !st->nodes[i].dir) { REPLY (FS_NO_PATH); break; }
 		Session *d = new Session (dirRequest, "folder"); d->kind = KIND_DIR;
 		d->path = (char *) malloc (strlen (name) + 1);
 		if (d->path) strcpy (d->path, name);

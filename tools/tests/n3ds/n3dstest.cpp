@@ -144,6 +144,7 @@ static int run (int argc, char **argv)
 		// (the draws of many vertices take the path of a host with other cores -- that never take the work here)
 		if (!m->parallelBegin) { m->parallelBegin = [] (void *, void (*) (void *, int), void *) { return false; }; m->parallelDone = [] (void *) { return true; }; m->parallelEnd = [] (void *, void (*) (void *, int), void *) {}; }
 	}
+	if ((argc > 11 && strchr (argv[11], 'w')) || getenv ("N3DS_WATCHMADE")) m->watchMade = true;	// (the stand-in archive's file: 64 KB of zeros, every access of the program to them said)
 	if (getenv ("N3DS_SPECCHECK")) m->specCheck = true;		// (N3DS_SPECCHECK=1: every draw's shader specialized, its list checked against the interpreter)
 	m->surveyShaders = getenv ("N3DS_SURVEY") != 0;	// (N3DS_SURVEY=1: the vertex shaders the program used, at the end)
 	// N3DS_FONT=<sysfont.bcfnt>  the shared system font (tools/n3ds/mkfont.py makes ours)
@@ -295,6 +296,8 @@ static int run (int argc, char **argv)
 				fprintf (stderr, " type %d%s%s%s", o->type, o == m->gsp.irq ? " (the GPU's interrupts)" : "", o == m->apt.param ? " (APT's parameter)" : "", o == m->apt.signal ? " (APT's signal)" : "");
 				if (o->type == n3ds::OBJ_SESSION) fprintf (stderr, " %s", ((const n3ds::Session *) o)->name);
 			}
+			fprintf (stderr, "%c   the stack's words that point into the code (sp %08x):", 10, (unsigned) t->ctx.r[13]);	// (the calls it is in, roughly)
+			for (int k = 0, said = 0; k < 400 && said < 28; k++) { const n3ds::u32 w = m->mem.mapped (t->ctx.r[13] + (n3ds::u32) k * 4, 4) ? m->mem.r32 (t->ctx.r[13] + (n3ds::u32) k * 4) : 0; if (w >= 0x100000 && w < 0x700000 && !(w & 3)) { fprintf (stderr, " %08x", (unsigned) w); said++; } }
 			fprintf (stderr, "%c   r4 %08x:", 10, (unsigned) t->ctx.r[4]);
 			for (int k = 0; k < 32; k++) fprintf (stderr, " %08x", (unsigned) m->mem.r32 (t->ctx.r[4] + (n3ds::u32) k * 4));
 			fprintf (stderr, "%c", 10);
@@ -307,7 +310,9 @@ static int run (int argc, char **argv)
 		for (int i = 0; i < 15; i++) fprintf (stderr, " %08x", (unsigned) (q[0x820 + i * 0x20] | q[0x821 + i * 0x20] << 8 | q[0x822 + i * 0x20] << 16 | (unsigned) q[0x823 + i * 0x20] << 24));
 		fprintf (stderr, "%c", 10);
 	}
-	if (const char *cd = getenv ("N3DS_CODEDUMP"))				// the program's code, for a disassembler (from 0x100000)
+	(void) 0;
+	const char *cdArg = argc > 11 && strchr (argv[11], '#') ? strchr (argv[11], '#') + 1 : 0;	// ("<frame>#<file>" as the 11th argument, where there is no environment)
+	if (const char *cd = cdArg ? cdArg : getenv ("N3DS_CODEDUMP"))				// the program's code, for a disassembler (from 0x100000)
 	{
 		FILE *o = fopen (cd, "wb");
 		for (n3ds::u32 va = 0x100000; o && m->mem.mapped (va, 4096); va += 4096) { unsigned char pg[4096]; m->mem.read (va, pg, 4096); fwrite (pg, 1, 4096, o); }

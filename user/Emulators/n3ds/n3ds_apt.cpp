@@ -72,11 +72,18 @@ static void miiGuest (Machine *m, u8 *out)
 	memset (out, 0, 0x84);
 	put32 (out, 0); put32 (out + 4, 1); put32 (out + 8, 0);			// one was selected; a guest; the first
 	u8 *mii = out + 0xC;
-	mii[0] = 3; mii[1] = 0x30; mii[3] = 0x30;				// the format's version, may be copied, made on a 3DS
-	mii[0xC] = 0x80; mii[0xF] = 1;						// its id (a special Mii's)
-	mii[0x18] = 0; mii[0x19] = 0x04;					// a man, no birthday, a colour
+	mii[0] = 3; mii[1] = 0x01; mii[3] = 0x30;				// the format's version; may be copied, no region lock, the Japan / America / Europe character set (0x30 here was Taiwan's); made on a 3DS
+	// (as a Mii made in this console's Mii Maker: the console's number, the Mii's own -- an ordinary one's, with its
+	// date --, the maker's network address, and below the author's name. A Mii with none of them is nobody's: Mario
+	// Kart 7 then says there is no Mii in Mii Maker)
+	memcpy (mii + 4, "OnyxPi4", 8);
+	mii[0xC] = 0x91; mii[0xD] = 0x23; mii[0xE] = 0x45; mii[0xF] = 0x67;
+	mii[0x10] = 0x02; mii[0x11] = 0x4F; mii[0x12] = 0x6E; mii[0x13] = 0x79; mii[0x14] = 0x78; mii[0x15] = 0x01;
+	mii[0x02] = 0x10;							// its place in Mii Maker: the first
+	mii[0x18] = 0; mii[0x19] = 0x44;					// a man, no birthday, a colour; a favourite (the user's own)
 	for (int i = 0; i < 10 && m->user.name[i]; i++) { mii[0x1A + i * 2] = (u8) m->user.name[i]; mii[0x1B + i * 2] = (u8) (m->user.name[i] >> 8); }
 	if (!m->user.name[0]) { mii[0x1A] = 'O'; mii[0x1C] = 'n'; mii[0x1E] = 'y'; mii[0x20] = 'x'; }
+	memcpy (mii + 0x48, mii + 0x1A, 20);					// the author: the user
 	mii[0x2E] = 64; mii[0x2F] = 64;						// width, height
 	put32 (mii + 0x34, 4u << 9 | 3u << 13 | 4u << 16 | 2u << 21 | 12u << 25);	// the eyes: size, turn, apart, height
 	put32 (mii + 0x38, 4u << 8 | 3u << 12 | 6u << 16 | 2u << 21 | 10u << 25);	// the eyebrows
@@ -92,6 +99,8 @@ static void miiGuest (Machine *m, u8 *out)
 	mii[0x5E] = (u8) (crc >> 8); mii[0x5F] = (u8) crc;
 	for (int i = 0; i < 10; i++) { out[0x6C + i * 2] = mii[0x1A + i * 2]; out[0x6D + i * 2] = mii[0x1B + i * 2]; }	// the guest's name
 }
+// ... the Mii alone (0x60 bytes), for who asks for the user's (the friends service).
+void guestMii (Machine *m, u8 mii[0x60]) { u8 all[0x84]; miiGuest (m, all); memcpy (mii, all + 0xC, 0x60); }
 
 void aptRequest (Machine *m, Session *s, u32 *cmd)
 {

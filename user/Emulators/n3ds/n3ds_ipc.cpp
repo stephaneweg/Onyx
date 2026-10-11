@@ -31,10 +31,27 @@ static const char *const ABSENT[] = {
 	"ir:rst", "mcu::HWC", "mic:u", "ndm:u", "news:u", "news:s", "nfc:u", "nfc:m", "nim:aoc", "nim:u", "nwm::UDS", "nwm::EXT",
 	"ps:ps", "ptm:gets", "ptm:sets", "ptm:play", "pxi:dev", "qtm:u", "qtm:s", "soc:U", "ssl:C", "y2r:u",
 };
+void guestMii (Machine *m, u8 mii[0x60]);				// (n3ds_apt.cpp: the Mii of ours the Mii chooser gives)
 static void absentRequest (Machine *m, Session *s, u32 *cmd)
 {
 	m->note ("%s %04x", s->name, (unsigned) (cmd[0] >> 16));
 	const u32 id = cmd[0] >> 16;
+	// The friends service's questions about the user: a key, the name, the Mii -- ours (zeros are no Mii: a game that
+	// shows the player's may give up).
+	if (strcmp (s->name, "frd:u") == 0 || strcmp (s->name, "frd:a") == 0)
+	{
+		const u32 fid = cmd[0] >> 16;
+		if (fid == 0x0005) { cmd[0] = ipcHeader (fid, 5, 0); cmd[1] = RES_OK; cmd[2] = 1; cmd[3] = 0; cmd[4] = 0x12345678; cmd[5] = 0x00000001; return; }	// GetMyFriendKey
+		if (fid == 0x0009)							// GetMyScreenName: 11 UTF-16 characters
+		{
+			u16 name[12]; memset (name, 0, sizeof name);
+			for (int i = 0; i < 10 && m->user.name[i]; i++) name[i] = (u16) m->user.name[i];
+			if (!name[0]) { name[0] = 'O'; name[1] = 'n'; name[2] = 'y'; name[3] = 'x'; }
+			cmd[0] = ipcHeader (fid, 7, 0); cmd[1] = RES_OK; memcpy (&cmd[2], name, 24);
+			return;
+		}
+		if (fid == 0x000A) { u8 mii[0x60]; guestMii (m, mii); cmd[0] = ipcHeader (fid, 0x19, 0); cmd[1] = RES_OK; memcpy (&cmd[2], mii, 0x60); return; }	// GetMyMii
+	}
 	// (a command that gives an event to wait on: a real one, never signalled -- a null handle is refused by the
 	// kernel when the program waits on it, and Mario Kart 7 gives up there: StreetPass' two)
 	if ((strcmp (s->name, "cecd:u") == 0 || strcmp (s->name, "cecd:s") == 0) && (id == 0x000E || id == 0x000F))
