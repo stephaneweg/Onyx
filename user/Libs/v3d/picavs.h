@@ -10,7 +10,8 @@
 // the position as a V3D vertex shader gives it (Xs Ys Zs 1/Wc) or a coordinate shader (Xc Yc Zc Wc Xs Ys).
 // Everything not needed for what is written is left out (a coordinate shader is the position's chain alone).
 //
-// Each value lives in a register of the QPU's file while it is needed: a list with more values alive at once than
+// Each value lives in a register of the QPU's file while it is needed -- the whole file, 64 registers: the program
+// must be run one thread a QPU (kern/kapi_abi.h: KAPI_GPU_P_VS_1WAY) --: a list with more values alive at once than
 // the file holds is refused (Result::ok false) -- the draw then stays on the processor.
 //
 // The arithmetic is the QPU's: a product with a zero operand and an infinite one is not forced to 0 as the
@@ -48,7 +49,7 @@ struct Op
 struct List { const Op *ops; u32 nOps; };
 
 // What the program writes: VPM output i is write i.
-enum { W_RAW, W_ONE_MINUS, W_XS, W_YS, W_ZS, W_RW, W_XC, W_YC, W_ZC, W_WC, W_LITP, W_LITS };
+enum { W_RAW, W_ONE_MINUS, W_XS, W_YS, W_ZS, W_RW, W_XC, W_YC, W_ZC, W_WC, W_LITP, W_LITS, W_ZERO, W_ONE };	// (ZERO, ONE: the number)
 struct Write { u8 kind, reg, comp; };		// RAW / ONE_MINUS: output register reg's component comp (0 x); the position's: of the position in
 						// output register reg (or build's `pos`); LITP / LITS: the lighting's primary / secondary colour's component comp (3: alpha)
 // An output register's component (reg 0xFF: none -- 0).
@@ -90,8 +91,10 @@ struct Result { u32 nUni, nIn; bool ok; const char *why; int values, regsPeak; }
 // The program for the version set (qpu::setVersion). -> false (r.why says): an instruction it does not do, too
 // many values alive at once, more uniforms or inputs than there is room for.
 // pos: where the position's x y z w are (0: the register a position write names); lit: the lighting (0: none).
+// inPre: in[0 .. inPre) are given -- the vertex's first inputs, whether this program reads them or not; what else
+// it reads comes after (a vertex shader after its coordinate shader, which the V3D gives a vertex's first values).
 bool build (qpu::Prog &p, const List &l, const Write *w, u32 nw, Uni *uni, u32 uniMax, In *in, u32 inMax, Result &r,
-	    const Sem *pos = 0, const Lighting *lit = 0);
+	    const Sem *pos = 0, const Lighting *lit = 0, u32 inPre = 0);
 }
 
 #endif

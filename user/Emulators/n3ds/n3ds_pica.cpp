@@ -111,6 +111,7 @@ struct Pica
 	u32 epoch;					// (the queue's: a decoded texture used in this one is not replaced)
 	// the GPU's frames: the programs made (by configuration), a record a render target, the states' numbering
 	struct GProg *gprog; u32 gprogCount;
+	struct VProg *vprog; u32 vprogCount;		// ... and the vertex programs (a draw's shader on the GPU)
 	struct GRec *grec;
 	u32 stateSerial;
 	bool frameSkipped;				// (the frame whose transfer is being asked was left out)
@@ -1875,7 +1876,7 @@ void picaSync (Machine *m)
 // ---- the frames for the host's GPU -------------------------------------------------------------------------------
 // (the kernel's numbers, kern/kapi_abi.h: the depth functions, "no depth write", the texture wrapping)
 enum { GZ_LESS = 0, GZ_EQUAL = 2, GZ_LEQUAL = 3, GZ_GREATER = 4, GZ_NOTEQUAL = 5, GZ_GEQUAL = 6, GZ_ALWAYS = 7, G_NOZWRITE = 1 << 3 };
-enum { GPROG_MAX = 256, GREC_MAX = 4, GFLOATS_MAX = 1 << 19, GBATCH_MAX = 1024, GUNI_MAX = 1 << 15 };
+enum { GPROG_MAX = 256, GREC_MAX = 4, GFLOATS_MAX = 1 << 21, GBATCH_MAX = 2048, GUNI_MAX = 1 << 18 };
 struct GProg
 {
 	u64 key; picatev::Config cfg; bool ok;
@@ -1892,7 +1893,7 @@ struct GRec
 	u32 color; int w, h; bool used, bad, hostValid;
 	Target t;
 	float *v; u32 nf; GpuBatch *b; u32 nb; u32 *u; u32 nu;
-	u32 serial; u32 *pixels;
+	u32 serial, vsSerial; u32 *pixels;	// (the state of its last batch: of the ordinary kind, with a vertex program)
 	u64 touched;				// (the frame it was last drawn into or transferred: an old one gives its place)
 	struct Past { u64 start, rec; u32 *out; size_t cap; } past[2]; int pastAt;	// its last two frames: what they began from and were made of (hashes), their pictures
 	bool open, skip;			// a frame of it has begun (its first draw came); that frame is left out (Machine::skipDraw then)
@@ -1979,7 +1980,7 @@ static GRec *gpuRec (Pica *p, u32 color, bool make)
 		if (!r.v || !r.b || !r.u || !r.pixels) { free (r.v); free (r.b); free (r.u); free (r.pixels); r.v = 0; r.b = 0; r.u = 0; r.pixels = 0; return 0; }
 	}
 	r.past[0].start = r.past[0].rec = r.past[1].start = r.past[1].rec = 0;
-	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.trusted = false; r.guestStale = false; r.open = false; r.skip = false;
+	r.used = true; r.color = color; r.nf = r.nb = r.nu = 0; r.bad = false; r.hostValid = false; r.serial = 0; r.vsSerial = 0; r.trusted = false; r.guestStale = false; r.open = false; r.skip = false;
 	return &r;
 }
 
@@ -2091,7 +2092,9 @@ static void gpuState (Pica *p, State &st)
 	st.gwmask = 0;
 	for (int c = 0; c < 4; c++) if (!f.rgbaMask[c] || !t.colorWrite) st.gwmask |= 1u << c;
 	if (!f.blend && f.logicOp == 6) st.gwmask = 15;
-	st.gscissor[0] = t.sx0; st.gscissor[1] = t.h - t.sy1;		// (the GPU's rows: from the top) st.gscissor[2] = t.sx1 - t.sx0; st.gscissor[3] = t.sy1 - t.sy0;
+	st.gscissor[0] = t.sx0; st.gscissor[1] = t.h - t.sy1;		// (the GPU's rows: from the top)
+	st.gscissor[2] = t.sx1 - t.sx0; st.gscissor[3] = t.sy1 - t.sy0;
+	if (st.gscissor[0] <= 0 && st.gscissor[1] <= 0 && st.gscissor[2] >= t.w && st.gscissor[3] >= t.h) st.gscissor[0] = st.gscissor[1] = st.gscissor[2] = st.gscissor[3] = 0;	// (the whole target)
 	st.gprog = gpuProgram (p, f, om, oc);
 	if (st.gprog < 0) st.gwhy = "a combiner without a shader";
 }
@@ -2127,6 +2130,34 @@ static inline void gpuRow (const GProg &g, const ViewMap &vm, float halfW, float
 	}
 }
 
+// A new batch of the record, for a state and its fragment program (the uniforms put after the record's).
+static GpuBatch &gpuBatchNew (GRec *r, const State &st, const GProg &g, u32 stride)
+{
+	GpuBatch &b = r->b[r->nb++];
+	b.program = (u32) st.gprog; b.off = r->nf; b.count = 0; b.stride = stride;
+	b.flags = st.gflags; b.blend = st.gblend; b.wmask = st.gwmask;
+	b.vprog = -1; b.vsUni = b.vsNUni = b.csUni = b.csNUni = 0; b.nVerts = 0;
+	for (int k = 0; k < 4; k++) b.scissor[k] = st.gscissor[k];
+	b.uni = r->nu; b.nUni = g.nUni;
+	for (int k = 0; k < 3; k++) { b.tex[k] = -1; b.texFlags[k] = 0; b.texUni[k] = -1; }
+	for (u32 i = 0; i < g.nUni; i++)
+	{
+		const picatev::Uni &u = g.uni[i];
+		u32 v = 0;
+		switch (u.kind)
+		{
+		case picatev::U_CONST: v = u.value; break;
+		case picatev::U_KONST: v = (u32) st.f.stage[u.a].konst[u.b]; break;
+		case picatev::U_BUFFER: v = (u32) st.f.bufferColor[u.b]; break;
+		case picatev::U_ALPHAREF: v = st.f.alphaRef; break;
+		case picatev::U_BLEND: v = (u32) st.f.blendColor[u.b]; break;
+		case picatev::U_TEXP0: { const int unit = g.look[u.a].unit; b.tex[u.a] = st.gtex[unit]; b.texFlags[u.a] = st.gtexFlags[unit]; b.texUni[u.a] = (int) i; break; }
+		default: break;
+		}
+		r->u[r->nu++] = v;
+	}
+	return b;
+}
 static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], const ViewMap &vm, const float *const *rows = 0)
 {
 	GRec *r = gpuRec (p, st.colorPhys, true);
@@ -2140,29 +2171,8 @@ static bool gpuTriangle (Pica *p, const State &st, const Vertex *const tri[3], c
 	if (!r->nb || r->serial != st.serial)
 	{
 		if (r->nb >= GBATCH_MAX || r->nu + g.nUni > GUNI_MAX) { r->bad = true; gpuWhy (p, "too many batches"); return false; }
-		GpuBatch &b = r->b[r->nb++];
-		b.program = (u32) st.gprog; b.off = r->nf; b.count = 0; b.stride = stride;
-		b.flags = st.gflags; b.blend = st.gblend; b.wmask = st.gwmask;
-		for (int k = 0; k < 4; k++) b.scissor[k] = st.gscissor[k];
-		b.uni = r->nu; b.nUni = g.nUni;
-		for (int k = 0; k < 3; k++) { b.tex[k] = -1; b.texFlags[k] = 0; b.texUni[k] = -1; }
-		for (u32 i = 0; i < g.nUni; i++)
-		{
-			const picatev::Uni &u = g.uni[i];
-			u32 v = 0;
-			switch (u.kind)
-			{
-			case picatev::U_CONST: v = u.value; break;
-			case picatev::U_KONST: v = (u32) st.f.stage[u.a].konst[u.b]; break;
-			case picatev::U_BUFFER: v = (u32) st.f.bufferColor[u.b]; break;
-			case picatev::U_ALPHAREF: v = st.f.alphaRef; break;
-			case picatev::U_BLEND: v = (u32) st.f.blendColor[u.b]; break;
-			case picatev::U_TEXP0: { const int unit = g.look[u.a].unit; b.tex[u.a] = st.gtex[unit]; b.texFlags[u.a] = st.gtexFlags[unit]; b.texUni[u.a] = (int) i; break; }
-			default: break;
-			}
-			r->u[r->nu++] = v;
-		}
-		r->serial = st.serial;
+		gpuBatchNew (r, st, g, stride);
+		r->serial = st.serial; r->vsSerial = 0;
 	}
 	const float halfW = (float) r->w * 0.5f, halfH = (float) r->h * 0.5f;
 	GpuBatch &b = r->b[r->nb - 1];
@@ -2209,6 +2219,8 @@ bool picaGuestTouch (Machine *m, u32 va)
 
 // A render target's frame ends (its display transfer is asked): the host's GPU draws its record when it is whole,
 // else the software renderer draws what is queued. -> the target's record (0: none).
+static void gpuMirrorUniforms (Pica *p, GRec *r, GpuBatch &b);
+static void gpuVPrograms (Pica *p, GpuFrame &f);
 static GRec *gpuFrameEnd (Pica *p, u32 color)
 {
 	Machine *m = p->m;
@@ -2241,7 +2253,8 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 					GpuBatch &b = r->b[k];
 					static const u32 TURN[8] = { GZ_GREATER, 1, GZ_EQUAL, GZ_GEQUAL, GZ_LESS, GZ_NOTEQUAL, GZ_LEQUAL, GZ_ALWAYS };
 					b.flags = (b.flags & ~7u) | TURN[b.flags & 7];
-					for (u32 n = 0; n < b.count; n++) r->v[b.off + n * b.stride + 2] = -r->v[b.off + n * b.stride + 2];
+					if (b.vprog >= 0) gpuMirrorUniforms (p, r, b);
+					else for (u32 n = 0; n < b.count; n++) r->v[b.off + n * b.stride + 2] = -r->v[b.off + n * b.stride + 2];
 				}
 			break;
 		}
@@ -2252,6 +2265,7 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 		GpuFrame f;
 		f.w = r->w; f.h = r->h; f.v = r->v; f.nFloats = r->nf; f.b = r->b; f.nb = r->nb; f.u = r->u; f.nu = r->nu;
 		f.programs = progs; f.nPrograms = p->gprogCount; f.textures = texs; f.nTextures = 96;
+		gpuVPrograms (p, f);
 		// The same frame as one of this target's last two -- the same pixels to draw over, the same batches, vertices,
 		// uniforms and textures -- gives the same picture: taken back, the host's GPU not asked (a screen that
 		// does not move: the bottom one of many games, a pause, a menu; a call costs 3 ms and more).
@@ -2288,7 +2302,7 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 				}
 			p->jobCount = keep;
 			if (!keep) { if (p->stateCount > 1) { p->states[0] = p->states[p->stateCount - 1]; p->stateCount = 1; } queueEmptied (p); }
-			r->nf = r->nb = r->nu = 0;
+			r->nf = r->nb = r->nu = 0; r->serial = r->vsSerial = 0;
 			r->trusted = true;
 			m->gsp.gpuFrames++; m->gsp.usGpu += microsNow () - t0;
 			return r;
@@ -2303,7 +2317,7 @@ static GRec *gpuFrameEnd (Pica *p, u32 color)
 	{
 		gpuGuestCurrent (r);
 		if (r->pixels && m->gpuSoft && r->w) { gpuLoadHost (r); m->gpuSoft (m->gpuUser, r->pixels, r->w, r->h); }
-		r->nf = r->nb = r->nu = 0; r->bad = false; r->hostValid = false; r->trusted = false;
+		r->nf = r->nb = r->nu = 0; r->serial = r->vsSerial = 0; r->bad = false; r->hostValid = false; r->trusted = false;
 	}
 	return r;
 }
@@ -2630,6 +2644,18 @@ static void lutFit (const Pica *p, int table, bool abs, float scale, float *out)
 		else { out[2 + 2 * j] = 4.0f; out[3 + 2 * j] = 0.0f; }		// (no knot: past every x)
 	}
 }
+// ... kept: a table is fitted once (a draw asks for the same ones as the draw before).
+static void lutFitKept (const Pica *p, int table, bool abs, float scale, float *out)
+{
+	enum { KEPT = 64 };
+	static struct { u64 key; float v[picavs::TABLE_VALUES]; } kept[KEPT]; static u32 next;
+	u64 key = hashBytes (p->lightLut[table], sizeof p->lightLut[table], 1469598103934665603ull ^ (abs ? 0x9E3779B9ull : 0));
+	key = hashBytes (p->lightLutDiff[table], sizeof p->lightLutDiff[table], key);
+	key = hashBytes (&scale, sizeof scale, key) | 1;
+	for (int i = 0; i < KEPT; i++) if (kept[i].key == key) { memcpy (out, kept[i].v, sizeof kept[i].v); return; }
+	lutFit (p, table, abs, scale, out);
+	kept[next % KEPT].key = key; memcpy (kept[next % KEPT].v, out, sizeof kept[0].v); next++;
+}
 // The lighting's configuration and its values (the broken lines among them) as picavs wants them.
 static void specLighting (const Pica *p, const Lighting &l, const picavs::Sem *sem, picavs::Lighting &L, float *lv)
 {
@@ -2646,14 +2672,385 @@ static void specLighting (const Pica *p, const Lighting &l, const picavs::Sem *s
 		L.light[i].directional = g.directional; L.light[i].twoSided = g.twoSided; L.light[i].distance = g.distance;
 		for (int c = 0; c < 3; c++) { o[c] = g.pos[c]; o[3 + c] = g.diff[c]; o[6 + c] = g.amb[c]; o[9 + c] = g.spec0[c]; o[12 + c] = g.spec1[c]; }
 		o[15] = g.bias; o[16] = g.scale;
-		if (g.distance) lutFit (p, LUT_DA + g.id, true, 1.0f, lv + picavs::tableAt (6 + i));
+		if (g.distance) lutFitKept (p, LUT_DA + g.id, true, 1.0f, lv + picavs::tableAt (6 + i));
 	}
 	const struct { const Lighting::Lut *t; int table; } T[6] = { { &l.d0, LUT_D0 }, { &l.d1, LUT_D1 }, { &l.fr, LUT_FR }, { &l.rr, LUT_RR }, { &l.rg, LUT_RG }, { &l.rb, LUT_RB } };
 	for (int k = 0; k < 6; k++)
 	{
 		L.table[k].on = T[k].t->on; L.table[k].abs = T[k].t->abs; L.table[k].input = (u8) (T[k].t->input < 4 ? T[k].t->input : 4);
-		if (T[k].t->on) lutFit (p, T[k].table, T[k].t->abs, T[k].t->scale, lv + picavs::tableAt (k));
+		if (T[k].t->on) lutFitKept (p, T[k].table, T[k].t->abs, T[k].t->scale, lv + picavs::tableAt (k));
 	}
+}
+
+// ---- a draw's vertex shader on the host's GPU (docs/3DS-EMULATOR-STUDY.md, 9x) ------------------------------------------
+// The vertices a draw gives are not shaded here: its shader is specialized once (Spec), made a V3D vertex and
+// coordinate shader (picavs: kept by the list's shape, the fragment program whose varyings it feeds, and the
+// lighting's configuration), and the record takes the vertices' raw attributes -- only the components the program
+// reads, the coordinate shader's first -- with the draw's constants, the view and the lighting's values as uniforms.
+// The V3D clips and culls. A draw that cannot be specialized, or whose program is refused, stays on the processor.
+enum { VPROG_MAX = 512, G_CULL_BACK = 1 << 4, G_CULL_FRONT = 1 << 5, G_NOCLIP = 1 << 27, G_INDEXED = 1 << 28 };
+struct VProg
+{
+	u64 key; bool ok;
+	unsigned long long *vs, *cs; u32 nvs, ncs;
+	picavs::Uni *vu, *cu; u32 nvu, ncu;
+	picavs::In in[64]; u32 nIn, nCsIn;
+	int regsPeak; bool guards;
+};
+// What a chunk's program is made from, and its values.
+struct VsNow
+{
+	Spec sp; picavs::Op ops[Spec::OPS_MAX];
+	picavs::Sem sem[A_COUNT]; picavs::Lighting gl; float lv[picavs::LIGHT_FLOATS]; bool lit;
+	u8 attrOf[16]; float view[picavs::V_COUNT];
+	picavs::Write w[40]; u32 nw;
+};
+static VsNow &vsNow () { static VsNow n; return n; }
+
+// What the vertex shader writes for a fragment program: the position, then its varyings in order (gpuRow's).
+static u32 vsWrites (const GProg &g, const picavs::Sem *sem, bool lit, picavs::Write *w)
+{
+	u32 n = 0;
+	static const u8 P[4] = { picavs::W_XS, picavs::W_YS, picavs::W_ZS, picavs::W_RW };
+	for (int k = 0; k < 4; k++) { w[n].kind = P[k]; w[n].reg = 0; w[n].comp = 0; n++; }
+	for (u32 i = 0; i < g.nVary && n < 40; i++)
+	{
+		const picatev::Vary &vy = g.vary[i];
+		picavs::Write x = { picavs::W_ZERO, 0, 0 };
+		auto from = [&] (int a, u8 kind, u8 none) { if (sem[a].reg == 0xFF) x.kind = none; else { x.kind = kind; x.reg = sem[a].reg; x.comp = sem[a].comp; } };
+		switch (vy.kind)
+		{
+		case picatev::V_PRIMARY: from (A_COLOR + vy.a, picavs::W_RAW, picavs::W_ZERO); break;
+		case picatev::V_LITP: if (lit) { x.kind = picavs::W_LITP; x.comp = (u8) vy.a; } break;
+		case picatev::V_LITS: if (lit) { x.kind = picavs::W_LITS; x.comp = (u8) vy.a; } break;
+		default:
+		{
+			const int unit = g.look[vy.a].unit, at = unit == 0 ? A_TC0 : unit == 1 ? A_TC1 : A_TC2;
+			if (vy.b == 0) from (at, picavs::W_RAW, picavs::W_ZERO); else from (at + 1, picavs::W_ONE_MINUS, picavs::W_ONE);
+			break;
+		}
+		}
+		w[n++] = x;
+	}
+	return n;
+}
+// The view's values: gpuRow's clip position, then the screen's (the stock shaders' uniforms: qpu::viewUniforms).
+static void vsView (const Machine *m, const ViewMap &vm, int w, int h, float *view)
+{
+	const float halfW = (float) w * 0.5f, halfH = (float) h * 0.5f, sub = m->gpuSubpixels > 0 ? (float) m->gpuSubpixels : 256.0f;
+	view[picavs::V_KX] = vm.vw / halfW; view[picavs::V_CX] = (vm.vw + vm.vx) / halfW - 1.0f;
+	view[picavs::V_KY] = vm.vh / halfH; view[picavs::V_CY] = (vm.vh + vm.vy) / halfH - 1.0f;
+	view[picavs::V_KZ] = 2.0f * vm.ds; view[picavs::V_CZ] = 2.0f * vm.dof - 1.0f;
+	view[picavs::V_SX] = (float) (w / 2) * sub; view[picavs::V_SY] = (float) (h / 2) * -sub;
+	view[picavs::V_SZ] = 0.5f; view[picavs::V_OZ] = 0.5f;
+}
+static inline void vsFill (const picavs::Uni *u, u32 n, const VsNow &N, u32 *out)
+{
+	for (u32 i = 0; i < n; i++)
+	{
+		const float f = u[i].kind == picavs::U_CONST ? N.sp.consts[u[i].slot][u[i].comp] : u[i].kind == picavs::U_VIEW ? N.view[u[i].slot]
+				: u[i].kind == picavs::U_LIGHT ? N.lv[u[i].slot] : 1e-30f;
+		memcpy (out + i, &f, 4);
+	}
+}
+// The program of what N holds (its list, meanings, lighting) for the state's fragment program: found or made.
+// -> 0: refused (why: 2 the generator's, 3 no room for another program).
+static VProg *vsProgram (Pica *p, VsNow &N, const State &S, int &why)
+{
+	specList (N.sp, N.ops);
+	u64 key = hashBytes (N.ops, sizeof (picavs::Op) * N.sp.nOps, 1469598103934665603ull);
+	key = hashBytes (N.sem, sizeof N.sem, key);
+	if (N.lit) key = hashBytes (&N.gl, sizeof N.gl, key);
+	key = (key ^ ((u64) (u32) S.gprog << 1 | (N.lit ? 1u : 0u))) * 1099511628211ull;
+	for (u32 i = 0; i < p->vprogCount; i++) if (p->vprog[i].key == key) { if (!p->vprog[i].ok) why = 2; return p->vprog[i].ok ? &p->vprog[i] : 0; }
+	if (!p->vprog) p->vprog = (VProg *) calloc (VPROG_MAX, sizeof (VProg));
+	if (!p->vprog || p->vprogCount >= VPROG_MAX) { why = 3; return 0; }
+	VProg &v = p->vprog[p->vprogCount++];
+	memset (&v, 0, sizeof v);
+	v.key = key;
+	static qpu::Prog pv, pc; static picavs::Uni uv[4096], uc[1024];
+	pv.n = 0; pv.bad = false; pc.n = 0; pc.bad = false;
+	picavs::Result r;
+	const picavs::List l = { N.ops, N.sp.nOps };
+	static const picavs::Write CW[6] = { { picavs::W_XC, 0, 0 }, { picavs::W_YC, 0, 0 }, { picavs::W_ZC, 0, 0 }, { picavs::W_WC, 0, 0 }, { picavs::W_XS, 0, 0 }, { picavs::W_YS, 0, 0 } };
+	why = 2;
+	if (!picavs::build (pc, l, CW, 6, uc, 1024, v.in, 64, r, N.sem + A_POS, 0)) { p->m->note ("a vertex shader the GPU's generator refuses: %s", r.why ? r.why : "?"); return 0; }
+	v.nCsIn = r.nIn; v.ncu = r.nUni; v.regsPeak = r.regsPeak; v.guards = N.sp.nGuards != 0;
+	if (!picavs::build (pv, l, N.w, N.nw, uv, 4096, v.in, 64, r, N.sem + A_POS, N.lit ? &N.gl : 0, v.nCsIn)) { p->m->note ("a vertex shader the GPU's generator refuses: %s", r.why ? r.why : "?"); return 0; }
+	v.nIn = r.nIn; v.nvu = r.nUni; if (r.regsPeak > v.regsPeak) v.regsPeak = r.regsPeak;
+	if (pv.count () > 4000 || pc.count () > 4000) { p->m->note ("a vertex shader too long for the GPU"); return 0; }
+	v.nvs = (u32) pv.count (); v.ncs = (u32) pc.count ();
+	v.vs = (unsigned long long *) malloc (sizeof (unsigned long long) * (v.nvs + v.ncs));
+	v.vu = (picavs::Uni *) malloc (sizeof (picavs::Uni) * (v.nvu + v.ncu + 1));
+	if (!v.vs || !v.vu) { free (v.vs); free (v.vu); v.vs = 0; v.vu = 0; why = 3; return 0; }
+	v.cs = v.vs + v.nvs; v.cu = v.vu + v.nvu;
+	memcpy (v.vs, pv.words (), sizeof (unsigned long long) * v.nvs); memcpy (v.cs, pc.words (), sizeof (unsigned long long) * v.ncs);
+	memcpy (v.vu, uv, sizeof (picavs::Uni) * v.nvu); memcpy (v.cu, uc, sizeof (picavs::Uni) * v.ncu);
+	v.ok = true; why = 0;
+	if (p->m->vsDebug)
+	{
+		fprintf (stderr, "vprog %u: %u + %u instructions, %u inputs (%u the position's), %u + %u uniforms, %d registers, %u operations, %u guards, lit %d, cull %u, depth %x, writes", (unsigned) (p->vprogCount - 1), (unsigned) v.nvs, (unsigned) v.ncs,
+			 (unsigned) v.nIn, (unsigned) v.nCsIn, (unsigned) v.nvu, (unsigned) v.ncu, v.regsPeak, (unsigned) N.sp.nOps, (unsigned) N.sp.nGuards, N.lit ? 1 : 0, (unsigned) S.cull, (unsigned) S.gflags);
+		for (u32 i = 0; i < N.nw; i++) fprintf (stderr, " %u:%u.%u", (unsigned) N.w[i].kind, (unsigned) N.w[i].reg, (unsigned) N.w[i].comp);
+		fprintf (stderr, "; position");
+		for (int i = 0; i < 4; i++) fprintf (stderr, " %u.%u", (unsigned) N.sem[A_POS + i].reg, (unsigned) N.sem[A_POS + i].comp);
+		fprintf (stderr, "; inputs");
+		for (u32 i = 0; i < v.nIn; i++) fprintf (stderr, " %u.%u", (unsigned) v.in[i].reg, (unsigned) v.in[i].comp);
+		fprintf (stderr, "; list");				// op/shape d.writes <- operands (c: a constant, r: a register with its components)
+		for (u32 i = 0; i < N.sp.nOps; i++)
+		{
+			const picavs::Op &o = N.ops[i];
+			fprintf (stderr, " | %02x/%u %s%u.%x", (unsigned) o.op, (unsigned) o.shape, o.dOut ? "o" : "r", (unsigned) o.d, (unsigned) o.writes);
+			for (int k = 0; k < 3; k++) { if (o.kind[k]) fprintf (stderr, " c%u", (unsigned) o.slot[k]); else fprintf (stderr, " %sr%u.%u%u%u%u", o.neg[k] ? "-" : "", (unsigned) o.reg[k], (unsigned) o.sw[k][0], (unsigned) o.sw[k][1], (unsigned) o.sw[k][2], (unsigned) o.sw[k][3]); }
+		}
+		fprintf (stderr, "%c", 10);
+	}
+	p->m->gsp.vsPrograms++; p->m->gsp.vsInstructions += v.nvs;
+	return &v;
+}
+// A chunk's vertices (their attributes are in b.attr) and its program. -> 0 (why: 1 the shader is not specialized
+// for these vertices, 2, 3 as vsProgram).
+static VProg *vsPrepare (Pica *p, Batch &b, int inputs, const State &S, const Lighting *lit, VsNow &N, int &why)
+{
+	const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
+	const u32 fixedMask = p->regs[R_ATTR_FORMAT_HI] >> 16 & 0xFFF;
+	const int ni = inputs < 16 ? inputs : 16;
+	// (an attribute's component with one value in the whole chunk is the draw's: a rigid mesh's bone, its weights)
+	u8 same[16]; memset (same, 0xF, sizeof same);
+	for (u32 k = 1; k < b.count; k++)
+		for (int i = 0; i < ni; i++)
+			if (same[i] && memcmp (b.attr[k][i], b.attr[0][i], sizeof (float) * 4) != 0)
+				for (int c = 0; c < 4; c++) if (memcmp (&b.attr[k][i][c], &b.attr[0][i][c], sizeof (float)) != 0) same[i] &= (u8) ~(8u >> c);
+	u8 inKnown[16]; memset (inKnown, 0xF, sizeof inKnown);		// (a register no attribute feeds: zeros, the draw's)
+	memset (N.attrOf, 0xFF, sizeof N.attrOf);
+	static Shader s0;
+	memset (&s0, 0, sizeof s0);
+	for (int i = 0; i < ni; i++)
+	{
+		const u32 reg = (u32) (perm >> (4 * i) & 15);
+		inKnown[reg] = i < 12 && (fixedMask >> i & 1) ? 0xF : same[i];
+		N.attrOf[reg] = (u8) i;
+		memcpy (s0.reg[reg], b.attr[0][i], sizeof (float) * 4);
+	}
+	why = 1;
+	if (!specBuild (p, N.sp, inKnown, s0)) return 0;
+	specSems (p, N.sem);
+	N.lit = lit != 0;
+	if (lit) specLighting (p, *lit, N.sem, N.gl, N.lv);
+	N.nw = vsWrites (p->gprog[S.gprog], N.sem, N.lit, N.w);
+	return vsProgram (p, N, S, why);
+}
+static GpuBatch &gpuBatchNew (GRec *r, const State &st, const GProg &g, u32 stride);
+// A chunk of a list of triangles -- the draw's vertices [n0, n), each one's entry in b.order -- recorded with its
+// generated shaders. -> false: the processor shades it.
+static bool vsChunk (Pica *p, Batch &b, u32 n0, u32 n, int inputs, const Lighting *lit)
+{
+	Machine *m = p->m;
+	if (!ensureState (p)) return false;
+	const State &S = p->states[p->stateCount - 1];
+	if (!S.ok || S.gprog < 0) return false;
+	GRec *r = gpuRec (p, S.colorPhys, false);
+	if (!r || !r->trusted || r->bad) return false;
+	if (!r->nb) { r->t = S.t; r->w = S.t.w; r->h = S.t.h; }
+	const u32 count = n - n0;
+	if (S.gskip) return true;
+	VsNow &N = vsNow ();
+	int why = 0;
+	const u64 t0 = microsNow ();
+	VProg *v = vsPrepare (p, b, inputs, S, lit, N, why);
+	const u64 t1 = microsNow ();
+	m->gsp.usVsProgram += t1 - t0;
+	if (!v) { m->gsp.vsNot[why & 3] += count; return false; }
+	// (to find a fault: kinds of draws kept on the processor -- Machine::vsDebug: 1 the lit ones, 2 those not culled the usual way,
+	// 4 programs of more than 31 registers, 8 of more than 16 inputs, 16 with guards, 32 the ones not lit)
+	if (m->vsDebug)
+		if (((m->vsDebug & 1) && N.lit) || ((m->vsDebug & 2) && S.cull != 2) || ((m->vsDebug & 4) && v->regsPeak > 31)
+		    || ((m->vsDebug & 8) && v->nIn > 16) || ((m->vsDebug & 16) && v->guards) || ((m->vsDebug & 32) && !N.lit) || ((m->vsDebug >> 8) && (u32) (v - p->vprog) >= (m->vsDebug >> 8))) return false;	// (>> 8: only the first programs made)
+	const GProg &g = p->gprog[S.gprog];
+	const u32 stride = v->nIn < 4 ? 4 : v->nIn;
+	// (indexed when it pays: each distinct vertex once, then the draw's indices -- the GPU shades a vertex once)
+	const bool indexed = m->gpuIndexed && b.count * stride + count < count * stride;
+	if (r->nf + (indexed ? b.count * stride + count : count * stride) > GFLOATS_MAX || r->nb >= GBATCH_MAX || r->nu + g.nUni + v->nvu + v->ncu > GUNI_MAX) { m->gsp.vsNot[3] += count; return false; }
+	const ViewMap vm = { f24 (p->regs[R_VIEWPORT_W]), f24 (p->regs[R_VIEWPORT_H]), (float) (int) (p->regs[R_VIEWPORT_XY] & 0x3FF), (float) (int) (p->regs[R_VIEWPORT_XY] >> 16 & 0x3FF),
+			     f24 (p->regs[R_DEPTH_SCALE]), f24 (p->regs[R_DEPTH_OFFSET]) };
+	// (the V3D clips to the whole target: what the game's viewport leaves out is cut by the scissor)
+	int sc[4] = { S.gscissor[0], S.gscissor[1], S.gscissor[2], S.gscissor[3] };
+	{
+		const int vx0 = (int) vm.vx, vx1 = (int) (vm.vx + 2.0f * vm.vw), vy0 = r->h - (int) (vm.vy + 2.0f * vm.vh), vy1 = r->h - (int) vm.vy;
+		if (vx0 > 0 || vx1 < r->w || vy0 > 0 || vy1 < r->h)
+		{
+			int x0 = sc[2] > 0 ? sc[0] : 0, y0 = sc[2] > 0 ? sc[1] : 0, x1 = sc[2] > 0 ? sc[0] + sc[2] : r->w, y1 = sc[2] > 0 ? sc[1] + sc[3] : r->h;
+			if (x0 < vx0) x0 = vx0;
+			if (y0 < vy0) y0 = vy0;
+			if (x1 > vx1) x1 = vx1;
+			if (y1 > vy1) y1 = vy1;
+			if (x0 >= x1 || y0 >= y1) return true;			// (nothing of it can be seen)
+			sc[0] = x0; sc[1] = y0; sc[2] = x1 - x0; sc[3] = y1 - y0;
+		}
+	}
+	vsView (m, vm, r->w, r->h, N.view);
+	const int vi = (int) (v - p->vprog);
+	if (m->vsDebug)
+	{
+		static u8 said[VPROG_MAX];
+		if (said[vi] < 2)
+		{
+			said[vi]++;
+			fprintf (stderr, "vprog %d used: %u vertices (%u of them distinct), fragment program %d (%u varyings), flags %x blend %x wmask %x, scissor %d %d %d %d (the state's %d %d %d %d), viewport %g x %g at %g %g, depth %g %g, target %d x %d, alpha test %d %u, tex %d %d %d, known", vi, (unsigned) count, (unsigned) b.count, S.gprog, (unsigned) g.nVary,
+				 (unsigned) S.gflags, (unsigned) S.gblend, (unsigned) S.gwmask, sc[0], sc[1], sc[2], sc[3], S.gscissor[0], S.gscissor[1], S.gscissor[2], S.gscissor[3], (double) vm.vw, (double) vm.vh, (double) vm.vx, (double) vm.vy, (double) vm.ds, (double) vm.dof,
+				 r->w, r->h, S.f.alphaTest ? 1 : 0, (unsigned) S.f.alphaRef, S.gtex[0], S.gtex[1], S.gtex[2]);
+			for (int i = 0; i < 16; i++) fprintf (stderr, " %x", (unsigned) N.sp.known[i]);
+			fprintf (stderr, "; view");
+			for (int i = 0; i < picavs::V_COUNT; i++) fprintf (stderr, " %g", (double) N.view[i]);
+			fprintf (stderr, "; vertex 0:");
+			for (int i = 0; i < inputs && i < 8; i++) fprintf (stderr, " [%g %g %g %g]", (double) b.attr[0][i][0], (double) b.attr[0][i][1], (double) b.attr[0][i][2], (double) b.attr[0][i][3]);
+			fprintf (stderr, "%c", 10);
+		}
+	}
+	u32 *u = r->u + r->nu;
+	vsFill (v->vu, v->nvu, N, u); vsFill (v->cu, v->ncu, N, u + v->nvu);
+	const u32 flags = S.gflags | G_NOCLIP | (indexed ? G_INDEXED : 0) | (S.cull == 1 ? G_CULL_FRONT : S.cull == 2 ? G_CULL_BACK : 0);
+	GpuBatch *bt = 0;
+	if (r->nb && r->vsSerial == S.serial && !indexed)			// (the same state, program and values as the batch before: it goes on)
+	{
+		GpuBatch &l = r->b[r->nb - 1];
+		if (l.vprog == vi && l.flags == flags && l.vsNUni == v->nvu && l.csNUni == v->ncu && l.off + l.count * l.stride == r->nf
+		    && !memcmp (l.scissor, sc, sizeof sc) && !memcmp (r->u + l.vsUni, u, sizeof (u32) * (v->nvu + v->ncu))) bt = &l;
+	}
+	if (!bt)
+	{
+		const u32 at = r->nu;
+		r->nu += v->nvu + v->ncu;
+		bt = &gpuBatchNew (r, S, g, stride);
+		bt->flags = flags; bt->vprog = vi; bt->vsUni = at; bt->vsNUni = v->nvu; bt->csUni = at + v->nvu; bt->csNUni = v->ncu;
+		for (int k = 0; k < 4; k++) bt->scissor[k] = sc[k];
+	}
+	r->serial = 0; r->vsSerial = S.serial;					// (a triangle of the ordinary kind begins another batch)
+	// the vertices: of each, the components the program reads, in its order
+	u8 src[64];
+	for (u32 j = 0; j < stride; j++) src[j] = j < v->nIn && N.attrOf[v->in[j].reg & 15] != 0xFF ? (u8) (N.attrOf[v->in[j].reg & 15] * 4 + (v->in[j].comp & 3)) : 0xFF;
+	float *d = r->v + r->nf;
+	if (indexed)
+	{
+		for (u32 k = 0; k < b.count; k++, d += stride)
+		{
+			const float *a = b.attr[k][0];
+			for (u32 j = 0; j < stride; j++) d[j] = src[j] != 0xFF ? a[src[j]] : 0.0f;
+		}
+		u32 *ix = (u32 *) d;
+		for (u32 i = n0; i < n; i++) ix[i - n0] = b.order[i - n0];
+		r->nf += b.count * stride + count; bt->count = count; bt->nVerts = b.count;
+		r->vsSerial = 0;						// (nothing joins an indexed batch)
+	}
+	else
+	{
+		for (u32 i = n0; i < n; i++, d += stride)
+		{
+			const float *a = b.attr[b.order[i - n0]][0];
+			for (u32 j = 0; j < stride; j++) d[j] = src[j] != 0xFF ? a[src[j]] : 0.0f;
+		}
+		r->nf += count * stride; bt->count += count;
+	}
+	// (to find a fault: the last of the programs let through, at its first use -- its code, its uniforms, each distinct
+	// vertex as given and what the processor's path makes of it -- for tools/tests/v3d/picavs_test's PICAVS_CASE)
+	if ((m->vsDebug >> 8) && (u32) vi + 1 == (m->vsDebug >> 8))
+	{
+		static bool dumped;
+		FILE *o = dumped ? 0 : fopen ("SD:/roms/3ds/vscase.bin", "wb");
+		dumped = true;
+		if (o)
+		{
+			const u32 head[10] = { 0x45534356, v->nvs, v->ncs, v->nvu, v->ncu, v->nIn, stride, b.count, 4 + g.nVary, (u32) inputs };
+			fwrite (head, 4, 10, o);
+			fwrite (v->vs, 8, v->nvs, o); fwrite (v->cs, 8, v->ncs, o);
+			fwrite (r->u + bt->vsUni, 4, v->nvu, o); fwrite (r->u + bt->csUni, 4, v->ncu, o);
+			const float halfW = (float) r->w * 0.5f, halfH = (float) r->h * 0.5f;
+			for (u32 k = 0; k < b.count; k++)
+			{
+				float row[64], want[40];
+				const float *a = b.attr[k][0];
+				for (u32 j = 0; j < stride; j++) row[j] = src[j] != 0xFF ? a[src[j]] : 0.0f;
+				Vertex vx; u64 steps = 0; u32 bad = 0;
+				shadeVertex (p, b.attr[k], inputs, vx, steps, bad);
+				memset (want, 0, sizeof want);
+				gpuRow (g, vm, halfW, halfH, vx.a, want);
+				fwrite (row, 4, stride, o); fwrite (want, 4, 4 + g.nVary, o);
+			}
+			fwrite (N.view, 4, picavs::V_COUNT, o);
+			fclose (o);
+		}
+	}
+	p->triangles += count / 3; m->gsp.trianglesIn += count / 3; m->gsp.trianglesDrawn += count / 3;
+	m->gsp.usVsRecord += microsNow () - t1;
+	m->gsp.vsVertices += count; m->gsp.vsChunks++;
+	return true;
+}
+// (tests, Machine::vsCheck) What the chunk's generated program would write -- picavs_ref.h's arithmetic: the list,
+// the lighting, the writes -- beside what the processor's path gives the GPU for the same vertices (b.out, gpuRow).
+static void vsCheckChunk (Pica *p, Batch &b, int inputs, const Lighting *lit)
+{
+	Machine *m = p->m;
+	auto &st = m->vsStat;
+	if (!ensureState (p)) return;
+	const State &S = p->states[p->stateCount - 1];
+	if (!S.ok || S.gprog < 0) { st.noState += b.count; return; }
+	VsNow &N = vsNow ();
+	int why = 0;
+	VProg *v = vsPrepare (p, b, inputs, S, lit, N, why);
+	if (!v) { st.notVerts[why & 3] += b.count; return; }
+	const GProg &g = p->gprog[S.gprog];
+	const ViewMap vm = { f24 (p->regs[R_VIEWPORT_W]), f24 (p->regs[R_VIEWPORT_H]), (float) (int) (p->regs[R_VIEWPORT_XY] & 0x3FF), (float) (int) (p->regs[R_VIEWPORT_XY] >> 16 & 0x3FF),
+			     f24 (p->regs[R_DEPTH_SCALE]), f24 (p->regs[R_DEPTH_OFFSET]) };
+	vsView (m, vm, S.t.w, S.t.h, N.view);
+	const float halfW = (float) S.t.w * 0.5f, halfH = (float) S.t.h * 0.5f;
+	const u64 perm = (u64) p->regs[R_VSH_PERM_HI] << 32 | p->regs[R_VSH_PERM_LO];
+	const picavs::List l = { N.ops, N.sp.nOps };
+	st.chunks++; st.inputs += v->nIn; st.uniforms += v->nvu + v->ncu;
+	for (u32 k = 0; k < b.count; k++)
+	{
+		static float regs[32][4], out[16][4];
+		memset (regs, 0, sizeof regs); memset (out, 0, sizeof out);
+		for (int i = 0; i < inputs && i < 16; i++) memcpy (regs[perm >> (4 * i) & 15], b.attr[k][i], sizeof (float) * 4);
+		picavs::refRun (l, N.sp.consts, regs, out);
+		float lp[4] = { 0, 0, 0, 0 }, ls[4] = { 0, 0, 0, 0 };
+		if (N.lit) picavs::refLight (N.gl, N.lv, out, lp, ls);
+		float row[40];
+		gpuRow (g, vm, halfW, halfH, b.out[k].a, row);
+		st.checked++;
+		if (!(row[3] > 1e-3f)) continue;				// (behind the eye: the numbers mean nothing)
+		const float rw = 1.0f / row[3];
+		const float want[4] = { nearbyintf (row[0] * rw * N.view[picavs::V_SX]), nearbyintf (row[1] * rw * N.view[picavs::V_SY]), row[2] * rw * 0.5f + 0.5f, rw };
+		bool bad = false, badLit = false;
+		for (u32 j = 0; j < N.nw; j++)
+		{
+			bool isInt;
+			const float got = picavs::refWrite (N.w[j], out, N.view, isInt, lp, ls, N.sem + A_POS);
+			const float ref = j < 4 ? want[j] : row[j];
+			if (got != got || ref != ref) continue;
+			const bool isLit = N.w[j].kind == picavs::W_LITP || N.w[j].kind == picavs::W_LITS;
+			const float tol = j < 2 ? 4.0f + 1e-3f * fabsf (ref) : isLit ? 8.0f / 255.0f : 2e-3f * (1.0f + fabsf (ref));
+			if (fabsf (got - ref) > tol) { if (isLit) badLit = true; else { bad = true; if (st.said < 12) { st.said++; fprintf (stderr, "vs check: write %u (kind %u) gives %g, the processor %g (vertex %u of %u, w %g)%c", (unsigned) j, (unsigned) N.w[j].kind, (double) got, (double) ref, (unsigned) k, (unsigned) b.count, (double) row[3], 10); } } }
+		}
+		if (bad) st.wrong++;
+		if (badLit) st.wrongLit++;
+	}
+}
+
+static void gpuMirrorUniforms (Pica *p, GRec *r, GpuBatch &b)		// (z -> -z: the two values the clip depth is made with)
+{
+	const VProg &v = p->vprog[b.vprog];
+	for (u32 i = 0; i < v.nvu && i < b.vsNUni; i++) if (v.vu[i].kind == picavs::U_VIEW && (v.vu[i].slot == picavs::V_KZ || v.vu[i].slot == picavs::V_CZ)) r->u[b.vsUni + i] ^= 0x80000000u;
+	for (u32 i = 0; i < v.ncu && i < b.csNUni; i++) if (v.cu[i].kind == picavs::U_VIEW && (v.cu[i].slot == picavs::V_KZ || v.cu[i].slot == picavs::V_CZ)) r->u[b.csUni + i] ^= 0x80000000u;
+}
+static void gpuVPrograms (Pica *p, GpuFrame &f)
+{
+	static GpuVProgramInfo vp[VPROG_MAX];
+	for (u32 i = 0; i < p->vprogCount; i++)
+	{
+		const VProg &v = p->vprog[i];
+		vp[i].vs = v.vs; vp[i].cs = v.cs; vp[i].nvs = v.nvs; vp[i].ncs = v.ncs; vp[i].inputs = v.nIn < 4 ? 4 : v.nIn; vp[i].csInputs = v.nCsIn < 4 ? 4 : v.nCsIn;
+	}
+	f.vprograms = vp; f.nVPrograms = p->vprogCount;
 }
 
 // The survey (Machine::surveyShaders): a draw counted for its shader -- the entry and the uniforms that decide its
@@ -2925,6 +3322,8 @@ static void draw (Pica *p, bool indexed)
 	{
 		// (many vertices and other cores: shaded together)
 		Batch &b = *p->batch;
+		const u32 primMode0 = p->regs[R_PRIM_CONFIG] >> 8 & 3;
+		const bool listMode = primMode0 != 1 && primMode0 != 2;		// (a list of triangles: its chunks are whole triangles)
 		for (u32 n = 0; n < count; )
 		{
 			b.count = 0; b.inputs = inputs; b.lit = lit;
@@ -2933,8 +3332,9 @@ static void draw (Pica *p, bool indexed)
 			if (++p->drawStamp == 0) { p->drawStamp = 1; if (p->shaded) memset (p->shaded, 0, sizeof (Shaded) * SHADED_MAX); }
 			const u32 n0 = n;
 			const u64 tRead = microsNow ();
-			for (; n < count && n - n0 < BATCH_SPAN && b.count < BATCH_MAX; n++)
+			for (; n < count && n - n0 < (listMode ? BATCH_SPAN - 2 : BATCH_SPAN) && b.count < BATCH_MAX; n++)
 			{
+				if (listMode && (n - n0) % 3 == 0 && b.count + 3 > BATCH_MAX) break;
 				const u32 vi = vertexIndex (n);
 				Shaded *const slot = shaded ? &shaded[vi & (SHADED_MAX - 1)] : 0;
 				if (slot && slot->stamp == p->drawStamp && slot->index == vi) { b.order[n - n0] = (u16) slot->entry; continue; }
@@ -2945,8 +3345,16 @@ static void draw (Pica *p, bool indexed)
 			}
 			m->gsp.vertices += b.count;
 			const u64 tShade = microsNow ();
+			// (the host's GPU shades them: the chunk's raw vertices recorded with the draw's generated program)
+			if (m->gpuVS && m->gpuDraw && listMode && !p->primCount && (n - n0) % 3 == 0 && !(m->gpuSkip & (512 | 4096)) && vsChunk (p, b, n0, n, inputs, lit))
+			{
+				const u64 tEnd = microsNow ();
+				m->gsp.usRead += tShade - tRead; m->gsp.usAssemble += tEnd - tShade;
+				continue;
+			}
 			if (b.count >= 2 * BATCH_PIECE && m->parallelBegin (m->parallelUser, shadeWorker, p)) m->parallelEnd (m->parallelUser, shadeWorker, p);
 			else shadeWorker (p, 0);
+			if (m->vsCheck && m->gpuDraw && listMode) vsCheckChunk (p, b, inputs, lit);
 			for (int w = 0; w < 8; w++) { m->gsp.shaderSteps += b.by[w].steps; if (b.by[w].badOp) p->badOp = b.by[w].badOp; }
 			const u64 tAsm = microsNow ();
 			// A list of triangles for a target whose frames are the host GPU's: each triangle wholly inside goes

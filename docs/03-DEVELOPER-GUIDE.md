@@ -1966,6 +1966,15 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > (0 = unchanged; the N64 emulator's colour combiner is `texel × c1 + c2`), and
 > `KAPI_GPU_B_ALPHATEST(t)` discards the fragments whose alpha is below `t` / 255 (cut-out
 > foliage, fences, text) without blending or depth sorting.
+> **ABI v98 — a generated vertex shader**: a program whose vertex and coordinate shaders are made at run time
+> from an emulated console's (`user/Libs/v3d/picavs.h`: a PICA200 shader specialized for a draw, with its lighting)
+> is given `KAPI_GPU_P_VS_1WAY` (64 registers, its VPM output block apart: an output may be written before the
+> last input is read) and drawn by `kapi_gpu_render3` batches flagged `KAPI_GPU_B_NOCLIP` (the vertices are the
+> floats the shaders read — the coordinate shader the first `csInputs` —, the V3D clips) and, better,
+> `KAPI_GPU_B_INDEXED` (`b.first` vertices then `b.count` 32-bit indices: a vertex shaded once). Test
+> `kapi_abi_version () >= 98` first. The 3DS core does it (`user/Emulators/n3ds/n3ds_pica.cpp`, `vsChunk`;
+> the host: `n3ds/onyxhost.h`); `tools/tests/v3d/picavs_test.cpp` checks the generator in the simulator.
+>
 > **ABI v61 — your own shaders**: `kapi_gpu_program (-1, &prog)` uploads a vertex, a coordinate
 > and a fragment shader (V3D 4.2 QPU words, generated at run time with `user/Libs/v3d/qpu.h`:
 > `qpu::Prog p; p << qpu::I ().a (V3D_QPU_A_FADD, rf (3), r1, r5).ldvary (r0); …`; every app

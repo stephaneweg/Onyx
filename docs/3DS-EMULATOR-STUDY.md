@@ -927,6 +927,69 @@ the generated vertex and coordinate shaders (`KAPI_GPU_B_NOCLIP`), the kernel pu
 speed measured on the Pi. The lighting makes a program longer (more values alive at once): how many of the
 games' lists are then refused for registers is to be counted in S5.
 
+## 9x. S5, the vertex shaders on the V3D (2026-10-11): it draws, measured on the Pi 4
+
+**The core.** A draw of many vertices (a list of triangles, its target's frames already the GPU's) is taken chunk
+by chunk (whole triangles, at most 2 048 distinct vertices). `vsChunk` (n3ds_pica.cpp): the attributes are read as
+before; a component with one value in the whole chunk is the draw's; the shader is specialized on the chunk's
+first vertex (`specBuild`); its program is found or made -- `vsProgram`, kept by the list's shape, the fragment
+program whose varyings it feeds (`vsWrites`: the position, then the primary colour, the lighting's two colours,
+the texture coordinates, in the fragment shader's order) and the lighting's configuration: a coordinate shader
+first, then the vertex shader whose first inputs are the coordinate shader's (`picavs::build`'s `inPre`: the
+V3D gives the coordinate shader a vertex's first values). The record then takes **the raw attributes** -- only
+the components the program reads -- and, as uniforms, the list's constants, the view (the game's viewport in the
+whole target, the depth range) and the lighting's values (the tables' broken lines, each table fitted once:
+`lutFitKept`). The batch is **indexed** (each distinct vertex once, then the draw's indices) and carries the
+state's culling: the V3D clips, culls and shades. What the game's viewport leaves out is cut by the scissor. A
+frame whose depths are mirrored has the two depth values of its batches' uniforms negated. A chunk that is not
+specialized (a skinned mesh: an index register read per vertex) or whose program is refused stays on the
+processor, as do strips, fans and small draws.
+
+**The host** (`onyxhost.h`): a kernel program per (vertex program, fragment program) -- the kernel's table has 256
+places: the one used longest ago gives its place --, the batches passed with their uniform ranges. Only on a
+kernel that knows them (`kapi_abi_version () >= 98`); `n3dsemu --novs` keeps the vertex shaders on the processor.
+
+**The kernel** (kapi v98, no table change): `KAPI_GPU_B_NOCLIP` (9v), **`KAPI_GPU_P_VS_1WAY`** -- a generated
+shader is run one thread a QPU: the whole register file, 64 registers (`picavs` now uses them: no list of the two
+games is refused any more) -- with **its VPM output block apart from the input's**, and **`KAPI_GPU_B_INDEXED`**
+(a batch as vertices then 32-bit indices: Index Buffer Setup + Indexed Prim List).
+
+**Two things found on the way.** *The shared VPM block*: a generated shader writes an output as soon as it is
+made, before its last inputs are read; the kernel's shader record gave both one block, so an output overwrote an
+input not read yet -- *Super Mario 3D Land*'s far hills came out blue (their colour read after the position was
+written), only on the real GPU: the simulator keeps the two apart. Found by bisecting the programs on the Pi
+(`Machine::vsDebug`), dumping the faulty one's first use (`vscase.bin`) and running it in the simulator
+(`PICAVS_CASE=<file>` in picavs_test: right there -- so the fault was the hardware's set-up). *The scissor*: the
+state's scissor for the GPU had lost its width and height behind a comment since the first V3D commit (the whole
+target was always drawn); put back.
+
+**Checked on the PC** (`N3DS_VSCHECK=1` in n3dstest: for every chunk, what its program would write -- picavs_ref's
+arithmetic -- beside what the processor's path gives the GPU): *A Link Between Worlds* 5 177 307 vertices, **0
+differ**; *Super Mario 3D Land* 8 535 679 vertices, 3 differ (vertices against the eye, where the numbers are
+huge), 12 by the lighting alone (more than 8 of 255).
+
+**On the Pi 4** (n3dstest, one application core free that day; the same frame drawn both ways: 3 of 192 000 pixels
+differ in Mario's level, 20 in Zelda's title):
+
+| | vertex shaders on the processor | on the V3D, not indexed | on the V3D, indexed |
+|---|---|---|---|
+| *Super Mario 3D Land*, level 1-1 (VBlanks a second; the console: 59.8) | 55.7 | 56.3 | **59.1** |
+| ... the command lists / the GPU's frames, of 10.8 s | 3.88 s / 2.74 s | 3.13 s / 3.36 s | 3.03 s / 2.95 s |
+| *A Link Between Worlds*, the title | 31.4 | 32.6 | **35.8** |
+| ... the command lists / the GPU's frames | 3.23 s / 3.60 s | 2.33 s / 4.13 s | 2.23 s / 3.42 s |
+
+Not indexed, the V3D shaded every corner of every triangle -- what the processor no longer did, the GPU did three
+to five times over; indexed, a vertex is shaded once. 70 programs in Mario (74 000 instructions), 69 in Zelda; a
+fifth of Mario's vertices and an eighth of Zelda's stay on the processor (skinned meshes).
+
+**Left**: finding a chunk's program costs 0.5 s of the 10 (the shader is specialized again at every chunk: to be
+kept by the uniforms); a generated program is a third no-operations (a register is not read right after its
+write: to be packed) and uses one ALU an instruction; the skinned meshes (the bone's index is the vertex's:
+a table of matrices as uniforms, read by index -- the V3D has no indexed uniform read; or one program a bone
+count); strips and fans; small draws. **The Pi 5's kernel is built but was not run** (no Pi 5 here): its V3D 7.1
+has no "separate blocks" bit in the shader record -- to be checked on the machine: **on a V3D 7.1 the vertex
+shaders stay on the processor unless `n3dsemu --vs` asks** (`g_vsOn71` in onyxhost.h).
+
 ## 10. Tests
 
 - **Own test programs** built with `arm-none-eabi-gcc` and a minimal `.3dsx` start-up of ours

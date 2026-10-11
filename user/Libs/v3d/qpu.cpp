@@ -16,11 +16,12 @@ static int s_ver = 42, s_regs = 32;		// (setVersion)
 bool setVersion (int ver, int regs)
 {
 	if (ver != 42 && ver != 71) return false;
-	if (regs != 16 && regs != 32) return false;
+	if (regs != 16 && regs != 32 && regs != 64) return false;	// (64: a shader run one thread a QPU -- a vertex shader)
 	s_ver = ver; s_regs = regs;
 	return true;
 }
 int version () { return s_ver; }
+int regs () { return s_regs; }
 int rfLimit () { return s_ver >= 71 ? s_regs - 7 : 32; }
 int versionOf (const char *t)
 {

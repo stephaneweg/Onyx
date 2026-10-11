@@ -26,7 +26,7 @@ U="-I$ROOT/user/Emulators -I$ROOT/user/Libs -I$ROOT/tools/qpu/mesa"
 OBJS=""
 for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do
 	o="$B/core/$(basename "$src" .cpp).o"
-	if [ ! -f "$o" ] || [ "$src" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/n3ds.h" -nt "$o" ]; then
+	if [ ! -f "$o" ] || [ "$src" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/n3ds.h" -nt "$o" ] || [ "$ROOT/user/Libs/v3d/picavs.h" -nt "$o" ] || [ "$ROOT/user/Libs/v3d/picavs_ref.h" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/onyxhost.h" -nt "$o" ]; then
 		case "$src" in
 		*n3ds_cpu.cpp) aarch64-none-elf-g++ -std=c++20 -O2 -Wall -Wextra $ARCH $INC $U -c "$src" -o "$o" ;;
 		*)             aarch64-none-elf-g++ -std=c++17 -O2 -Wall -Wextra $ARCH -fno-exceptions -fno-rtti $U -c "$src" -o "$o" ;;
@@ -38,9 +38,9 @@ done
 V3D="$ROOT/user/Libs/v3d"; MESA="$ROOT/tools/qpu/mesa"
 v3dobjs () {	# $1: the objects' suffix, $2: more flags
 	VO=""
-	for src in "$V3D/picatev.cpp" "$V3D/qpu.cpp" "$V3D/shaders.cpp"; do
+	for src in "$V3D/picatev.cpp" "$V3D/picavs.cpp" "$V3D/qpu.cpp" "$V3D/shaders.cpp"; do
 		o="$B/core/v3d_$(basename "$src" .cpp)$1.o"
-		[ -f "$o" ] && [ "$o" -nt "$src" ] || aarch64-none-elf-g++ -std=c++17 -O2 $ARCH $2 -fno-exceptions -fno-rtti -I"$ROOT/user/Libs" -I"$MESA" -c "$src" -o "$o"
+		[ -f "$o" ] && [ "$o" -nt "$src" ] && [ "$o" -nt "$V3D/picavs.h" ] || aarch64-none-elf-g++ -std=c++17 -O2 $ARCH $2 -fno-exceptions -fno-rtti -I"$ROOT/user/Libs" -I"$MESA" -c "$src" -o "$o"
 		VO="$VO $o"
 	done
 	for src in "$MESA/broadcom/qpu/qpu_pack.c" "$MESA/broadcom/qpu/qpu_instr.c" "$V3D/shim.c"; do
@@ -63,7 +63,7 @@ if [ -f "$UL/lib/appkit_stubs.o" ] && [ -f "$UL/Runtime/libc/crt0libc.o" ] && [ 
 	OO=""
 	for src in "$ROOT"/user/Emulators/n3ds/*.cpp "$HERE/n3ds/n3dstest.cpp"; do
 		o="$B/core/$(basename "$src" .cpp).onyx.o"
-		if [ ! -f "$o" ] || [ "$src" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/n3ds.h" -nt "$o" ]; then
+		if [ ! -f "$o" ] || [ "$src" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/n3ds.h" -nt "$o" ] || [ "$ROOT/user/Libs/v3d/picavs.h" -nt "$o" ] || [ "$ROOT/user/Libs/v3d/picavs_ref.h" -nt "$o" ] || [ "$ROOT/user/Emulators/n3ds/onyxhost.h" -nt "$o" ]; then
 			case "$src" in
 			*n3ds_cpu.cpp) aarch64-none-elf-g++ -std=c++20 -O2 $ARCH -fno-pic -fno-pie -fno-stack-protector $INC $U -c "$src" -o "$o" ;;
 			*)             aarch64-none-elf-g++ -std=c++17 -O3 $ARCH -fno-pic -fno-pie -fno-stack-protector -fno-exceptions -fno-rtti -DN3DS_ONYX $U -I"$UL/Kits" -I"$ROOT/kernel/include" -c "$src" -o "$o" ;;

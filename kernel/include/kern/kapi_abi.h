@@ -259,7 +259,12 @@
 //      (Later the same day, no version change: the window API moved from AppKit -- its kapi_* window
 //      functions removed -- to UIKit, uk_win_* (user/Kits/uikit/win.h; docs/POCKETUI-TECH-STUDY.md phase
 //      P2). The table's entries and the KAPI_WS_* operations are unchanged.)
-#define KAPI_ABI_VERSION	97
+// v98: gpu_program / gpu_render3 for generated vertex shaders (user/Libs/v3d/picavs: an emulated console's vertex
+//      shader run by the V3D) -- no table entry changes: + KAPI_GPU_P_VS_1WAY (a program's vertex and coordinate
+//      shaders use the whole register file and have their own VPM output block), + KAPI_GPU_B_NOCLIP (a batch's
+//      vertices are attributes, not clip positions: the kernel leaves them alone, the V3D clips),
+//      + KAPI_GPU_B_INDEXED (such a batch as b.first vertices then b.count 32-bit indices).
+#define KAPI_ABI_VERSION	98
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -575,6 +580,10 @@ struct kapi_gpu_batch
 // them (from attributes: a shader generated for an emulated console's). The kernel does not look at them -- no
 // view, no clipping on the processor --: the GPU clips the triangles from the coordinate shader's clip position.
 #define KAPI_GPU_B_NOCLIP	(1u << 27)
+// (gpu_render3, with NOCLIP) The batch is indexed: at float `off`, b.first vertices of `stride` floats, then b.count
+// 32-bit indices among them (triangles) -- the GPU runs the vertex shader once a vertex, not once a corner. Not in a
+// gpu_vbuf (the call is refused).
+#define KAPI_GPU_B_INDEXED	(1u << 28)
 
 // A window, for the remote desktop (v56 win_list): its client area on the screen (x, y, w,
 // h: without the frame; the full-screen window: the whole screen), WIN_FLAG_* flags, its
@@ -655,6 +664,9 @@ struct kapi_gpu_program
 #define KAPI_GPU_P_V71		(1u << 3)	// the shaders are V3D 7.1's (the Pi 5's GPU: gpu_info says "V3D 7.1");
 						// a 7.1 kernel refuses a program without it (-2): 4.2 code; and
 						// on 7.1 FS_4WAY is ignored (2 threads, 32 registers: qpu.h)
+#define KAPI_GPU_P_VS_1WAY	(1u << 4)	// the vertex and coordinate shaders are generated ones (user/Libs/v3d/picavs): they
+						// use more than 16 registers (V3D 4.2: not run 4 threads a QPU) and write outputs
+						// before their last input is read (their VPM input and output blocks are apart)
 #define KAPI_GPU_MAX_PROGRAMS	256
 // A batch of gpu_render2: vertices [first, first + count) (triangles) with a program, its
 // uniforms (ranges of the call's uniform array: vertex, coordinate, fragment shader), up to 8
