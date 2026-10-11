@@ -28,7 +28,7 @@ enum : u32
 	FS_NO_ARCHIVE     = 0xC8804465,
 	FS_FULL           = 0xD86044D2,
 };
-enum { KIND_ROMFS = 1, KIND_FILE = 2, KIND_DIR = 3 };
+enum { KIND_ROMFS = 1, KIND_FILE = 2, KIND_DIR = 3, KIND_MADE = 4 };	// (MADE: an archive of ours, in memory -- standIn below)
 
 // ---- the files in memory ---------------------------------------------------------------------------------------------
 struct Storage
@@ -194,6 +194,41 @@ static void extRoot (Machine *m, u32 va, u32 size, bool shared, char *out, u32 c
 	snprintf (out, cap, "%s%08X%08X:", shared ? "shared" : "ext", (unsigned) hi, (unsigned) lo);
 }
 
+// ---- a system archive we have not: a stand-in ---------------------------------------------------------------------------
+// A game may open the content of a system title (archive 0x2345678A): Nintendo's data, not ours to ship. For the Mii
+// data (0004009B00010202: Mario Kart 7 stops at a fatal error without it) a RomFS of our own making is given, with
+// the one file the games look for -- CFL_Res.dat -- EMPTY: a try, to see what a game does with no Mii shapes at all.
+// (Mario Kart 7, 2026-10-11: it finds the file, reads it, and shows its own "An error has occurred" screen instead of
+// waiting for ever -- the same with 64 KB of zeros in it, and whether or not its extra save data opens: it wants the
+// real shapes.)
+// The image is what a program is given of a RomFS: its level 3 alone (the hashed levels above are the system's) --
+// the header, one bucket for the folders and one for the files, the root folder, the file.
+static u8 g_standIn[0x1000]; static u32 g_standInSize;
+static void put32 (u8 *p, u32 v) { p[0] = (u8) v; p[1] = (u8) (v >> 8); p[2] = (u8) (v >> 16); p[3] = (u8) (v >> 24); }
+static bool standIn (u32 titleHigh, u32 titleLow)
+{
+	if (titleHigh != 0x0004009B || titleLow != 0x00010202) return false;
+	if (g_standInSize) return true;
+	static const char NAME[] = "CFL_Res.dat";
+	const u32 nameBytes = (u32) (sizeof NAME - 1) * 2, fileMeta = 0x20 + ((nameBytes + 3) & ~3u);
+	u8 *b = g_standIn;
+	memset (b, 0, sizeof g_standIn);
+	u8 *l = b;
+	const u32 dirHash = 0x28, dirMeta = dirHash + 4, fileHash = dirMeta + 0x18, fileMetaAt = fileHash + 4, data = (fileMetaAt + fileMeta + 15) & ~15u;
+	put32 (l, 0x28);
+	put32 (l + 4, dirHash); put32 (l + 8, 4); put32 (l + 12, dirMeta); put32 (l + 16, 0x18);
+	put32 (l + 20, fileHash); put32 (l + 24, 4); put32 (l + 28, fileMetaAt); put32 (l + 32, fileMeta); put32 (l + 36, data);
+	put32 (l + dirHash, 0);										// the one folder bucket: the root, at 0
+	u8 *d = l + dirMeta;										// the root: its own parent, no sibling, no folder in it, its first file at 0
+	put32 (d, 0); put32 (d + 4, 0xFFFFFFFF); put32 (d + 8, 0xFFFFFFFF); put32 (d + 12, 0); put32 (d + 16, 0xFFFFFFFF); put32 (d + 20, 0);
+	put32 (l + fileHash, 0);									// the one file bucket: the file, at 0
+	u8 *f = l + fileMetaAt;										// the file: in the root, no sibling, its data at 0, 0 bytes, its name
+	put32 (f, 0); put32 (f + 4, 0xFFFFFFFF); put32 (f + 0x18, 0xFFFFFFFF); put32 (f + 0x1C, nameBytes);
+	for (u32 i = 0; NAME[i]; i++) f[0x20 + i * 2] = (u8) NAME[i];
+	g_standInSize = (data + 16 + 0xFFF) & ~0xFFFu;
+	return true;
+}
+
 // ---- sessions --------------------------------------------------------------------------------------------------------
 static void fileRequest (Machine *m, Session *s, u32 *cmd)
 {
@@ -216,6 +251,10 @@ static void fileRequest (Machine *m, Session *s, u32 *cmd)
 		if (off >= size) n = 0; else if (n > size - off) n = (u32) (size - off);
 		u32 done = 0;
 		if (node) { if (n && m->mem.write (dst, node->data + off, n)) done = n; }
+		else if (s->kind == KIND_MADE)
+		{
+			if (n && m->mem.write (dst, g_standIn + off, n)) done = n;
+		}
 		else
 		{
 			static u8 buf[0x10000];
@@ -429,6 +468,14 @@ void fsRequest (Machine *m, Session *s, u32 *cmd)
 			u32 t[4] = { 0, 0, 0, 0 }, f[5] = { 0, 0, 0, 0, 0 };
 			for (u32 i = 0; i < 4 && i * 4 + 4 <= cmd[4]; i++) t[i] = m->mem.r32 (cmd[10] + i * 4);
 			for (u32 i = 0; i < 5 && i * 4 + 4 <= cmd[6]; i++) f[i] = m->mem.r32 (cmd[12] + i * 4);
+			if (f[2] == 0 && standIn (t[1], t[0]))			// (its RomFS: one of ours stands in)
+			{
+				m->note ("fs:USER the Mii data archive: ours, with no shapes in it");
+				Session *fl = new Session (fileRequest, "file"); fl->base = 0; fl->size = g_standInSize; fl->kind = KIND_MADE;
+				const u32 h = m->handleNew (fl);
+				cmd[0] = ipcHeader (id, 1, 2); cmd[1] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; cmd[2] = 0x10; cmd[3] = h;
+				break;
+			}
 			m->note ("fs:USER the content of title %08x%08x (media %u): %08x %08x %08x %08x %08x", (unsigned) t[1], (unsigned) t[0], (unsigned) (t[2] & 255), (unsigned) f[0], (unsigned) f[1], (unsigned) f[2], (unsigned) f[3], (unsigned) f[4]);
 			REPLY (FS_NOT_FOUND);
 			break;

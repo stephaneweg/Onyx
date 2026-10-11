@@ -35,6 +35,14 @@ static void absentRequest (Machine *m, Session *s, u32 *cmd)
 {
 	m->note ("%s %04x", s->name, (unsigned) (cmd[0] >> 16));
 	const u32 id = cmd[0] >> 16;
+	// (a command that gives an event to wait on: a real one, never signalled -- a null handle is refused by the
+	// kernel when the program waits on it, and Mario Kart 7 gives up there: StreetPass' two)
+	if ((strcmp (s->name, "cecd:u") == 0 || strcmp (s->name, "cecd:s") == 0) && (id == 0x000E || id == 0x000F))
+	{
+		const u32 h = m->handleNew (new Event (RESET_ONESHOT));
+		cmd[0] = ipcHeader (id, 1, 2); cmd[1] = h ? (u32) RES_OK : (u32) RES_OUT_OF_HANDLES; cmd[2] = 0; cmd[3] = h;
+		return;
+	}
 	cmd[0] = ipcHeader (id, 1, 0); cmd[1] = RES_OK;
 	for (int i = 2; i < 8; i++) cmd[i] = 0;
 }
