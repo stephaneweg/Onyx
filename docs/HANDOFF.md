@@ -37,6 +37,48 @@ and **phase 2** (the emulators and games on `in_state`, the Gamepad applet, `con
 `SD:/etc/input.ini`. Untested without a real pad: the pads' real layouts through InputKit, the repeat's feel, a pad
 on the desktop.
 
+**Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
+display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached
+another way, everything by the keys). Tested on the PC only (`sh tools/tests/server_sim/pocket640.sh <out> [mail
+circuits gpiolab turtle audit]`: the real apps under PocketUI at 640 x 480, driven by keys, their pictures compared;
+it needs `MEDIA_SHOTS=<shots.sh's folder>` for Mail's mbedTLS). NOT on the Pi, NOT on the device.
+- **Mail: three screens** (`user/Apps/mail`: `g_three`, `layout_three`, `three_go` / `three_back`; pocket's landscape
+  under 800 px -- portrait keeps P7's one pane and drawer): the folders (the SidePanel whole across the window,
+  `setRail (false)`), the folder's messages (a row the arrows are on, Enter opens it; L / R the folder before / after:
+  the panel stays "shown" beside the window, off, for that), the message (Up / Down scroll, Left / Right ring its
+  buttons, Enter uses one). Esc goes back one screen; the bar says where one is ("<" and where back goes, the title,
+  the screen's tools). No conversation is opened behind the first screen (none marked read unseen). Writing: the whole
+  screen, its title in the bar, Esc leaves it; in pocket the Message menu has Attach a File..., Show Cc and Bcc, Save
+  the Draft. **Not done**: the accounts' wizard (600 x 470) and the settings box (680 x 500) are bigger than the
+  window (the audit); links in a message's text need a pointer.
+- **UIKit, for every app (pocket and console only)**: a drawer that has no place to step opens and closes by L / R
+  (the left panel L, the right one R; `sp_step`, `nav_step`'s second round), the keys go into it and come back out; a
+  closed drawer takes no key; the arrows scroll a SidePanel to the item they are on; the keys' pointer
+  (`UkKeyPointer`, `uk_keypointer_move` / `_draw`, `uk_keys_drive`); `ToolBar::setShown`. Four entries appended to
+  `uikit.abi` (docs/03 section 5.10.7 says the pattern for an app).
+- **Circuits, Turtle Quest, GPIO Lab** (`g_pk`: pocket and a screen under 800 px, decided in `main`): the left column
+  (the levels; the header) is the content of a navigation SidePanel -- a drawer, L --, the rest has the width. Circuits'
+  board has the keys' pointer in pocket and console (the arrows, Enter = the button: put, take, wire, toggle), its
+  palette tells the bar what it hides (`setShown`). Turtle Quest: the program and the board side by side. GPIO Lab:
+  the header's 20 rows fitted to the height, the chart's rows one line, the banner and the status line fitted.
+  **Not done**: Turtle Quest's level editor on a 480 px screen (its panel is taller; tools and board by a pointer);
+  GPIO Lab's I2C map shows its first rows only there.
+- `tools/tests/desktop_sim/shots.sh` could not build the Terminal on this branch (a FreeType app since its TrueType
+  grid; not in the script's FreeType list): fixed -- **the Terminal's desktop picture was not being made before**.
+- **The audit of every app at 640 x 480**: `docs/compact-shell/real/pocketterm/AUDIT-640.md` -- 56 apps and applets
+  captured (`audit-<app>-640.png` beside it; `pocket640.sh <out> audit`), a verdict each, the fix proposed and its
+  size, and **nine questions for a UX designer** (Slides, Paint, the drawer's tab, Koton, Setup, QBStudio, 3DForge,
+  Turtle Quest's level editor, the desktop's small windows). **Broken at 640**: Slides, Paint, Koton, Courier, the
+  Package Manager, Setup, QBStudio, 3DForge, the Control Panel's Panel applet, Mail's two account dialogs. Its
+  *Keys* column is an estimate: only the four reworked apps were driven by keys.
+- **Fixed from the audit** (small ones): Letters' status bar (*(modified)* over *Page 1 of 2*); **the Spreadsheet's
+  and Slides' toolbars are UIKit's ToolBar** (`user/Apps/sheet/ui_base.h`, the class both share: "»" and F6 in pocket
+  instead of rows cut at the edge; the desktop's rows the same pixels); Photos' empty library's line. Left among the
+  small ones: Cardfile (bar, colours, translation), the Game Library's and Lisa's, the Icon Editor's grid by the keys.
+- **Next**: the designer's answers, then Slides / Setup first (the office suite; the first start on the device); a
+  pass over every app BY THE KEYS ALONE; the shared dialogs (the file chooser) at 640; the Control Panel's applets'
+  least width (700) down to 640; all of it on the Pi and the device.
+
 - **S1, the theme** -- UIKit: the named theme `Onyx Noir`, the flat look (`UK_FLAT`, `uk_flat ()`, the `UK_N_*`
   tokens; `uikit/theme.h`, `theme.cpp`, `paint.cpp`: no gradient, no bevel, no shadow, the focus a ring), chosen for
   the **pocket mode only** by `SD:/etc/pocketui.ini` `[look] theme =` (the default: Onyx Noir; `system`: theme.txt).

@@ -8,6 +8,9 @@
 #define _sheet_ui_base_h
 
 #include "Apps/letters/icons.h"
+#define ToolButton UkToolButton_		// (UIKit's ToolBar without its ToolButton: ours has that name)
+#include "uikit/toolbar.h"
+#undef ToolButton
 
 namespace ss {
 
@@ -248,27 +251,11 @@ private:
 	int m_part, m_down;
 };
 
-class ToolBar : public Widget
-{
-public:
-	ToolBar (int l, int t, int w) : Widget (l, t, w, TB_H), m_x (6), m_nsep (0) {}
-	void add (Widget *w, int gap = 1)
-	{
-		m_x += gap;
-		w->left = m_x; w->top = (TB_H - w->height) / 2;
-		addChild (w);
-		m_x += w->width;
-	}
-	void sep () { if (m_nsep < 24) m_sepX[m_nsep++] = m_x + 5; m_x += 11; }
-	int end () const { return m_x; }
-	void onDraw () override
-	{
-		canvas.fillRect (0, 0, width, height, C_BG);
-		for (int i = 0; i < m_nsep; i++) uk_etch_v (canvas, m_sepX[i], 7, height - 14, C_BG);
-	}
-private:
-	int m_x, m_nsep, m_sepX[24];
-};
+// The toolbars are UIKit's ToolBar (uikit/toolbar.h, included above): on the desktop the same rows as the class that
+// was here (the same places, the same separators); in pocket and console a row keeps what fits and puts the rest
+// behind "»" (opened by the keys too: F6) instead of being cut at the window's edge. The spreadsheet and Slides
+// keep their own ToolButton (their icons, the colour bar under one): UIKit's class of that name is not used here.
+using uikit::ToolBar;
 
 // ---- a list dropping over the window ------------------------------------------------------------------------
 typedef void (*RowDraw) (Canvas &cv, int i, int x, int y, int w, int h, unsigned ink);

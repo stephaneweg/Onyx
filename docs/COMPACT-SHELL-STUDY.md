@@ -2123,6 +2123,18 @@ version: the table of what each button does is unchanged, only the mechanism is)
   shell's hint lines choosing their glyph from the event's source (key cap or pad button); analog triggers and
   the sticks as actions; a pad message in `rdpd` (a kernel call).
 
+### 20.9 The apps at 640 x 480 without a mouse (2026-10-11)
+
+What section 20.6 left ("the apps with hand-made toolbars or hard-coded colours") was begun from the other end: what
+a 640 x 480 screen and no pointer ask of each app. Built: **Mail as three screens** (the folders, the messages, the
+message; Esc back; a bar with "<" and the title, as the Control Panel's); **the drawers by L / R** in UIKit (every
+side panel without places: the Calendar's, the Archiver's, FM Tracker's, the PDF Viewer's, the Icon Editor's colours)
+and **the keys' pointer** for a view worked with the pointer; **Circuits, Turtle Quest and GPIO Lab** with their left
+column in a drawer. Every other app was captured at that size and judged: **`docs/compact-shell/real/pocketterm/
+AUDIT-640.md`** -- the verdicts, what was fixed, and what waits for a designer's answer (the questions are there, one
+per app). The user's rule held throughout: nothing changes on the desktop (its pictures compared before and after).
+How it is tested: `tools/tests/server_sim/pocket640.sh`. The user guide (docs/04) says each app's keys.
+
 ## Résumé (FR)
 
 L'utilisateur demandait si, maintenant qu'Elegant est en espace utilisateur, on pouvait remplacer le bureau

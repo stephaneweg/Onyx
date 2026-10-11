@@ -715,8 +715,13 @@ games' buttons. The **CMD key** (the Super key) pressed and released opens the *
 **CMD held half a second** goes Home. **F10** opens the Menu too; Alt + Tab shows the open apps, Ctrl + Esc goes
 Home. **Alt + Up / Down** scrolls what has the focus as the mouse wheel does (a page, a list, a text; Alt + Page Up /
 Page Down: five notches) -- on a handheld whose D-pad is the arrows: Alt held and the D-pad. **F6** puts a ring on the window's **toolbar**: Left / Right move it over the tools (the **»** too), Enter or Space
-uses the tool, Esc, Down or F6 again gives the keys back to the document. In pocket mode under 800 px wide the Control
-Panel shows one thing at a time: its list, then an applet whole with a "< Control Panel" bar. In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
+uses the tool, Esc, Down or F6 again gives the keys back to the document. **L / R** (Ctrl + Page Up / Down), in a
+window without tabs whose side panel is a **drawer without places** — the Calendar's month and tasks, the Archiver's
+folders, FM Tracker's and the PDF Viewer's panels, the levels of Circuits and Turtle Quest, GPIO Lab's header --, open
+and close that drawer: **L the left one, R the right one** (the Icon Editor's colours; a window's only panel: either
+key). An open drawer has the keys (its list's, its fields'), Esc closes it and gives them back to what had them. In pocket mode under 800 px wide the Control
+Panel shows one thing at a time: its list, then an applet whole with a "< Control Panel" bar; **Mail** is three
+screens there (its folders, a folder's messages, a message: §Mail). In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
 mode's dark look, draws its text in a TrueType face (DejaVu Sans Mono 15: 69 × 22 on a 640 × 480 screen);
 `SD:/etc/terminal.ini` (`font = bitmap`, `size = 18`...) changes it.
 
@@ -4116,6 +4121,35 @@ pointer or the focus), a **drawer** in portrait (the tab at the left edge) and t
 conversations, then the one opened across the window — the toolbar's **‹** or **Esc** comes back to the
 list; *New message* is a pen alone and the search shorter.
 
+**On a small pocket screen in landscape (under 800 px wide: the PocketTerm35's 640 × 480) Mail is three
+screens, one at a time**, made for the keys alone (no mouse):
+
+1. **the accounts and their folders** (*All inboxes*, *Starred*, each account and its Inbox, Drafts, Sent,
+   Spam…, the unread counted; *Contacts* and *Accounts and settings* under them) — **Up / Down** move,
+   **Enter** (a pad's **A**) on a folder shows its messages, on an account folds its folders;
+2. **the folder's messages** — **Up / Down** (Page Up / Down, Home, End) move over them, **Enter** opens the
+   one they are on; **L / R** (Ctrl + Page Up / Down) show the folder before / after without going back;
+3. **the message** — **Up / Down** scroll it (at its end Down goes on to the quick reply), **Left / Right**
+   put a ring on its buttons one after the other (an earlier message folded, the sender, reply, reply all,
+   forward, the star, *Show the pictures*, an attachment), **Enter** uses the ringed one.
+
+**Esc** (a pad's **B**) goes back one screen each time. The bar under the band says where one is: at its
+left **‹** and the screen Esc goes back to (*‹ Mail*, *‹ Inbox*), then the folder's name or whom the
+message is from; at its right that screen's tools (the list's: All / Unread, a pen for a new message, the
+search, *Check now*; the message's: reply, reply all, forward, archive, delete, junk, the star). Everything
+is in the **Menu** too (CMD or F10): *File ▸ New Message* (Ctrl+N), *Edit ▸ Find…* (Ctrl+F: the search,
+whose results are a list), *Message ▸ Reply* (Ctrl+R)… **Writing a message** takes the whole screen (its
+title in the bar; Tab from field to field, Ctrl+Enter sends, Esc leaves it — asked first when something is
+written); in pocket the *Message* menu has also **Attach a File…**, **Show Cc and Bcc** and **Save the
+Draft**, what the pane's buttons do.
+
+| | | |
+|:---:|:---:|:---:|
+| ![](compact-shell/real/pocketterm/pt-mail-640-1-folders.png) | ![](compact-shell/real/pocketterm/pt-mail-640-2-list.png) | ![](compact-shell/real/pocketterm/pt-mail-640-3-message.png) |
+
+*Mail on a 640 × 480 pocket screen: the folders, a folder's messages, a message (the real program under PocketUI,
+run on the PC: `tools/tests/server_sim/pocket640.sh`).*
+
 | | |
 |:---:|:---:|
 | ![A conversation](../screenshots/mail-thread.png) | ![An HTML message](../screenshots/mail-html.png) |
@@ -4745,6 +4779,10 @@ connection is encrypted, not authenticated. A response is read up to 16 MB.
 title, data bars on the totals, the three best months of coffee in green, a column chart; the Total
 column chosen, its sum in the status bar.*
 
+**In the pocket and console modes** its two toolbars are no longer cut at the window's edge: each row keeps the
+tools that fit and puts the others behind **»** (a click, or **F6** then the arrows and Enter); every command is in
+the Menu too.
+
 The Spreadsheet works in the way of **LibreOffice Calc** and **Gnumeric** (and of Excel, whose files
 it writes): a **workbook** of several **sheets** of up to 1 048 576 rows × 16 384 columns (A … XFD),
 **formulas** recomputed at each change, **number formats**, fonts, colours, borders, merged cells,
@@ -4928,6 +4966,10 @@ summary with lookups and a pie chart, the espresso machine's loan).
 ### Slides, the presentation program (`slides`)
 
 ![Slides](../screenshots/slides.png)
+
+**In the pocket and console modes** its two toolbars keep what fits and put the rest behind **»** (F6 by the keys),
+as the Spreadsheet's. On a 640 × 480 screen the rest of Slides is **not yet fit for use**: the slide is squeezed
+between the thumbnails and the inspector (the audit: `docs/compact-shell/real/pocketterm/AUDIT-640.md`).
 
 The third app of the office suite, with **Letters** and the **Spreadsheet** (their toolbars, their icons): a
 presentation program in the way of PowerPoint. **The window**: two toolbars (New slide, Layout, Duplicate, Delete;
@@ -5342,6 +5384,18 @@ does the same; a program must be stopped first. **Board ▸ Release Every Pin** 
 the set-up of the pictures above (on the real header too: an LED on 17, a servo on 18, a button on 27).
 Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code view), `--run` (its program run at once).
 
+**On a small pocket screen (under 800 px wide: the PocketTerm35's 640 × 480)** the header is a **drawer**: **L**
+(Ctrl + Page Up) opens and closes it — in it the **arrows** choose a pin (its 20 rows fitted to the screen's height),
+**Space** switches an output, **Enter** or **Esc** closes it — and the pin's panel, the charts or the Code view take the
+window's width. Out of the drawer the arrows move the focus over the panel's controls (**Left / Right** inside a row of
+choices: the pin's mode, *Pins / Code*, *Timing Chart / I2C Bus / Edges*; Enter or Space on a button or a box), Space
+still sets the chosen output high or low. Known there: the I2C map shows its first rows only (the list of what was
+found beside it is whole).
+
+![](compact-shell/real/pocketterm/pt-gpiolab-640.png)
+
+*GPIO Lab on a 640 × 480 pocket screen (the real program under PocketUI, run on the PC).*
+
 ### Circuits, logic gates as a puzzle game (`circuits`)
 
 **Circuits** (category *Programming*) teaches how a computer computes, as a game: in each level the player builds a
@@ -5443,6 +5497,18 @@ line a row, the rows in counting order) and `solution`; a value on several lines
 each starting with `|`. The circuit text (in `progress.ini`, Copy Circuit, `solution`) has one line a statement:
 `part g1 AND 8 4` (a gate, its name, its type, its place) and `wire A g1.1` (from a switch or a gate to an input pin
 `.1` / `.2`, or to a lamp).
+
+**In the pocket and console modes (no mouse)** the board has a **pointer of its own**: the **arrows** move it over
+the grid, a cell at a time (**Shift**: four), and **Enter** (a pad's **A**) is its button — on a switch: toggled; on a
+gate: taken (the arrows move it, Enter puts it down; Del deletes it); on an output pin: a wire begun (the arrows, then
+Enter on an input pin lays it; Enter on a fed input picks its wire up); with a gate armed (**1** to **6**): put there.
+Esc cancels. **On a small pocket screen (under 800 px wide: 640 × 480)** the levels are a **drawer** — **L** (Ctrl +
+Page Up) opens and closes it, **Up / Down** go from level to level, **Enter** closes it — and the board has their room;
+Undo and Redo leave the palette when it is narrow (Ctrl+Z, Ctrl+Y, the Menu).
+
+![](compact-shell/real/pocketterm/pt-circuits-640.png)
+
+*Circuits on a 640 × 480 pocket screen: the board, the truth table and Check; the levels behind L.*
 
 ### Pinball, a pinball table with real physics (`pinball`)
 
@@ -6705,6 +6771,17 @@ key, `c` coin, `D` door, `p` tile to paint, `1` … `9` a gem and its number (a 
 repeat), `T` / `U` the pads of portal pair 1 / 2 (each letter twice or not at all), `^ > v <` the turtle and its
 heading, a space: water. A pack that breaks the gems' or the portals' rule is refused with the reason (*"level 3
 (gems-line): gem 2 is missing"*).
+
+**On a small pocket screen (under 800 px wide: the PocketTerm35's 640 × 480)** the pack and its levels are a
+**drawer**: **L** (Ctrl + Page Up) opens and closes it — in it **Up / Down** go from level to level, **Left / Right**
+from pack to pack, **Enter** closes it — and the program and the board share the window. The keys are the program's
+(the editor's); Run, Step, Stop and Reset are F5, F8, F7 and F9 and in the **Menu** (CMD or F10: *Game*), as the
+lesson and the hint. Known there: the **level editor**'s panel (Ctrl+E) is taller than a 480 px screen and its tools
+and the board are worked with a pointer — on such a device, levels are made on another screen.
+
+![](compact-shell/real/pocketterm/pt-turtle-640.png)
+
+*Turtle Quest on a 640 × 480 pocket screen: the program, its words, the board; the levels behind L.*
 
 ## 14. Troubleshooting
 

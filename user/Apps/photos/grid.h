@@ -467,6 +467,18 @@ public:
 		else if (g_src == SRC_RECENT) s = TR ("The photos put on the card lately show here.");
 		else s = TR ("Photos shows the pictures of SD:/Pictures, of each volume's DCIM folder and of the folders you add.");
 		text_c (canvas, 0, vh / 2 - 30, width, 30, t, C_FIELD_TEXT, F_H2, 1);
+		if (s && uk_size_class () != UK_SC_REGULAR && tw (s) > width - 24)	// (a small screen: over two lines, cut at a space)
+		{
+			char a[240], b2[240]; int n = (int) strlen (s), cut = -1;
+			if (n > 238) n = 238;
+			for (int i = 0; i < n; i++) if (s[i] == ' ') { memcpy (a, s, i); a[i] = 0; if (tw (a) <= width - 24) cut = i; else break; }
+			if (cut < 0) cut = n / 2;
+			memcpy (a, s, cut); a[cut] = 0;
+			int k = 0; for (int i = cut + (s[cut] == ' ' ? 1 : 0); i < n; i++) b2[k++] = s[i]; b2[k] = 0;
+			text_c (canvas, 0, vh / 2 - 2, width, 20, a, col_dim ());
+			text_c (canvas, 0, vh / 2 + 17, width, 20, b2, col_dim ());
+		}
+		else
 		if (s) text_c (canvas, 0, vh / 2 + 4, width, 24, s, col_dim ());
 		if (!g_query[0] && (g_src == SRC_ALL || g_src == SRC_FOLDER) && !g_lib.scanning)
 		{

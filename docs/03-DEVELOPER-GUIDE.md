@@ -1782,6 +1782,33 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   shell's only): it is sent `UK_SHELL_KEY_MENU` for the menu key and, while it grabs, every key; `UK_SHELL_KEY_CANCEL`
   when a key of the shell's closes its menu.
 
+- **Without a mouse on a 640 x 480 screen (2026-10-11).** What UIKit gained for it, pocket and console only (the
+  desktop's pictures compared before / after: the same): (1) **a drawer by the keys** -- a SidePanel that has no place
+  to step (free content: `setContent`, an inspector's pages) and is shown as a drawer, a slide-over or a sheet is
+  opened and closed by Prev / Next (L / R, Ctrl + Page Up / Down): **L the left panel, R the right one**, a window's
+  only panel either (`sp_step`; `nav_step` now asks every owner in turn, then once more with `dir * 2`: "nobody took
+  it"); opened by the keys it gives them to its content (its page) and, closed, back to the widget that had them; a
+  closed overlay takes no key (it ate the arrows); the arrows scroll the items to the one they are on. (2) **The keys'
+  pointer** (`uikit/adapt.h`): `UkKeyPointer`, `uk_keys_drive ()`, `uk_keypointer_move (p, key, step, x0, y0, x1, y1)`,
+  `uk_keypointer_draw (canvas, p)` -- for a view worked with the pointer (Circuits' board: the arrows move it a cell at
+  a time, Enter is the button; the view gives itself the place through its own `onMouse`). (3)
+  **`ToolBar::setShown (w, shown)`**: a tool the app takes off the bar for now -- the desktop hides it as the app did;
+  compact, the row is laid out without it (setting `hidden` by hand did nothing there: the bar's layout shows what it
+  places -- Circuits' palette showed the gates a level does not allow). Four entries appended to `uikit.abi`. **The
+  pattern for an app whose left column is a list of places it draws itself** (Circuits, Turtle Quest, GPIO Lab): when
+  `uk_mode () == UK_MODE_POCKET` and the screen (`kapi_screen_size`) is under 800 px wide, the column's widget is made
+  the content of a navigation SidePanel instead of a child of the Root (decided once, in `main`: the mode never changes
+  under a program), the panel added LAST, `place ()`d in the layout, the rest laid out from `reservedWidth ()` (0: a
+  drawer) plus 24 px for its tab; the content's `onKey` does Up / Down / Enter, and a mouse choice closes the drawer.
+  Mail's three screens (`g_three`, `layout_three`) are the other pattern: one SidePanel whole across the window
+  (`setRail (false)`), then the list, then the message, a bar with "<" over each. Tests:
+  `sh tools/tests/server_sim/pocket640.sh [out] [mail circuits gpiolab turtle audit]` (keys only, pictures compared by
+  `pngcmp.py`); the audit of every app at that size: `docs/compact-shell/real/pocketterm/AUDIT-640.md`. **An app
+  with a hand-made toolbar** (a class of its own with `add` / `sep`, as Letters had and the Spreadsheet and Slides
+  had until this work: `user/Apps/sheet/ui_base.h`) takes UIKit's instead with three lines -- `#define ToolButton
+  UkToolButton_`, `#include "uikit/toolbar.h"`, `#undef ToolButton`, then `using uikit::ToolBar;` in its namespace:
+  the desktop's rows are the same pixels (checked), pocket gets "»" and F6. Cardfile's is the next one.
+
 ### 5.10.8. InputKit and UIKit's navigation: a pad and the keys as actions (`inputkit/inputkit.h`, `uikit/adapt.h`; the branch `PocketTerm`)
 
 **InputKit** (`user/Kits/inputkit/`, `SD:/lib/inputkit.so`; docs/06 §14, `docs/21-INPUTKIT.md`) turns the keys and

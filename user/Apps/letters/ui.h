@@ -582,8 +582,21 @@ public:
 		canvas.fillRect (0, 0, width, height, C_BG);
 		uk_etch_h (canvas, 0, 0, width, C_BG);
 		unsigned ink = uk_ink_for (C_BG), dim = uk_mix (C_BG, ink, 170);
+		if (uk_size_class () != UK_SC_REGULAR)		// a small screen (pocket's 640 px): no text over another
+		{
+			// the page and the words move right of the file's name, up to the zoom; the name is cut for what is left
+			int zx = width - 12 - 18 - 52 - 18, mw = uk_text_w (mid), lw = uk_text_w (left), mx = width / 2 - mw / 2;
+			if (mx < 10 + lw + 16) mx = 10 + lw + 16;
+			if (mx + mw > zx - 10) mx = zx - 10 - mw;
+			char fit[160]; uk_text_fit (left, mx - 16 - 10 > 24 ? mx - 16 - 10 : 24, fit, sizeof fit);
+			uk_text_l (canvas, 10, 1, height - 1, fit, dim);
+			uk_text_l (canvas, mx, 1, height - 1, mid, dim);
+		}
+		else
+		{
 		uk_text_l (canvas, 10, 1, height - 1, left, dim);
 		uk_text_l (canvas, width / 2 - uk_text_w (mid) / 2, 1, height - 1, mid, dim);
+		}
 		// the zoom: - 100% +
 		char z[8]; int n = 0, v = L.zoom; char t[6]; int j = 0;
 		while (v) { t[j++] = (char) ('0' + v % 10); v /= 10; }
