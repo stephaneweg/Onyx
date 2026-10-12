@@ -23,6 +23,11 @@ static void (*g_onElementOpen) (El *e);		// a double click: its event's SUB
 static void (*g_onDesignHint) (const char *s);		// a line for the status bar
 
 static const unsigned C_BLUEPRINT = 0x003C8CD8, C_DROP = 0x00E0307A;
+// POCKET on a small screen (under 800 px wide, no pointer: main decides once): the form OR the code, the project with
+// the toolbox and the properties in drawers; a control is chosen, moved and sized by the keys (uikit/objnav.h).
+static bool g_pk = false;
+static UkObjNav g_nav;
+static void (*g_onToolAdded) () = 0;			// pocket: a control was added from the toolbox (it is in the move mode)
 // The grid: dots every GRID px in the window (View > Grid); the sizes dragged (a control's width and height, the
 // window's) are multiples of it and a Canvas's children are placed on it (View > Snap to Grid; Alt held: not)
 static const int GRID = 5;
@@ -340,6 +345,102 @@ public:
 	void redraw () { invalidate (true); ov->invalidate (true); }
 	void select (El *e, bool tell = true) { sel = e; redraw (); if (tell && g_onSelect) g_onSelect (e); }
 
+	// ---- pocket: the controls by the keys ------------------------------------------------------------------------------
+	// The D-pad goes from control to control (the leaves of the tree and the empty containers; Esc: the parent); M the
+	// move mode -- on a Canvas the control's place, 8 px a press (Shift: 1); in a Column, a Row, a Grid its ORDER among
+	// its siblings (the layout places it: there is no x, no y to give) --, S the size mode (its width and height); Enter
+	// keeps, Esc cancels: what the control had is put back.
+	struct NavSave { char at[32], w[16], h[16]; bool hasAt, hasW, hasH, fill; int idx; } navSave;	// (no pointer kept: the tree is read again after each edit)
+	void nav_save ()
+	{
+		El *s = sel; if (!s) return;
+		const char *v;
+		navSave.hasAt = (v = s->get ("at")) != 0; snprintf (navSave.at, sizeof navSave.at, "%s", v ? v : "");
+		navSave.hasW = (v = s->get ("width")) != 0; snprintf (navSave.w, sizeof navSave.w, "%s", v ? v : "");
+		navSave.hasH = (v = s->get ("height")) != 0; snprintf (navSave.h, sizeof navSave.h, "%s", v ? v : "");
+		navSave.fill = s->flag ("fill"); navSave.idx = s->index ();
+	}
+	void nav_restore ()
+	{
+		El *s = sel; if (!s || !s->parent) return;
+		if (s->index () != navSave.idx && navSave.idx >= 0 && navSave.idx < s->parent->kids.n) { El *p = s->parent; p->kids.erase (s->index ()); p->add (s, navSave.idx); }	// (moved among its siblings only)
+		s->set ("at", navSave.hasAt ? navSave.at : 0); s->set ("width", navSave.hasW ? navSave.w : 0); s->set ("height", navSave.hasH ? navSave.h : 0);
+		s->setFlag ("fill", navSave.fill);
+	}
+	void nav_begin_move ()				// (a control just added: placed by the keys at once)
+	{
+		if (!sel || sel == form->root) return;
+		relay ();
+		UkObjRect r = { sel->x, sel->y, imax (1, sel->w), imax (1, sel->h) };
+		nav_save (); uk_objnav_begin (g_nav, UK_OBJ_MOVE, r);
+		redraw ();
+	}
+	bool nav_key (long k)
+	{
+		enum { MAXE = 200 };
+		relay ();
+		El *L[MAXE]; UkObjRect R[MAXE]; int n = 0;
+		for (int i = 0; i < items.n && n < MAXE; i++)
+		{
+			El *e = items[i].e;
+			if (e == form->root || e->w <= 0 || e->h <= 0) continue;
+			if (is_container (e->kind) && e->kids.n && e->kind != K_MENU && e->kind != K_TOOLBAR) continue;
+			L[n] = e; R[n].x = e->x; R[n].y = e->y; R[n].w = e->w; R[n].h = e->h; n++;
+		}
+		g_nav.sel = -1; for (int i = 0; i < n; i++) if (L[i] == sel) g_nav.sel = i;
+		if (g_nav.mode != UK_OBJ_PICK && (!sel || sel == form->root || !sel->parent)) uk_objnav_end (g_nav);
+		g_nav.step = 8; g_nav.fine = 1; g_nav.minW = g_nav.minH = 8;
+		bool arrow = k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN;
+		if (g_nav.mode != UK_OBJ_PICK && g_nav.sel < 0 && sel)	// (a container chosen by Esc, then M or S: its own rectangle)
+		{ g_nav.now.x = sel->x; g_nav.now.y = sel->y; }
+		if (g_nav.mode == UK_OBJ_MOVE && arrow)
+		{
+			El *s = sel, *p = s->parent;
+			int dx = k == KEY_LEFT ? -1 : k == KEY_RIGHT ? 1 : 0, dy = k == KEY_UP ? -1 : k == KEY_DOWN ? 1 : 0;
+			if (p->kind == K_CANVAS)
+			{
+				int step = (kapi_get_modifiers () & MOD_SHIFT) ? 1 : 8, x = 0, y = 0;
+				s->size2 ("at", &x, &y);
+				char t[24]; snprintf (t, sizeof t, "%d,%d", imax (0, x + dx * step), imax (0, y + dy * step)); s->set ("at", t);
+			}
+			else
+			{
+				int i = s->index (), j = i + (dx + dy < 0 ? -1 : 1);
+				if (j < 0 || j >= p->kids.n) return true;
+				p->kids.erase (i); p->add (s, j);
+			}
+			if (g_onFormEdited) g_onFormEdited ();
+			redraw ();
+			return true;
+		}
+		if (g_nav.mode == UK_OBJ_SIZE && sel) { g_nav.now.w = imax (1, sel->w); g_nav.now.h = imax (1, sel->h); }	// (what the layout gave it)
+		if (g_nav.mode == UK_OBJ_PICK && g_nav.sel < 0 && sel && sel != form->root && (k == 'm' || k == 'M' || k == 's' || k == 'S') && !(kapi_get_modifiers () & (MOD_CTRL | MOD_ALT)))
+		{	// (a container with children: not in the D-pad's list, but moved and sized as any)
+			UkObjRect r = { sel->x, sel->y, imax (1, sel->w), imax (1, sel->h) };
+			nav_save (); uk_objnav_begin (g_nav, k == 's' || k == 'S' ? UK_OBJ_SIZE : UK_OBJ_MOVE, r); redraw ();
+			return true;
+		}
+		switch (uk_objnav_key (g_nav, k, R, n, 0))
+		{
+		case UK_OBJ_NO:
+			if (k == KEY_ENTER && sel && sel != form->root && g_onElementOpen) { g_onElementOpen (sel); return true; }
+			return false;
+		case UK_OBJ_PICKED: select (L[g_nav.sel]); break;
+		case UK_OBJ_BEGAN: nav_save (); break;
+		case UK_OBJ_CHANGED:
+			if (sel)
+			{
+				if (g_nav.now.w != imax (1, sel->w)) { sel->setNum ("width", g_nav.now.w); sel->setFlag ("fill", false); }
+				if (g_nav.now.h != imax (1, sel->h)) sel->setNum ("height", g_nav.now.h);
+				if (g_onFormEdited) g_onFormEdited ();
+			}
+			break;
+		case UK_OBJ_CANCELLED: nav_restore (); if (g_onFormEdited) g_onFormEdited (); break;
+		}
+		redraw ();
+		return true;
+	}
+
 	void onDraw () override
 	{
 		unsigned bg = uk_mix (C_BG, C_TEXT, 20);
@@ -504,6 +605,7 @@ public:
 		if (par == win) { El *body = 0; for (int i = 0; i < win->kids.n; i++) if (is_container (win->kids[i]->kind) && win->kids[i]->kind != K_TOOLBAR) body = win->kids[i]; if (body && s == win) { par = body; idx = body->kids.n; } }
 		dropPar = par; dropIdx = idx; dropOk = true; dropAtX = 8; dropAtY = 8;
 		El *e = new_element (*form, kind); doDrop (e, false);
+		if (g_pk) { nav_begin_move (); if (g_onToolAdded) g_onToolAdded (); }
 	}
 };
 
@@ -562,6 +664,12 @@ inline void Overlay::onDraw ()
 		for (int i = 0; i < 8; i++) { canvas.fillRect (hx[i] - 4, hy[i] - 4, 9, 9, C_BLUEPRINT); canvas.fillRect (hx[i] - 3, hy[i] - 3, 7, 7, 0xFFFFFF); }
 		char t[96]; describe (s, t, sizeof t);
 		int ty = y + h + 4; if (s == d->form->root) ty = y + h + 26;
+		if (g_pk && g_nav.mode != UK_OBJ_PICK && s != d->form->root)	// (pocket, a mode of the keys: its frame, what it is and where)
+		{
+			UkObjRect now = { x, y, w, h };
+			uk_objnav_draw (canvas, g_nav, now, 0, t, 0);
+		}
+		else
 		draw_tag (canvas, x + w - uk_tw (t, 2) - 8, imin (ty, height - uk_fh ()), t, C_BLUEPRINT);
 	}
 	if (d->dropOk && (d->drag == Designer::DR_MOVE || d->newKind >= 0))
@@ -684,6 +792,7 @@ inline bool Overlay::onMouse (int mx, int my, int bl, int, int, int wheel)
 }
 inline bool Overlay::onKey (long k)
 {
+	if (g_pk && uk_keys_drive () && d->form && d->form->root && d->nav_key (k)) return true;
 	if (k == KEY_DEL || k == KEY_BACKSPACE) { d->removeSelected (); return true; }
 	if (k == 27) { if (d->sel && d->sel->parent) d->select (d->sel->parent); return true; }
 	El *s = d->sel;
@@ -744,6 +853,27 @@ public:
 	void (*onPick) (int kind);			// a double click (the designer adds it)
 	Toolbox (int l, int t, int w, int h, Designer *d) : Widget (l, t, w, h), des (d), hot (-1), down (-1), scroll (0), dragging (false), pressX (0), pressY (0), lastClick (0), lastIdx (-1), onPick (0) {}
 	int rowH () { return uk_fh () + 6; }
+	// Pocket: the keys -- Up / Down from tool to tool, Enter (A) adds the one they are on (as a double click)
+	int kcur = -1;
+	bool onKey (long k) override
+	{
+		if (!g_pk) return false;
+		if (k == KEY_UP || k == KEY_DOWN)
+		{
+			int d = k == KEY_UP ? -1 : 1, i = kcur;
+			if (i < 0 && d < 0) return true;
+			for (i += d; i >= 0 && i < NTOOLS && TOOLS[i].kind < 0; i += d) ;
+			if (i < 0 || i >= NTOOLS) return true;
+			kcur = i;
+			int x, y, w; place (i, &x, &y, &w);
+			if (y < rowH ()) scroll = imax (0, scroll + y - rowH ());
+			if (y + rowH () > height) scroll += y + rowH () - height;
+			invalidate (true);
+			return true;
+		}
+		if (k == KEY_ENTER && kcur >= 0 && kcur < NTOOLS && TOOLS[kcur].kind >= 0) { if (onPick) onPick (TOOLS[kcur].kind); return true; }
+		return false;
+	}
 	// item i's box (2 columns; the groups' titles across)
 	void place (int i, int *x, int *y, int *w)
 	{
@@ -770,6 +900,7 @@ public:
 				continue;
 			}
 			if (i == down || i == hot) uk_rbox (canvas, x, y + 1, w - 2, RH - 2, 4, uk_mix (C_BG, C_ACCENT, i == down ? 90 : 40), uk_mix (C_BG, C_ACCENT, i == down ? 90 : 40));
+			if (g_pk && i == kcur) uk_rline (canvas, x, y + 1, w - 2, RH - 2, 4, C_ACCENT, 255);
 			tool_icon (canvas, TOOLS[i].kind, x + 4, y + (RH - 14) / 2, C_TEXT, C_ACCENT);
 			uk_text (canvas, x + 24, y + 3, TOOLS[i].label, C_TEXT);
 		}

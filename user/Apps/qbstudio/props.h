@@ -85,13 +85,47 @@ public:
 	PropGrid (int l, int t, int w, int h) : Widget (l, t, w, h), el (0), tab (0), edit (0), editRow (-1), m_lastClick (0), m_lastRow (-1), m_top (0), m_pend (false) { canFocus = true; }
 	int rowH () { return uk_fh () + 8; }
 	int headH () { return uk_fh () * 2 + 30; }
+	// Pocket: the keys -- Up / Down from row to row (a ring), Left / Right Properties / Events, Enter (A) does what a
+	// click on the row does (a value typed in place, a box ticked, a list, an event's SUB opened)
+	int kcur = -1;
+	bool onKey (long k) override
+	{
+		if (!g_pk || edit || !el) return false;
+		char names[4][64]; const char *labels[4];
+		int n = tab == 0 ? rows.n : events_of (el, names, labels, 4);
+		if (k == KEY_UP || k == KEY_DOWN)
+		{
+			int d = k == KEY_UP ? -1 : 1, i = kcur;
+			if (i < 0 && d < 0) return true;
+			for (i += d; tab == 0 && i >= 0 && i < n && rows[i].type == PR_HEAD; i += d) ;
+			if (i < 0 || i >= n) return true;
+			kcur = i;
+			if (tab == 0)
+			{
+				int y = i * rowH () - m_top, room = height - headH ();
+				if (y < 0) m_top += y;
+				if (y + rowH () > room) m_top += y + rowH () - room;
+				if (m_top < 0) m_top = 0;
+			}
+			invalidate (true);
+			return true;
+		}
+		if (k == KEY_LEFT || k == KEY_RIGHT) { commit (); tab = tab ? 0 : 1; kcur = -1; m_top = 0; invalidate (true); return true; }
+		if (k == KEY_ENTER && kcur >= 0 && kcur < n)
+		{
+			int y = headH () + kcur * rowH () - (tab == 0 ? m_top : 0) + 2;
+			pressed = false; onMouse (labelW () + 6, y, 1, 0, 0, 0); onMouse (labelW () + 6, y, 0, 0, 0, 0);
+			return true;
+		}
+		return false;
+	}
 	static const int TABS_H = 30;
 	int labelW () { return width * 42 / 100; }
 
 	void show (El *e)
 	{
 		commit ();
-		el = e; rows.clear (); m_top = 0;
+		el = e; rows.clear (); m_top = 0; kcur = -1;
 		if (e) rows_of (e, rows);
 		invalidate (true);
 	}
@@ -134,6 +168,7 @@ public:
 				const PropRow &r = rows[i];
 				if (r.type == PR_HEAD) { uk_text (clip, 8, y + 4, r.label, C_TEXT, 2); continue; }
 				if (i == editRow) clip.fillRect (0, y, width, RH, uk_mix (C_BG, C_ACCENT, 50));
+				if (g_pk && i == kcur) uk_rline (clip, 3, y, width - 6, RH, 4, C_ACCENT, 255);
 				uk_text (clip, 16, y + 4, r.label, C_TEXT);
 				char v[128]; value (r, v, sizeof v);
 				int vx = LW;
@@ -155,6 +190,7 @@ public:
 			for (int i = 0; i < n; i++)
 			{
 				int y = i * RH;
+				if (g_pk && i == kcur) uk_rline (clip, 3, y, width - 6, RH, 4, C_ACCENT, 255);
 				uk_text (clip, 16, y + 4, labels[i], C_TEXT);
 				bool has = g_subExists && g_subExists (names[i]);
 				if (has) { uk_text (clip, LW, y + 4, names[i], C_ACCENT); clip.fillRect (LW, y + 4 + uk_fh () - 2, uk_tw (names[i]), 1, C_ACCENT); }

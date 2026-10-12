@@ -85,6 +85,10 @@ static unsigned g_checkAt;				// the code checked again then (ticks; 0 none)
 static bool g_reading;					// (a form read: its text's caret does not choose)
 
 static void relayout ();
+static void put (Widget *w, int x, int y, int ww, int hh);
+// Pocket on a small screen (g_pk, designer.h): the project with the toolbox, and the properties, are drawers (L, R).
+static SidePanel *g_sideL = 0, *g_sideR = 0;
+static int g_leftPart = 1;				// the left drawer's part the keys are in: 0 the project, 1 the toolbox / the outline
 static void show_doc (int i);
 static void check_program (bool quiet);
 static void refresh_outline ();
@@ -836,6 +840,7 @@ static void show_doc (int i)
 	Doc &d = g_p.docs[i];
 	if (!d.open) { d.open = true; g_p.tabs.push (i); }
 	g_p.cur = i;
+	if (g_pk) { g_view = d.type == DOC_FORM ? 0 : 2; g_seg->select (d.type == DOC_FORM ? 0 : 1); uk_objnav_end (g_nav); }	// (the form OR the code)
 	for (int k = 0; k < g_p.docs.n; k++) g_p.docs[k].ed->hidden = k != i || (d.type == DOC_FORM && g_view == 0);
 	bool form = d.type == DOC_FORM;
 	if (form) g_lastForm = i;
@@ -860,8 +865,15 @@ static void show_doc (int i)
 	g_tabs->invalidate (true);
 	if (!form || g_view == 2) d.ed->setFocus (); else g_des->ov->setFocus ();
 }
+static Doc *code_for_form ();
 static void view_changed (Widget &)
 {
+	if (g_pk)					// (pocket's switch: Form | Code -- F7)
+	{
+		Doc *t = g_seg->selected == 1 ? code_for_form () : main_form ();
+		if (t) show_doc ((int) (t - &g_p.docs[0]));
+		return;
+	}
 	g_view = g_seg->selected;
 	Doc *d = cur_doc ();
 	if (d && d->type != DOC_FORM && g_view != 2) { Doc *f = main_form (); if (f) { show_doc ((int) (f - &g_p.docs[0])); return; } }
@@ -1331,6 +1343,69 @@ static ToolButton *button (int glyph, const char *tip, void (*cb) (), int gap = 
 	return b;
 }
 
+// Pocket: the hint line at the window's foot -- the keys of what has them (the form, a mode, the code, a drawer).
+static void pocket_hints ()
+{
+	if (!g_pk || !g_des) return;
+	static UkPadHint HN[8]; int n = 0; const char *mode = 0;
+	Doc *d = cur_doc (); bool form = d && d->type == DOC_FORM;
+	if (g_sideL && g_sideL->isOpen ())
+	{
+		HN[n++] = { "-", form ? TR ("project / toolbox") : TR ("project / outline") };
+		HN[n++] = { "|", g_leftPart == 0 ? TR ("file") : form ? TR ("control") : TR ("SUB") };
+		HN[n++] = { "A", g_leftPart == 0 ? TR ("open") : form ? TR ("add") : TR ("go") }; HN[n++] = { "L", TR ("close") };
+	}
+	else if (g_sideR && g_sideR->isOpen ()) { HN[n++] = { "|", TR ("property") }; HN[n++] = { "A", TR ("edit") }; HN[n++] = { "-", TR ("properties / events") }; HN[n++] = { "R", TR ("close") }; }
+	else if (form)
+	{
+		n = uk_objnav_hints (g_nav, HN, &mode);
+		if (g_nav.mode == UK_OBJ_PICK) { if (!n) HN[n++] = { "+", TR ("control") }; else HN[0].word = TR ("control"); HN[n++] = { "A", TR ("its code") }; HN[n++] = { "L", TR ("add") }; HN[n++] = { "[F7]", TR ("code") }; HN[n++] = { "[F5]", TR ("run") }; }
+	}
+	else { HN[n++] = { "[F7]", TR ("form") }; HN[n++] = { "[F5]", TR ("run") }; HN[n++] = { "[F6]", TR ("tools") }; HN[n++] = { "[Alt]+", TR ("scroll") }; HN[n++] = { "L", TR ("project") }; }
+	Root *r = Root::winFirst ();
+	int was = uk_hint_line_height (r);
+	if (uk_hint_line (r, HN, n, mode) != was) relayout ();
+}
+// Pocket's drawers: what each holds, placed in it. The left one has two parts -- the project's files, then the toolbox
+// (a form shown) or the outline (the code) --: Left / Right go from one to the other, the other keys are the part's.
+class Pane : public Widget
+{
+public:
+	bool leftPane;
+	Pane (bool l) : Widget (0, 0, l ? LEFT_W + 20 : RIGHT_W + 16, 300), leftPane (l) {}
+	void onDraw () override { canvas.clear (C_BG); }
+	void place ()
+	{
+		int W = width, H = height;
+		if (!leftPane) { if (g_hProps) put (g_hProps, 0, 0, W, HEAD_H); if (g_props) put (g_props, 0, HEAD_H, W, imax (10, H - HEAD_H)); return; }
+		if (!g_tools || !g_outline) return;
+		int th = imin (150, H / 3);
+		put (g_hProject, 0, 0, W, HEAD_H); put (g_tree, 0, HEAD_H, W, th);
+		int ty = HEAD_H + th;
+		put (g_hTools, 0, ty, W, HEAD_H);
+		put (g_tools, 0, ty + HEAD_H, W, imax (10, H - ty - HEAD_H));
+		put (g_outline, 4, ty + HEAD_H + 4, W - 8, imax (10, H - ty - HEAD_H - 8));
+	}
+	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); place (); }
+	bool onKey (long k) override
+	{
+		if (!leftPane) return g_props ? ((Widget *) g_props)->onKey (k) : false;
+		Doc *d = cur_doc (); bool form = d && d->type == DOC_FORM;
+		if (k == KEY_LEFT || k == KEY_RIGHT) { g_leftPart = g_leftPart ? 0 : 1; g_hProject->invalidate (true); g_hTools->invalidate (true); return true; }
+		if (g_leftPart == 0)
+		{
+			bool r = ((Widget *) g_tree)->onKey (k);
+			if (k == KEY_ENTER) { tree_pick (*g_tree); if (g_sideL->isOpen ()) g_sideL->open (false); return true; }
+			return r;
+		}
+		if (form) return ((Widget *) g_tools)->onKey (k);
+		bool r = ((Widget *) g_outline)->onKey (k);
+		if (k == KEY_ENTER) { outline_pick (*g_outline); if (g_sideL->isOpen ()) g_sideL->open (false); return true; }
+		return r;
+	}
+};
+static Pane *g_paneL = 0, *g_paneR = 0;
+
 class QsRoot : public Root
 {
 public:
@@ -1339,6 +1414,7 @@ public:
 	void onTick () override
 	{
 		g_props->tick ();
+		pocket_hints ();
 		static bool hadErrs = false;
 		bool errs = false; for (int i = 0; i < g_probs.n; i++) if (g_probs[i].kind == 0) errs = true;
 		if (errs != hadErrs) { hadErrs = errs; relayout (); }
@@ -1386,6 +1462,29 @@ static void relayout ()
 	put (g_tb, 0, 0, W, TB_H);
 	g_seg->Widget::left = W - g_seg->width - 10;
 	int top = TB_H, bottom = H - ST_H;
+	if (g_pk)					// pocket: the form OR the code on the whole width, over the hint line
+	{
+		bottom = H - uk_hint_line_height (g_root);
+		g_status->hidden = true; g_tabs->hidden = true; g_splitBar->hidden = true;
+		g_sideL->place (0, top, LEFT_W + 20, bottom - top); g_sideR->place (W - RIGHT_W - 16, top, RIGHT_W + 16, bottom - top);
+		g_paneL->place (); g_paneR->place ();
+		Doc *d = cur_doc (); bool form = d && d->type == DOC_FORM;
+		int errs = 0; for (int i = 0; i < g_probs.n; i++) if (g_probs[i].kind == 0) errs++;
+		int msgH = form && !errs ? 0 : errs ? 76 : 40, y = top;
+		g_msgs->hidden = msgH == 0;
+		if (!form) { put (g_codebar, 0, y, W, CODEBAR_H); y += CODEBAR_H; }
+		int areaH = bottom - y - msgH;
+		put (g_msgs, 0, bottom - msgH, W, imax (1, msgH));
+		if (d) { if (form) put (g_des, 0, y, W, areaH); else put (d->ed, 0, y, W, areaH); }
+		g_objBox->Widget::left = 8; g_objBox->Widget::top = g_codebar->top + 4;
+		g_evBox->Widget::left = g_objBox->left + g_objBox->width + 8; g_evBox->Widget::top = g_codebar->top + 4;
+		g_objBox->hidden = g_evBox->hidden = g_codebar->hidden;
+		g_objBox->bringToFront (); g_evBox->bringToFront ();
+		if (g_sideL->isOpen ()) g_sideL->bringToFront ();
+		if (g_sideR->isOpen ()) g_sideR->bringToFront ();
+		g_root->invalidate (true);
+		return;
+	}
 	put (g_status, 0, bottom, W, ST_H);
 	// the left: the project, the toolbox (or the outline)
 	put (g_hProject, 0, top, LEFT_W, HEAD_H);
@@ -1462,6 +1561,11 @@ int main (void)
 	QsRoot root; g_root = &root;
 	root.attach ();
 	uikit::init ();
+	{						// (pocket on a small screen: decided once -- the mode never changes under a program)
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+		if (g_pk) { uk_lang_init (); g_view = 0; }	// (its pocket words in the system's language: lang/fr.txt)
+	}
 	load_words ();
 	load_settings ();
 	g_isKeyword = is_keyword; g_isWord = is_word0; g_textW = text_w_face;
@@ -1490,17 +1594,22 @@ int main (void)
 	button (WKT_SPARK, "Check: compile without running", cmd_check, 4, "Check");
 	button (WKT_GEAR, "Make App: the program as an app (SD:/apps/<name>.app)", cmd_make_app, 4, "Make App");
 	static const char *const VIEWS[3] = { "Design", "Split", "Code" };
+	static const char *VIEWS2[2]; VIEWS2[0] = TR ("Form"); VIEWS2[1] = TR ("Code");	// (pocket: the form OR the code)
+	if (g_pk) g_seg = new SegmentedControl (W0 - 140, (TB_H - 26) / 2, 130, 26, VIEWS2, 2, 0, view_changed);
+	else
 	g_seg = new SegmentedControl (W0 - 200, (TB_H - 26) / 2, 190, 26, VIEWS, 3, 1, view_changed);
 	g_seg->anchor = ANCHOR_TOP | ANCHOR_RIGHT;
 	g_tb->addChild (g_seg);
 
 	// the panes
-	g_hProject = new PaneTitle ("Project"); root.addChild (g_hProject);
-	g_tree = new TreeView (0, 0, LEFT_W, TREE_H, tree_pick, tree_pick); root.addChild (g_tree);
-	g_hTools = new PaneTitle ("Toolbox"); root.addChild (g_hTools);
-	g_outline = new ListBox (0, 0, LEFT_W, 100, outline_pick, outline_pick); root.addChild (g_outline);
-	g_hProps = new PaneTitle ("Properties"); root.addChild (g_hProps);
-	g_props = new PropGrid (0, 0, RIGHT_W, 300); root.addChild (g_props);
+	if (g_pk) { g_paneL = new Pane (true); g_paneR = new Pane (false); }
+	Widget *lp = g_pk ? (Widget *) g_paneL : (Widget *) &root, *rp = g_pk ? (Widget *) g_paneR : (Widget *) &root;	// (where the side panes' parts live)
+	g_hProject = new PaneTitle ("Project"); lp->addChild (g_hProject);
+	g_tree = new TreeView (0, 0, LEFT_W, TREE_H, tree_pick, tree_pick); lp->addChild (g_tree);
+	g_hTools = new PaneTitle ("Toolbox"); lp->addChild (g_hTools);
+	g_outline = new ListBox (0, 0, LEFT_W, 100, outline_pick, outline_pick); lp->addChild (g_outline);
+	g_hProps = new PaneTitle ("Properties"); rp->addChild (g_hProps);
+	g_props = new PropGrid (0, 0, RIGHT_W, 300); rp->addChild (g_props);
 	g_tabs = new DocTabs (); root.addChild (g_tabs);
 	g_codebar = new CodeBar (); root.addChild (g_codebar);
 	g_objBox = new Dropdown (8, 4, 200, 26, 0, 0, -1, obj_picked); root.addChild (g_objBox);
@@ -1510,7 +1619,16 @@ int main (void)
 	g_des = new Designer (0, 0, 400, 300); root.addChild (g_des);
 	g_splitBar = new SplitBar; root.addChild (g_splitBar);
 	g_tools = new Toolbox (0, 0, LEFT_W, 200, g_des); g_tools->onPick = [] (int k) { g_des->toolAdd (k); };
-	root.addChild (g_tools);		// (last: a control dragged from it over the designer still reaches it)
+	lp->addChild (g_tools);		// (last: a control dragged from it over the designer still reaches it)
+	if (g_pk)					// (after everything: an open drawer covers the window)
+	{
+		g_sideL = new SidePanel (0, TB_H, LEFT_W + 20, H0 - TB_H, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sideL->setContent (g_paneL); g_sideL->setName (TR ("Project"));
+		g_sideR = new SidePanel (W0 - RIGHT_W - 16, TB_H, RIGHT_W + 16, H0 - TB_H, UK_SP_RIGHT, UK_SP_INSPECTOR);
+		g_sideR->setContent (g_paneR); g_sideR->setName (TR ("Properties"));
+		root.addChild (g_sideL); root.addChild (g_sideR);
+		g_onToolAdded = [] () { if (g_sideL->isOpen ()) g_sideL->open (false); g_des->ov->setFocus (); };	// (the control added: placed by the keys)
+	}
 	root.setResizable (true);
 
 	static Menu menu;

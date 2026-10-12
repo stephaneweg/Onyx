@@ -1,0 +1,26 @@
+# QBStudio's words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the hint
+# line, the drawers' names, Form / Code): the rest of QBStudio is not translated yet.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+project / toolbox	projet / outils
+project / outline	projet / plan
+file	fichier
+control	contrôle
+SUB	SUB
+open	ouvrir
+add	ajouter
+go	aller
+close	fermer
+property	propriété
+edit	modifier
+properties / events	propriétés / événements
+its code	son code
+code	code
+run	lancer
+form	fenêtre
+tools	outils
+scroll	défiler
+project	projet
+Form	Fenêtre
+Code	Code
+Project	Projet
+Properties	Propriétés
