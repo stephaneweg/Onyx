@@ -353,10 +353,116 @@ public:
 	}
 };
 
+// ---- POCKET (the designer's answer Q9): no desktop to lie on -- Stickies is an ORDINARY FULL-SCREEN APP there: the pinned
+// notes as cards, two columns, in their own colours (they are the content). The D-pad goes from card to card, A (Enter)
+// opens Notes on the one it is on (to write in it), Ctrl+N opens Notes for a new one. No floating note.
+class PocketStickies : public Root
+{
+public:
+	int cur = 0, top = 0; unsigned lastPoll = 0;
+	int cx[CARDS], cy[CARDS], cw = 100, ch[CARDS];
+	PocketStickies (int w, int h) : Root (w, h, TR ("Stickies")) {}
+	void place ()
+	{
+		int hh = uk_hint_line_height (this), M = 14, G = 12;
+		cw = (width - 2 * M - G) / 2;
+		int y[2] = { M, M };
+		for (int k = 0; k < g_n; k++)
+		{
+			int col = y[0] <= y[1] ? 0 : 1;
+			int n; const char *b = body_of (k, &n); int st[LINES], ln[LINES]; bool more = false;
+			int lines = uk_text_wrap (b, n, cw - 2 * CPAD, LINES, st, ln, &more);
+			ch[k] = card_h (lines); cx[k] = M + col * (cw + G); cy[k] = y[col]; y[col] += ch[k] + G;
+		}
+		if (cur >= g_n) cur = g_n ? g_n - 1 : 0;
+		if (g_n) { int room = height - hh; if (cy[cur] - top < M) top = cy[cur] - M; if (cy[cur] + ch[cur] - top > room - 6) top = cy[cur] + ch[cur] - room + 6; if (top < 0) top = 0; }
+	}
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		place ();
+		if (!g_n)
+		{
+			uk_text_c (canvas, 0, height / 2 - 40, width, 24, TR ("No notes pinned"), C_TEXT, 2);
+			uk_text_c (canvas, 0, height / 2 - 12, width, 22, TR ("Pin a note in Notes: it comes here."), C_DIS);
+			return;
+		}
+		for (int k = 0; k < g_n; k++)
+		{
+			int x = cx[k], y = cy[k] - top, h = ch[k];
+			if (y + h < 0 || y > height) continue;
+			const NoteInfo &e = g_notes.n[g_idx[k]];
+			unsigned p = notes_colour_paper (e.colour), dot = notes_colour_dot (e.colour);
+			uk_rbox (canvas, x, y, cw, h, CR, p, p);
+			uk_rbox (canvas, x, y, cw, CBAND, CR, dot, dot, 255, UK_TL | UK_TR);
+			if (k == cur) { uk_rline (canvas, x - 2, y - 2, cw + 4, h + 4, CR + 2, C_ACCENT, 255); uk_rline (canvas, x - 1, y - 1, cw + 2, h + 2, CR + 1, C_ACCENT, 255); }
+			char t[NOTE_TITLE + 8]; int ty = y + CBAND + CPAD - 2;
+			uk_text_fit (e.title[0] ? e.title : TR ("New Note"), cw - 2 * CPAD, t, sizeof t, 2);
+			uk_text (canvas, x + CPAD, ty, t, NOTE_INK, 2);
+			int st[LINES], ln[LINES]; bool more = false; int n; const char *b = body_of (k, &n);
+			int lines = uk_text_wrap (b, n, cw - 2 * CPAD, LINES, st, ln, &more);
+			unsigned ink = uk_mix (p, NOTE_INK, 215);
+			for (int i = 0; i < lines; i++)
+			{
+				char l[256]; int m = ln[i] < 240 ? ln[i] : 240; memcpy (l, b + st[i], (size_t) m); l[m] = 0;
+				char f[260]; uk_text_fit (l, cw - 2 * CPAD, f, sizeof f);
+				uk_text (canvas, x + CPAD, ty + TITLE_H + 2 + i * LINE_H, f, ink);
+			}
+		}
+	}
+	bool onKey (long k) override
+	{
+		if (k == UK_CTRL ('N')) { open_notes (0); return true; }
+		if (!g_n) { if (k == KEY_ENTER) { open_notes (0); return true; } return false; }
+		if (k == KEY_ENTER) { open_notes (g_notes.n[g_idx[cur]].file); return true; }
+		int dx = k == KEY_LEFT ? -1 : k == KEY_RIGHT ? 1 : 0, dy = k == KEY_UP ? -1 : k == KEY_DOWN ? 1 : 0;
+		if (!dx && !dy) return false;
+		place ();
+		int best = -1; long bd = 0, mx = cx[cur] + cw / 2, my = cy[cur] + ch[cur] / 2;	// (the nearest card that way)
+		for (int i = 0; i < g_n; i++)
+		{
+			if (i == cur) continue;
+			long ax = cx[i] + cw / 2 - mx, ay = cy[i] + ch[i] / 2 - my, along = dx ? ax * dx : ay * dy, across = dx ? ay : ax;
+			if (along <= 0) continue;
+			if (across < 0) across = -across;
+			long d = along + 2 * across;
+			if (best < 0 || d < bd) { best = i; bd = d; }
+		}
+		if (best >= 0) { cur = best; invalidate (true); }
+		return true;
+	}
+	void onResized () override { invalidate (true); }
+	void onTick () override
+	{
+		static UkPadHint H[3];
+		H[0] = { "+", TR ("note") }; H[1] = { "A", TR ("write in it") }; H[2] = { "[Ctrl+N]", TR ("a new note") };
+		uk_hint_line (this, H, 3);
+		int from = 0, type = 0; char m[520]; bool now = false;
+		while (kapi_mailbox_recv (&from, &type, m, sizeof m, 0) >= 0) if (type == STK_MSG_RELOAD) now = true;
+		unsigned t = kapi_get_ticks ();
+		if (!now && t - lastPoll < POLL) return;
+		lastPoll = t;
+		if (reload (now)) invalidate (true);
+	}
+};
+
 int main (void)
 {
 	NotesCfg c;
 	notes_cfg_load (c);
+	if (uk_mode () == UK_MODE_POCKET)			// pocket: an app of its own, full screen (never the desktop's widget)
+	{
+		kapi_ipc_register (STICKIES_SERVICE);
+		ft_uikit_install ("DejaVu Sans", 13);
+		uk_lang_init ();
+		int sw = 640, sh = 480; kapi_screen_size (&sw, &sh);
+		reload (true);
+		PocketStickies root (sw, sh - 30 > 100 ? sh - 30 : 100);
+		if (root.canvas.px == 0) return 1;
+		root.setResizable (true);
+		root.run ();
+		return 0;
+	}
 	if (!c.stickies) return 0;				// hidden (Notes' View menu): no window at all
 	kapi_ipc_register (STICKIES_SERVICE);			// (failed: no reload message, the poll still runs)
 	ft_uikit_install ("DejaVu Sans", 13);

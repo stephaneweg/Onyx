@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -570,6 +570,41 @@ if want lr; then
 	lr pkgman all
 	lr 3dforge all SIM_ARGS=SD:/docs/3d/bracket.3df
 	lr setup all
+fi
+
+# ---- the Home (Q9, the Agenda): the Calendar's next appointment is a line on the Home; Up from the apps' first row puts
+# the keys on it (a ring), Down gives them back, A opens the Calendar
+if want home; then
+	echo "pocket640: the Home's Today line by the keys"
+	ftapp pocket pocketshell uikit_pocket
+	WR=$(langdir ""); mkdir -p "$WR/apps/calendar.app" "$WR/etc/pocket"
+	printf '20260928|09:30 Stand-up\n20260928|14:00 Team call\n20261001|Pay the rent\n' > "$WR/apps/calendar.app/agenda.txt"
+	printf 'terminal\ntinypad\nletters\ncalendar\n' > "$WR/etc/pocket/recent"
+	E="$P640 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR SIM_DATE=20260928 SIM_TIME=0900"
+	run pocket_pocketshell pt-home-640-today "$W;$W;expect shell app;expect kind home;mods 8;mods 0;$W;$W;expect home 1;dump $OUT/pt-home-640-0.elsm;key $UP;$W;$W;dump $OUT/pt-home-640-today.elsm;key $DOWN;$W;$W;dump $OUT/pt-home-640-back.elsm;key $UP;$W;key 13;$W;$W;dump $OUT/pt-home-640-opened.elsm" $E
+	for f in 0 today back opened; do out pt-home-640-$f; done
+	differ pt-home-640-0 pt-home-640-today "Up from the first row: the Today line has the keys (a ring)"
+	same pt-home-640-0 pt-home-640-back "Down: the apps again"
+	differ pt-home-640-today pt-home-640-opened "A on it: the Calendar asked for, the line let go"
+fi
+
+# ---- Stickies (Q9): in pocket an ordinary full-screen app -- the pinned notes as cards, two columns; the D-pad, A opens Notes
+if want stickies; then
+	echo "pocket640: Stickies, a full-screen app"
+	AK=""; [ -f "${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a" ] && AK="${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a"
+	ftapp pocket stickies uikit_pocket user/Apps/notes/notesmodel.cpp $AK -lm
+	WR=$(langdir ""); mkdir -p "$WR/Notes"
+	printf 'Shopping\n\nMilk, eggs, bread\nCoffee beans\n' > "$WR/Notes/shopping.txt"
+	printf 'Ideas for the handheld\n\nA case in walnut.\nA strap.\nA second battery.\n' > "$WR/Notes/ideas.txt"
+	printf 'Call the plumber\n\nBefore Friday. 02 555 01 23\n' > "$WR/Notes/plumber.txt"
+	printf '[shopping.txt]\npinned = 1\ncolour = yellow\n[ideas.txt]\npinned = 1\ncolour = blue\n[plumber.txt]\npinned = 1\ncolour = green\n' > "$WR/Notes/notes.ini"
+	ST="$P640 SIM_APPNAME=stickies SIM_APP=stickies SIM_WRITES=$WR"
+	run pocket_stickies pt-stickies-640 "$WWW;$WW;expect kind fill;expect frame 0;dump $OUT/pt-stickies-640.elsm;key $RIGHT;$W;dump $OUT/pt-stickies-640-right.elsm;key $LEFT;$W;key $DOWN;$W;dump $OUT/pt-stickies-640-down.elsm" $ST
+	for f in pt-stickies-640 pt-stickies-640-right pt-stickies-640-down; do out $f; size $f 640x480 "$f is the whole 640 x 480 screen"; done
+	hintline pt-stickies-640 "Stickies"
+	busy pt-stickies-640 20 50 620 300 "the pinned notes are shown"
+	differ pt-stickies-640 pt-stickies-640-right "Right: the next card"
+	differ pt-stickies-640 pt-stickies-640-down "Left, Down: another card"
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

@@ -4,3 +4,8 @@ No notes pinned	Aucune note épinglée
 Click to open Notes	Cliquez pour ouvrir Notes
 Pinned notes	Notes épinglées
 +%d more in Notes	+%d autres dans Notes
+Stickies	Pense-bêtes
+Pin a note in Notes: it comes here.	Épinglez une note dans Notes : elle vient ici.
+note	note
+write in it	y écrire
+a new note	une nouvelle note

@@ -48,7 +48,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Slides** | was **broken** (the slide 180 px wide between the thumbnails and the inspector, light panels) → **fine since Q1 was built** (below): the slide alone, drawers, dark panes | **driven**: L, Down ×2, Enter; R, Right, Down ×2, R; Down ×2 (objects), M, Right ×3, Shift + Down, Enter; S, Right, Down, Esc; Enter, a letter, Esc; F5, Enter ×2, Esc | the thumbnails a navigation SidePanel (a drawer), the inspector an inspector SidePanel (a slide-over), the colours from the theme, the translation due | large | **yes** — Q1 |
 | **Paint** | was **broken** (the ribbon cut, the layers 250 px wide) → **fine since Q2 was built** (below): a picture adjusted by a row of tasks | **driven**: A (Crop), Right, Down, Shift + Left ×2, R, A, Ctrl+Z; Right ×2, A (Rotate), Right, Up, B; A, Left, A; Resize / Adjust: A, Esc; Text: A, two letters, A | the ribbon cannot simply overflow: see Q2; the layers an inspector SidePanel | large | **yes** — Q2 |
 | **Notes** | fine | ok | — | — | no |
-| **Stickies**, **Agenda** | not shown: desktop widgets (they opened no window under PocketUI in the simulator) | — | decide whether pocket has them at all | — | **yes** — Q9 |
+| **Stickies**, **Agenda** | were not shown (desktop widgets) → Stickies a full-screen app, the Agenda a line of the Home (Q9, below) | **driven**: Stickies Right, Left, Down; the Home Up, Down, Up, A | decide whether pocket has them at all | — | **yes** — Q9 |
 | **Text Editor** (tinypad) | fine | ok | — | — | no |
 | **RTF Reader** | fine | ok | — | — | no |
 | **Cardfile** | minor: *Design* is under the search box; the form's title and the chosen field's label are dark blue on the dark theme (hard-coded colours) | ok (fields by Tab) | its bar to UIKit's `ToolBar`, its colours from the theme, the translation due | medium | no |
@@ -199,6 +199,14 @@ pad's L / R then page too.
 all 12 tools as words (no "Erase": Floor erases), not 7 with pictures; a run is painted with Shift + D-pad, not
 "A held" (a held key cannot be told from its repeats); no "Try it" button in a bar: F5, named in the hint line. In
 the editor the levels' drawer is away, so L is free for the tools — the one place L is not a left drawer.
+
+**Q9 — built in part (2026-10-12)**: **the Agenda** is the Home's Today line, now shown on a 640 × 480 screen too
+(it was dropped under 560 px of height) and reached by the keys (Up from the first row, A opens the Calendar:
+`pt-home-640-today.png`); **Stickies** is a full-screen app in pocket (cards in two columns, the D-pad, A opens
+Notes on the note: `pt-stickies-640*.png`; "A writes in a note" is done by Notes, which Stickies opens on it).
+**NOT built: the clipboard's history as a sheet** (Ctrl + Shift + V over the app in front, *Edit ▸ Clipboard
+history* in every Menu): it needs a key caught by PocketUI for every app, the sheet in the shell, and the paste sent
+to the app under it — the shell, `clipd` and the server together.
 
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the

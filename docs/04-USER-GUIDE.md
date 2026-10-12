@@ -692,6 +692,13 @@ handheld, a 7-inch panel), **one app at a time**, as on a phone. Its parts:
 - **the launcher (Home)**, behind every app: what you see when no app is in front;
 - **the task switcher** and **quick settings**, over the app.
 
+**The Agenda and the Stickies in pocket.** There is no desktop for them to lie on. **The Agenda is a line of the
+Home**: the Calendar's next appointment (*Mon 28 Sep · 14:00 Team call · in 1 h 26*) under the search field -- on a
+640 × 480 screen too --; **Up** from the apps' first row puts the keys on it (a ring), **A** opens the Calendar,
+Down gives the keys back. **Stickies is an ordinary full-screen app**: the notes pinned in Notes as cards in two
+columns, in their own colours; the **D-pad** goes from card to card, **A** opens Notes on that note (to write in
+it), **Ctrl + N** opens Notes for a new one. (The clipboard's history as a sheet, Ctrl + Shift + V, is not built.)
+
 **The look: Onyx Noir.** The pocket mode has a theme of its own, **Onyx Noir**: flat and dark -- no gradient, no
 bevel, no shadow, the background the black of the screen's glass, the surfaces three greys above it, Onyx's blue for
 the focus (a ring), the chosen item and a switch that is on. Every app takes it (what an app paints in colours of

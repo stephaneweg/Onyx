@@ -27,6 +27,7 @@ static int g_tab = 0;					// the category shown (g_cats)
 static int g_tabFirst = 0;				// the first chip drawn (they scroll)
 static int g_focus = 0;					// the card's focused item (a tile, then the documents)
 static int g_stripFocus = -1;				// the Running strip's focused app (-1: the card has the focus)
+static bool g_todayFocus = false;			// the Today line has the keys (Up from the card's first row): A opens the Calendar
 static int g_gridTop = 0;				// the grid's first row shown
 static char g_query[64];				// the search's text ("": the categories)
 static int g_resSel = 0, g_resTop = 0;
@@ -91,7 +92,8 @@ static Lay lay (void)
 	else L.sw = L.today ? D (380) : g_aw - 2 * L.M;
 	if (L.today && L.narrow)
 	{
-		if (LH () >= 560) { L.tx = L.M; L.ty = y + D (8); L.tw = g_aw - 2 * L.M; L.th = D (30); y = L.ty + L.th; }
+		// (a line of its own under the search; from 440 px of height: a 640 x 480 handheld has it -- the Agenda there)
+		if (LH () >= 440) { L.tx = L.M; L.ty = y + D (8); L.tw = g_aw - 2 * L.M; L.th = D (30); y = L.ty + L.th; }
 		else L.today = false;
 	}
 	else if (L.today) { L.tx = L.sx + L.sw + D (12); L.ty = L.sy; L.tw = g_aw - L.M - L.tx; L.th = L.sh; }
@@ -393,6 +395,7 @@ static void draw_today_line (Canvas &cv, const Lay &L)
 	char b[140];
 	uk_text_fit (what, right - ww - tx, b, sizeof b);
 	text_v (cv, tx, y, h, b, 0xDCE6F4);
+	if (g_todayFocus) { lk_ring (cv, x - 1, y - 1, w + 2, h + 2, h / 2, 32, C_ACCENT, 255); lk_ring (cv, x, y, w, h, h / 2, 32, C_ACCENT, 255); }	// (the keys are on it)
 	g_homeHits.add (x, y, w, h, H_TODAY, 0);
 }
 
@@ -1094,6 +1097,16 @@ static void home_key (unsigned long, int ev, long v)
 			g_homeDirty = true; return;
 		}
 	}
+	else if (g_todayFocus)						// ---- the Today line (the agenda's next appointment)
+	{
+		if (!lay ().today) { g_todayFocus = false; g_homeDirty = true; }
+		else switch (k)
+		{
+		case KEY_ENTER: case ' ': g_todayFocus = false; g_homeDirty = true; open_app ("calendar"); return;
+		case KEY_DOWN: case 0x1b: case KEY_UP: g_todayFocus = false; g_homeDirty = true; return;
+		default: g_todayFocus = false; g_homeDirty = true; break;
+		}
+	}
 	else if (g_stripFocus >= 0)					// ---- the Running strip
 	{
 		switch (k)
@@ -1117,7 +1130,7 @@ static void home_key (unsigned long, int ev, long v)
 		case '\t': set_tab (g_tab + ((mods & MOD_SHIFT) ? -1 : 1)); return;
 		case KEY_LEFT: if (!card_move (k)) set_tab (g_tab - 1); return;
 		case KEY_RIGHT: if (!card_move (k)) set_tab (g_tab + 1); return;
-		case KEY_UP: card_move (k); return;
+		case KEY_UP: if (!card_move (k) && lay ().today) { g_todayFocus = true; g_homeDirty = true; } return;	// (above the first row: Today)
 		case KEY_DOWN:
 			if (!card_move (k) && lay ().strip && g_ntasks > 0) { g_stripFocus = 0; g_homeDirty = true; }
 			return;

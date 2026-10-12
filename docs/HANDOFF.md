@@ -93,9 +93,13 @@ Down, as the keys do (Letters pages its text with both). No reworked app reads t
 **Q8, Turtle Quest's editor, built (2026-10-12)**: `g_edStep` (0 texts, 1 map, 2 program), `ed_step`, `Board::kc /
 kr` and its `onKey`, `g_toolRow` (a SegmentedControl, the window's tabs through `uk_segmented_nav`; the levels'
 SidePanel is hidden while editing so that L reaches it), the panel a child of the Root in pocket, F2 / F5 routed in
-`do_hint` / `do_run` (they are Menu shortcuts first). **Next**: the rest of item 7 (Q8 Turtle Quest's level editor in two
-steps; Q9 the clipboard's sheet on Ctrl + Shift + V, Stickies full screen, the Agenda's line on the Home), item 8 (Q4
-Koton: Song and Mixer under L / R), item 9 (Courier's migration).
+`do_hint` / `do_run` (they are Menu shortcuts first). **Q9 in part (2026-10-12)**: the Home's Today line from 440 px of height and by the keys (`g_todayFocus`,
+pocketshell's home.h); Stickies' `PocketStickies` (its `main` branches on `uk_mode ()`). **NEXT, NOT started**: the clipboard's history as a sheet (Q9: Ctrl + Shift + V over the app in front -- a key
+PocketUI must catch for every app, the sheet in the pocket shell, the paste sent to the app under it); item 8 (Q4
+Koton: Song and Mixer under L / R, a "not in pocket" card); item 9 (Courier's migration); item 10 (the Control
+Panel's applets DRIVEN by the keys -- the simulator must run an applet under the Control Panel for that --, Theme's
+preview, Slides' inspector rows of several buttons, 3DForge's Operation list, the lesson / result cards still light,
+Setup's Region and rows).
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached
