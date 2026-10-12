@@ -32,6 +32,10 @@ static bool g_master;				// the master view (master.h): g_deck.slides holds the 
 static void (*g_onDone) ();			// after every change (the master view writes it back)
 static bool (*g_accepts) (Object *o);		// may this object be added here? (the master view's layouts)
 
+// POCKET on a small screen (under 800 px wide, no pointer: main decides once): the slide alone, the slides and the
+// inspector in drawers, the objects chosen, moved and sized by the keys (uikit/objnav.h).
+static bool g_pk = false;
+static void (*g_onAdded) () = 0;		// an object was added (pocket: it is put in the move mode)
 static Slide *cur_slide () { return g_deck.slides.n ? g_deck.slides[iclamp (g_cur, 0, g_deck.slides.n - 1)] : 0; }
 static Object *obj_of (int id) { Slide *s = cur_slide (); return s ? s->by_id (id) : 0; }
 static bool is_sel (int id) { return g_sel.find (id) >= 0; }
@@ -102,6 +106,8 @@ static void begin_change (int kind = UK_OTHER)
 	g_redo.clear ();
 }
 static void done_change () { g_deck.changes++; if (g_onDone) g_onDone (); notify (); }
+// The change begun is given up (pocket: a move or a size cancelled -- the caller put the values back): its step forgotten.
+static void drop_change () { if (g_undo.n) { snap_free (g_undo[g_undo.n - 1]); g_undo.erase (g_undo.n - 1); } g_lastKind = -1; notify (); }
 static void restore (Vec<Snap> &from, Vec<Snap> &to)
 {
 	if (!from.n) return;
@@ -212,6 +218,7 @@ static void add_object (Object *o, bool editNow = false)
 	end_edit (); g_sel.clear (); g_sel.push (o->id);
 	if (editNow) begin_edit (o->id);
 	done_change (); if (g_onSlides) g_onSlides ();
+	if (g_onAdded && !editNow) g_onAdded ();
 }
 // The default box: centred, w x h hmm.
 static void centre_box (Object *o, int w, int h) { o->w = w; o->h = h; o->x = (g_deck.sw - w) / 2; o->y = (g_deck.sh - h) / 2; }

@@ -45,7 +45,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 |---|---|---|---|---|---|
 | **Letters** | minor: the status bar wrote *(modified)* over *Page 1 of 2* | **driven**: F6, Right, Right (the ring on the toolbar); the hint line says F6, Alt + D-pad, CMD (`pt-letters-640*`) | **done here**: the page / words move right of the name, the name is cut for what is left (`-after`) | small | no |
 | **Sheet** | minor → **done here**: both toolbars were cut at the window's edge (a hand-made bar) | ok; the chart and the cells' drag handles are a pointer's | **done**: its bars are UIKit's `ToolBar` — "»" and F6 (`-after`). Left: two rows of tools take 68 px (Letters folds them into one: `foldInto`, priorities to choose) | small (done) + medium | no |
-| **Slides** | **broken**: the slide is 180 px wide between the thumbnails and the inspector; the panels keep the desktop's light colours; toolbars cut (→ **done here**: "»", `-after`) | pointer (shapes are placed and moved by the mouse) | the thumbnails a navigation SidePanel (a drawer), the inspector an inspector SidePanel (a slide-over), the colours from the theme, the translation due | large | **yes** — Q1 |
+| **Slides** | was **broken** (the slide 180 px wide between the thumbnails and the inspector, light panels) → **fine since Q1 was built** (below): the slide alone, drawers, dark panes | **driven**: L, Down ×2, Enter; R, Right, Down ×2, R; Down ×2 (objects), M, Right ×3, Shift + Down, Enter; S, Right, Down, Esc; Enter, a letter, Esc; F5, Enter ×2, Esc | the thumbnails a navigation SidePanel (a drawer), the inspector an inspector SidePanel (a slide-over), the colours from the theme, the translation due | large | **yes** — Q1 |
 | **Paint** | **broken**: the ribbon is cut after *Shapes* (the colours, the text tools are out of the screen); the status bar's texts overlap; the layers take 250 px | pointer | the ribbon cannot simply overflow: see Q2; the layers an inspector SidePanel | large | **yes** — Q2 |
 | **Notes** | fine | ok | — | — | no |
 | **Stickies**, **Agenda** | not shown: desktop widgets (they opened no window under PocketUI in the simulator) | — | decide whether pocket has them at all | — | **yes** — Q9 |
@@ -119,7 +119,21 @@ the user agreed to all of it. **Built from it so far** (each driven by the keys 
 Found on the way: a closed drawer's tab was shown in GPIO Lab although no pointer existed (a window resize counted as
 a pointer event) — fixed in UIKit.
 
-**Not built**: Q1 Slides and the shared object stepping (M / S modes), Q6 QBStudio, Q2 Paint, Q7 3DForge, Q8 Turtle
+**Q1, Slides — built (2026-10-12)**, driven by the keys alone (`pocket640.sh slides`: 30 checks; `pt-slides-640-*`):
+the slide alone under one row of tools; **L** the slides (a drawer: Up / Down, A opens), **R** the inspector (a
+drawer: Up / Down a row, A what a click does, digits a value, Left / Right its tabs); on the slide the D-pad goes from
+object to object, **M** / **S** the move / size modes (8 px, Shift 1 px, A keeps, B cancels), A edits the text, Bksp
+deletes; a new object arrives in the slide's middle in the move mode; F5 presents (A next, B ends). The stepping and
+the modes are **UIKit's `uikit/objnav.h`**, written once (QBStudio's forms use it next). Verdict: **fine** for
+viewing, presenting, retouching a deck. **Differs from the mock-up**: the app keeps its toolbar (one row, the rest
+behind ») instead of a bar with the file's name, the slide's number, *Insert* and *Present* — Present is F5 and in
+the Menu, the slide's number is in the drawer; in the inspector a row of several buttons (alignment, order) gives its
+first button only by A (the others: the Menu, the toolbar); "another object's edge" does not light a guide (the
+slide's centre lines do); *Master and layouts…* shows no "not in pocket" card (the master view opens and works by
+the same keys); the notes are not shown at all (no full-screen notes). Slides stays untranslated but for its pocket
+words (the hint line, the drawers' names: `lang/fr.txt`).
+
+**Not built**: Q6 QBStudio, Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
 applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above
 stand as they were.

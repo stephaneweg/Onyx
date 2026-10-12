@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -252,6 +252,56 @@ if want letters; then
 	size pt-letters-640 640x480 "Letters: the whole 640 x 480 screen"
 	hintline pt-letters-640 "Letters"
 	bardiffer pt-letters-640 pt-letters-640-f6 "Letters: F6 rings the toolbar"
+fi
+
+# ---- Slides (Q1): the slide alone, L the slides, R the inspector; the objects by the keys (uikit/objnav.h) ----------------
+if want slides; then
+	echo "pocket640: Slides"
+	GC="$OUT/gpucomp_au.o"; [ -f "$GC" ] || gcc -O2 -w -ffp-contract=off -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$GC"
+	AK=""; [ -f "${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a" ] && AK="${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a"
+	ftapp pocket slides uikit_pocket "$GC" $AK -lm -Wl,--unresolved-symbols=ignore-all
+	K () { echo "key $1;$W;"; }
+	LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"
+	SH="mods 2;$W;"; S0="mods 0;$W;"
+	SL="$P640 SIM_APPNAME=slides SIM_APP=slides SIM_ARGS=SD:/docs/cafe-2026.odp"
+	W8="$WWW;$WW"
+	# the slide alone; L: the slides (Down, Down: the third; Enter opens it, the drawer away); R: the inspector (Right: its
+	# next tab; Down, Down: a row ringed), R again closes it
+	WR=$(langdir "")
+	run pocket_slides pt-slides-640 "$W8;expect kind fill;expect frame 0;dump $OUT/pt-slides-640-edit.elsm;${LL}dump $OUT/pt-slides-640-thumbnails.elsm;$(K $DOWN)$(K $DOWN)$(K 13)dump $OUT/pt-slides-640-slide3.elsm;${RR}dump $OUT/pt-slides-640-inspector.elsm;$(K $RIGHT)$(K $DOWN)$(K $DOWN)dump $OUT/pt-slides-640-inspector-row.elsm;${RR}dump $OUT/pt-slides-640-inspector-closed.elsm" $SL SIM_WRITES=$WR
+	for f in edit thumbnails slide3 inspector inspector-row inspector-closed; do out pt-slides-640-$f; size pt-slides-640-$f 640x480 "Slides, $f: the whole 640 x 480 screen"; done
+	hintline pt-slides-640-edit "Slides"
+	differ pt-slides-640-edit pt-slides-640-thumbnails "L opens the slides' drawer"
+	footdiffer pt-slides-640-edit pt-slides-640-thumbnails "the drawer's keys are not the slide's"
+	differ pt-slides-640-edit pt-slides-640-slide3 "Down, Down, Enter in the drawer: the third slide"
+	footsame pt-slides-640-edit pt-slides-640-slide3 "the drawer closed: the slide's keys again"
+	differ pt-slides-640-slide3 pt-slides-640-inspector "R opens the inspector"
+	differ pt-slides-640-inspector pt-slides-640-inspector-row "the inspector by the keys: a tab, a row"
+	same pt-slides-640-slide3 pt-slides-640-inspector-closed "R again closes the inspector"
+	# the objects: the D-pad chooses one, then the next; M: the move mode (Right x3: 24 px; Shift + Down: 1 px), Enter keeps;
+	# S: the size mode, Esc cancels (the object as it was kept); Enter edits its text, Esc ends
+	WR=$(langdir "")
+	OB="$W8;$(K $DOWN)dump $OUT/pt-slides-640-obj1.elsm;$(K $DOWN)dump $OUT/pt-slides-640-obj2.elsm;key 0x6d;$W;dump $OUT/pt-slides-640-move.elsm;$(K $RIGHT)$(K $RIGHT)$(K $RIGHT)${SH}$(K $DOWN)${S0}dump $OUT/pt-slides-640-moved.elsm;$(K 13)dump $OUT/pt-slides-640-kept.elsm"
+	OB="$OB;key 0x73;$W;$(K $RIGHT)$(K $DOWN)dump $OUT/pt-slides-640-size.elsm;$(K 27)dump $OUT/pt-slides-640-size-cancelled.elsm;$(K 13)key 0x21;$W;dump $OUT/pt-slides-640-text.elsm;$(K 27)dump $OUT/pt-slides-640-text-done.elsm"
+	run pocket_slides pt-slides-640-objects "$OB" $SL SIM_WRITES=$WR
+	for f in obj1 obj2 move moved kept size size-cancelled text text-done; do out pt-slides-640-$f; done
+	differ pt-slides-640-edit pt-slides-640-obj1 "Down: an object chosen"
+	differ pt-slides-640-obj1 pt-slides-640-obj2 "Down again: the next object"
+	footdiffer pt-slides-640-obj2 pt-slides-640-move "M: the move mode, named in the hint line"
+	differ pt-slides-640-move pt-slides-640-moved "the D-pad moves the object"
+	footsame pt-slides-640-obj2 pt-slides-640-kept "Enter keeps: the slide's keys again"
+	differ pt-slides-640-obj2 pt-slides-640-kept "the object stays where it was moved"
+	footdiffer pt-slides-640-move pt-slides-640-size "S: the size mode"
+	same pt-slides-640-kept pt-slides-640-size-cancelled "Esc cancels the size: the object as it was"
+	footdiffer pt-slides-640-kept pt-slides-640-text "Enter: the object's text edited"
+	# F5 presents: Enter (A) the next slide, Esc (B) ends
+	WR=$(langdir "")
+	run pocket_slides pt-slides-640-show "$W8;expect full 0;key 0x114;$W8;expect full 1;dump $OUT/pt-slides-640-present.elsm;$(K 13)$W8;expect full 1;$(K 13)$W8;$(K 27)$W8;expect full 0;dump $OUT/pt-slides-640-present-end.elsm" $SL SIM_WRITES=$WR
+	for f in present present-end; do out pt-slides-640-$f; done	# (the checks: "expect full" -- F5 takes the full screen, Enter goes on, Esc gives it back)
+	hintline pt-slides-640-present-end "Esc (B) ends the show: Slides again"
+	WR=$(langdir fr)
+	run pocket_slides pt-slides-640-fr "$W8;$(K $DOWN)key 0x6d;$W;dump $OUT/pt-slides-640-move-fr.elsm" $SL SIM_WRITES=$WR
+	out pt-slides-640-move-fr
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

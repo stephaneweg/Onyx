@@ -1809,7 +1809,16 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   tabs back and forth, an inspector at its right or not). (7) A pointer
   "exists" (the closed drawer's tab comes back) only after a real pointer event: a window resized, the screen's size
   and a title button come through `Root::ptrEvent` too and used to count (GPIO Lab showed its tab at once). Three
-  entries appended to `uikit.abi` (`uk_hint_line`, `uk_hint_line_height`, `uk_segmented_nav`). **The
+  entries appended to `uikit.abi` (`uk_hint_line`, `uk_hint_line_height`, `uk_segmented_nav`). (8) **A canvas of
+  objects by the keys** (`uikit/objnav.h`, written once for Slides and QBStudio's forms): the view keeps a `UkObjNav`
+  (a plain structure) and gives its keys, with its objects' rectangles in its own units, to `uk_objnav_key (nav, key,
+  rects, n, bounds)` -- the D-pad chooses the nearest object in that direction, M / S begin the move / the size mode,
+  in which the D-pad nudges `nav.now` by `nav.step` (Shift: `nav.fine`), Enter keeps, Esc cancels; the result says what
+  the view does (`UK_OBJ_PICKED`, `_BEGAN`: open an undo step, `_CHANGED`: the object takes `nav.now`, `_KEPT`,
+  `_CANCELLED`: it takes `nav.from` back, `_USED`, `_NO`: the view's own key). `uk_objnav_begin` puts a new object in
+  the move mode; `uk_objnav_draw` draws the frame, the handles, the outline of where it was, a pill with its place and
+  the bounds' centre lines; `uk_objnav_hints` gives the hint line its hints and its pill (MOVE, SIZE). Used where
+  `uk_keys_drive ()`; five entries appended to `uikit.abi`. **The
   pattern for an app whose left column is a list of places it draws itself** (Circuits, Turtle Quest, GPIO Lab): when
   `uk_mode () == UK_MODE_POCKET` and the screen (`kapi_screen_size`) is under 800 px wide, the column's widget is made
   the content of a navigation SidePanel instead of a child of the Root (decided once, in `main`: the mode never changes

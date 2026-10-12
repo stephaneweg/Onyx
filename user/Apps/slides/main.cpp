@@ -56,6 +56,8 @@ static Widget *g_showBtn;
 static void refresh ();
 static void focus_view () { if (g_viewMode == VIEW_SORTER) g_sorter->setFocus (); else g_view->setFocus (); }
 static void after () { g_view->wake (); refresh (); }
+// Pocket on a small screen (g_pk): the slides and the inspector are drawers (L, R), named in the band.
+static SidePanel *g_sideL = 0, *g_sideR = 0;
 
 // ---- files ---------------------------------------------------------------------------------------------------------
 static const char *base_name (const char *p) { const char *b = p; for (const char *q = p; *q; q++) if (*q == '/' || *q == ':') b = q + 1; return b; }
@@ -754,7 +756,19 @@ static void cmd_layout ()
 }
 static void cmd_dup_slide () { cmd_duplicate_slide (); after (); }
 static void cmd_del_slide () { cmd_delete_slide (); g_thumbs.prune (); after (); }
-static void set_tool (int t) { g_tool = t; end_edit (); g_sel.clear (); after (); focus_view (); }
+// Pocket: no pointer to drag a new object's box -- it is put in the slide's middle at its usual size, in the move mode.
+static void pocket_insert (int t)
+{
+	int cx = g_deck.sw / 2, cy = g_deck.sh / 2;
+	end_edit ();
+	Object *o = t == TOOL_TEXT ? make_text_box (cx - 4000, cy - 600, 8000, 1200)
+		  : t == TOOL_LINE || t == TOOL_ARROW ? make_line (cx - 2500, cy, cx + 2500, cy, t == TOOL_ARROW)
+		  : make_shape (g_toolShape, cx - 2500, cy - 1500, 5000, 3000);
+	g_tool = TOOL_SELECT;
+	if (o) add_object (o);
+	after (); focus_view ();
+}
+static void set_tool (int t) { if (g_pk && t != TOOL_SELECT) { pocket_insert (t); return; } g_tool = t; end_edit (); g_sel.clear (); after (); focus_view (); }
 static void cmd_textbox () { set_tool (TOOL_TEXT); }
 static void cmd_line () { set_tool (TOOL_LINE); }
 static void cmd_arrow () { set_tool (TOOL_ARROW); }
@@ -962,7 +976,9 @@ static void show (int from, bool presenter)
 {
 	if (g_master) { master_close (); g_thumbs.clear (); from = presenter || from ? g_cur : 0; }
 	end_edit (); g_notes->sync ();
+	if (g_pk) { g_showKey = [] (long k) { if (g_shKn < 16) g_shKeys[g_shKn++] = k; }; g_shTurn = [] () { uk_input_turn (g_root); }; }	// (a pad's A / B / D-pad reach the show)
 	g_show.run (from, presenter);
+	g_showKey = 0; g_shTurn = 0;
 	g_root->attach ();
 	g_root->invalidate (true);
 	g_view->C.drop_all ();
@@ -1377,6 +1393,20 @@ static void relayout ()
 	int RW = g_root->width, RH = g_root->height;
 	int top = 2 * ss::TB_H + 2, bot = RH - ST_H;
 	bool normal = g_viewMode == VIEW_NORMAL;
+	if (g_pk)					// pocket: one row of tools, the slide (or the sorter) alone, the hint line
+	{
+		top = g_tb1->rows () * ss::TB_H + 2; bot = RH - uk_hint_line_height (g_root);
+		g_tb1->resizeTo (RW, ss::TB_H); g_tb2->resizeTo (RW, ss::TB_H);
+		g_status->hidden = true; g_notes->hidden = true;
+		g_view->hidden = !normal; g_sorter->hidden = normal;
+		((Widget *) g_sideL)->hidden = ((Widget *) g_sideR)->hidden = !normal;
+		g_sideL->place (0, top, TH_W + 28, bot - top); g_sideR->place (RW - SB_W - 16, top, SB_W + 16, bot - top);
+		g_view->left = 0; g_view->top = top; g_view->resizeTo (RW, bot - top);
+		g_sorter->left = 0; g_sorter->top = top; g_sorter->resizeTo (RW, bot - top);
+		g_sidebar->build ();
+		g_root->invalidate (true);
+		return;
+	}
 	int listW = normal ? TH_W : 0, sideW = normal ? SB_W : 0;
 	g_list->hidden = !normal; g_sidebar->hidden = !normal; g_view->hidden = !normal; g_notes->hidden = !normal || !g_showNotes;
 	g_sorter->hidden = normal;
@@ -1390,6 +1420,28 @@ static void relayout ()
 	g_tb1->resizeTo (RW, ss::TB_H); g_tb2->resizeTo (RW, ss::TB_H);
 	g_sidebar->build ();
 	g_root->invalidate (true);
+}
+
+// Pocket: the hint line at the window's foot -- the keys of what has them (the slide, a mode, a text, a drawer).
+static void pocket_hints ()
+{
+	if (!g_pk || !g_view) return;
+	static UkPadHint HN[8]; int n = 0; const char *mode = 0;
+	if (g_sideL->isOpen ()) { HN[n++] = { "|", TR ("slide") }; HN[n++] = { "A", TR ("open") }; HN[n++] = { "[Ctrl+M]", TR ("new") }; HN[n++] = { "[Bksp]", TR ("delete") }; HN[n++] = { "L", TR ("close") }; }
+	else if (g_sideR->isOpen ()) { HN[n++] = { "|", TR ("field") }; HN[n++] = { "-", TR ("tab") }; HN[n++] = { "A", TR ("change") }; HN[n++] = { "[0-9]", TR ("value") }; HN[n++] = { "R", TR ("close") }; }
+	else if (g_viewMode == VIEW_SORTER) { HN[n++] = { "+", TR ("slide") }; HN[n++] = { "A", TR ("open") }; HN[n++] = { "[Bksp]", TR ("delete") }; }
+	else if (g_edit) { mode = TR ("TEXT"); HN[n++] = { "B", TR ("done") }; HN[n++] = { "[F6]", TR ("tools") }; }
+	else
+	{
+		n = uk_objnav_hints (g_nav, HN, &mode);
+		if (g_nav.mode == UK_OBJ_PICK)
+		{
+			if (sel_one ()) { HN[n++] = { "A", TR ("edit") }; HN[n++] = { "[Bksp]", TR ("delete") }; }
+			HN[n++] = { "[F6]", TR ("tools") }; HN[n++] = { "[F5]", TR ("present") };
+		}
+	}
+	int was = uk_hint_line_height (g_root);
+	if (uk_hint_line (g_root, HN, n, mode) != was) relayout ();
 }
 
 // ---- the window ----------------------------------------------------------------------------------------------------
@@ -1442,6 +1494,7 @@ public:
 	void onTick () override
 	{
 		if (g_view) g_view->tick ();
+		pocket_hints ();
 		if (g_notes && !g_notes->hidden) g_notes->sync ();
 		static unsigned last; unsigned t = kapi_get_ticks ();
 		if (t - last > 25 && g_notes) { last = t; }
@@ -1493,6 +1546,11 @@ int main (void)
 	SlidesRoot root; g_root = &root;
 	root.attach ();
 	uikit::init ();
+	{						// (pocket on a small screen: decided once -- the mode never changes under a program)
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+		if (g_pk) uk_lang_init ();		// (its pocket words in the system's language: lang/fr.txt)
+	}
 	if (!fnt::init ()) { ft_messagebox ("Slides", "No TrueType fonts in SD:/res/fonts: Slides cannot draw its slides.", MB_OK); return 1; }
 	ss::g_appIcon = slides_icon;
 	ss::make_palettes ();
@@ -1573,8 +1631,25 @@ int main (void)
 	g_sidebar = new Sidebar (W - SB_W, top, SB_W, H - top - ST_H);
 	g_sorter = new Sorter (0, top, W, H - top - ST_H);
 	g_status = new StatusBar (0, H - ST_H, W);
+	if (g_pk)					// pocket: the slides and the inspector are drawers over the slide (L, R)
+	{
+		root.addChild (g_notes); root.addChild (g_sorter); root.addChild (g_status); root.addChild (g_view);
+		g_sideL = new SidePanel (0, top, TH_W + 28, H - top, UK_SP_LEFT, UK_SP_NAVIGATION);
+		g_sideL->setContent (g_list); g_sideL->setName (TR ("Slides"));
+		g_sideR = new SidePanel (W - SB_W - 16, top, SB_W + 16, H - top, UK_SP_RIGHT, UK_SP_INSPECTOR);
+		g_sideR->setContent (g_sidebar); g_sideR->setName (TR ("Inspector"));
+		root.addChild (g_sideL); root.addChild (g_sideR);
+		g_tb2->foldInto (g_tb1);		// (one row of tools: what fits by priority, the rest behind >>)
+		g_showNotes = false;
+		g_onListEnter = [] () { if (g_sideL->isOpen ()) g_sideL->open (false); focus_view (); };
+		g_onAdded = [] () { g_view->nav_begin_move (); };
+		if (uk_flat ()) { PANEL_C = UK_N_BG1; DESK = UK_N_BG0; }
+	}
+	else
+	{
 	root.addChild (g_list); root.addChild (g_notes); root.addChild (g_sidebar); root.addChild (g_sorter); root.addChild (g_status);
 	root.addChild (g_view);			// (last: a drag ended over another part still reaches it)
+	}
 	g_sorter->hidden = true;
 	root.setResizable (true);
 	root.setBg (C_BG);

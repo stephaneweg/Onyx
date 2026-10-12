@@ -26,6 +26,7 @@ static void sh_ptr (unsigned long, int ev, gui_value v)
 	if (ev == GUI_EVENT_PTR_DOWN && (GUI_PTR_CHANGED (v) & 1)) g_shClick = 1;
 	if (ev == GUI_EVENT_PTR_DOWN && (GUI_PTR_CHANGED (v) & 2)) g_shRClick = 1;
 }
+static void (*g_shTurn) () = 0;		// each turn of a show (pocket: a pad's buttons, acted on as keys by UIKit)
 static long sh_next_key () { if (!g_shKn) return 0; long k = g_shKeys[0]; for (int i = 1; i < g_shKn; i++) g_shKeys[i - 1] = g_shKeys[i]; g_shKn--; return k; }
 
 static inline float ease (float t) { t = t < 0 ? 0 : t > 1 ? 1 : t; return t < 0.5f ? 2 * t * t : 1 - (-2 * t + 2) * (-2 * t + 2) / 2; }
@@ -428,6 +429,7 @@ struct Show
 		{
 			kapi_pump_wait (10);
 			if (uk_quit ()) break;
+			if (g_shTurn) g_shTurn ();
 			unsigned now = kapi_get_ticks ();
 			int ms = (int) (now - stepT) * 10;
 			long k = sh_next_key ();

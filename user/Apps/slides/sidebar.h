@@ -435,6 +435,7 @@ public:
 		if (y + r.h < 40 || y > height) return;
 		bool hot = i == m_hot;
 		unsigned ink = C_TEXT, dim = uk_mix (PANEL_C, C_TEXT, 150);
+		if (g_pk && hot && r.type != R_SECTION && r.type != R_INFO) uk_rline (canvas, r.x - 4, y, r.w + 8, r.h, 5, C_ACCENT, 255);	// (the keys' row)
 		int lx = r.x, cx = r.x, cw = r.w;
 		if (r.label[0] && r.type != R_SECTION && r.type != R_CHECK && r.type != R_BUTTON && r.type != R_INFO)
 		{
@@ -572,9 +573,36 @@ public:
 		}
 		return in;
 	}
+	// Pocket, no pointer: Up / Down go from row to row (a ring), Left / Right from tab to tab, Enter (A) does what a
+	// click on the row does (a list, a colour, a box ticked, a button -- of several, the first), a digit starts a value.
+	bool usable (int i) { return i >= 0 && i < rows.n && rows[i].type != R_SECTION && rows[i].type != R_INFO; }
+	bool pocket_key (long k)
+	{
+		if (k == KEY_UP || k == KEY_DOWN)
+		{
+			int d = k == KEY_UP ? -1 : 1, i = m_hot;
+			if (i < 0 && d < 0) return true;
+			for (i += d; i >= 0 && i < rows.n && !usable (i); i += d) ;
+			if (!usable (i)) return true;
+			m_hot = i;
+			SRow &r = rows[i];
+			if (r.y - m_top < 44) m_top = imax (0, r.y - 44);
+			if (r.y + r.h - m_top > height - 4) m_top = r.y + r.h - height + 4;
+			invalidate (true);
+			return true;
+		}
+		if (k == KEY_LEFT || k == KEY_RIGHT) { g_sbTab = (g_sbTab + (k == KEY_LEFT ? 3 : 1)) % 4; m_top = 0; m_hot = -1; build (); invalidate (true); return true; }
+		if (!usable (m_hot)) return false;
+		SRow &r = rows[m_hot];
+		int cx = r.x, y = r.y - m_top;
+		if (r.label[0] && r.type != R_CHECK && r.type != R_BUTTON) cx += r.half || r.w < 150 ? uk_text_w (r.label) + 8 : 96;
+		if (k == KEY_ENTER || k == ' ') { click (m_hot, r.type == R_THEMES || r.type == R_EFFECTS ? r.x + 4 : cx + 6, r.type == R_THEMES || r.type == R_EFFECTS ? y + 6 : y + r.h / 2 + 1); invalidate (true); return true; }
+		if (r.type == R_SPIN && ((k >= '0' && k <= '9') || k == '-' || k == '.')) { m_edit = m_hot; m_buf[0] = (char) k; m_buf[1] = 0; invalidate (true); return true; }
+		return false;
+	}
 	bool onKey (long k) override
 	{
-		if (m_edit < 0) return false;
+		if (m_edit < 0) return g_pk ? pocket_key (k) : false;
 		int n = (int) strlen (m_buf);
 		if (k == 27) { m_edit = -1; invalidate (true); return true; }
 		if (k == KEY_ENTER || k == KEY_TAB) { commit_edit (); return true; }

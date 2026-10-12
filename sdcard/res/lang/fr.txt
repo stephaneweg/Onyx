@@ -49,3 +49,10 @@ Search	Rechercher
 Search the records (Ctrl+F)	Rechercher dans les fiches (Ctrl+F)
 tools	outils
 scroll	défiler
+object	objet
+move	déplacer
+size	taille
+MOVE	DÉPLACER
+SIZE	TAILLE
+done	terminé
+cancel	annuler

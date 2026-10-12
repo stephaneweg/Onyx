@@ -63,8 +63,14 @@ showed GPIO Lab's tab). Apps: Mail (hints a screen, 15 / 22 px text, A sends the
 hints). `AUDIT-640.md` has the table by directive. **A trap met**: `tools/tests/desktop_sim/shots.sh` run in the
 worktree while sources are being edited mixes old and new -- compare from two exports (`git archive` into WSL, the
 second with the changed folders copied over; `circle/lib/font8x16.cpp` copied in, `media` and `ndsemu` left out).
-**Next**: Q1 Slides with the shared object stepping (a first `uikit/objnav.h` was written and set aside, not
-committed), then the list's order.
+**Q1, Slides, built (2026-10-12)**: `uikit/objnav.h` / `.cpp` (the shared mechanism: `UkObjNav`, `uk_objnav_key` /
+`_begin` / `_end` / `_draw` / `_hints`; five abi entries) and Slides' pocket front -- `g_pk` (editor.h), the slides'
+list and the inspector as the contents of two SidePanels (main.cpp `g_sideL` / `g_sideR`, `relayout`'s pocket
+branch), `SlideView::nav_key` / `nav_begin_move`, `pocket_insert` (a tool chosen puts its object in the middle, in
+the move mode: `g_onAdded`), `drop_change` (a cancelled move forgets its undo step), `Sidebar::pocket_key`, the show
+fed a pad's keys (`g_showKey`, `g_shTurn`), `PANEL_C` / `DESK` variables for the dark look. `uk_lang_init` is called
+in pocket only (Slides is not translated: the desktop must not change). What differs from the mock-up: AUDIT-640.md.
+**Next**: Q6 QBStudio (the same objnav on its Designer), then the list's order.
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached

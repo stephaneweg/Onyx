@@ -19,7 +19,8 @@ namespace sl {
 
 using ss::ListPopup; using ss::PickBox; using ss::ColorPopup; using ss::ToolButton; using ss::ToolBar;
 
-static const unsigned PANEL_C = 0xE2D8D1;	// the panes' face (the mock-ups')
+static unsigned PANEL_C = 0xE2D8D1;	// the panes' face (the mock-ups'; pocket's dark look: the theme's surface -- main)
+static void (*g_onListEnter) () = 0;	// pocket: Enter in the slides' list (the drawer closed on the slide chosen)
 
 // UTF-8 (the deck's names) -> Latin-1 (uikit's text): four buffers in turn
 static const char *L1 (const char *s)
@@ -264,6 +265,7 @@ public:
 		if (k == KEY_HOME) { go_slide (0); show_cur (); return true; }
 		if (k == KEY_END) { go_slide (g_deck.slides.n - 1); show_cur (); return true; }
 		if (k == KEY_DEL || k == KEY_BACKSPACE) { cmd_delete_slide (); show_cur (); return true; }
+		if (k == KEY_ENTER && g_onListEnter) { g_onListEnter (); return true; }
 		if (k == KEY_ENTER) { cmd_new_slide (); show_cur (); return true; }
 		return false;
 	}

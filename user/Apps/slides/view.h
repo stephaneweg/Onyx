@@ -21,9 +21,11 @@ static int g_tool = TOOL_SELECT, g_toolShape = SH_ROUND;
 static void (*g_onTool) ();			// the toolbar shows the tool
 static void (*g_onContext) (int x, int y);	// a right click (window coordinates)
 static void (*g_onPictureWanted) (Object *ph);	// a picture placeholder double-clicked
-static const unsigned DESK = 0x8A8684;		// Letters' grey round the page
+static unsigned DESK = 0x8A8684;		// Letters' grey round the page (pocket's dark look: the screen's ground -- main)
 static const unsigned GUIDE_C = 0xE23C8C;	// the smart guides
 static const unsigned HANDLE_C = 0x4992A7;	// the selection (the theme's teal)
+static UkObjNav g_nav;				// pocket: the objects by the keys (uikit/objnav.h)
+static void (*g_showKey) (long) = 0;		// a show runs: the keys that reach the window are its own (a pad's, through UIKit)
 
 struct Geo { int id, x, y, w, h, rot; };
 struct GuideLine { bool vertical; float at; float a, b; };
@@ -250,6 +252,58 @@ public:
 				uk_rbox (canvas, x, y, tw, 20, 4, 0x303030, 0x303030); uk_text_l (canvas, x + 7, y, 20, t, 0xFFFFFF);
 			}
 		}
+		// pocket, a mode of the keys: where the object was, its place or size said, the slide's centre lines
+		if (g_pk && g_nav.mode != UK_OBJ_PICK)
+		{
+			Object *o = sel_one ();
+			if (o)
+			{
+				UkObjRect now = { (int) vx ((float) o->x), (int) vy ((float) o->y), (int) (o->w * sc), (int) (o->h * sc) };
+				UkObjRect was = { (int) vx ((float) g_nav.from.x), (int) vy ((float) g_nav.from.y), (int) (g_nav.from.w * sc), (int) (g_nav.from.h * sc) };
+				UkObjRect page = { (int) sx, (int) sy, (int) (g_deck.sw * sc), (int) (g_deck.sh * sc) };
+				char t[64];
+				if (g_nav.mode == UK_OBJ_MOVE) snprintf (t, sizeof t, "X %.1f  Y %.1f cm", o->x / 1000.0, o->y / 1000.0);
+				else snprintf (t, sizeof t, "W %.1f  H %.1f cm", o->w / 1000.0, o->h / 1000.0);
+				uk_objnav_draw (canvas, g_nav, now, &was, t, &page);
+			}
+		}
+	}
+	// Pocket: the keys on the slide's objects -- the D-pad from object to object, M / S the move and the size modes.
+	bool nav_key (long k, Slide *s)
+	{
+		enum { MAXO = 160 };
+		UkObjRect R[MAXO]; int n = s->obj.n < MAXO ? s->obj.n : MAXO;
+		for (int i = 0; i < n; i++) { Object *o = s->obj[i]; R[i].x = o->x; R[i].y = o->y; R[i].w = o->w; R[i].h = o->h; }
+		g_nav.sel = g_sel.n == 1 ? s->index_of (g_sel[0]) : -1;
+		if (g_nav.sel >= n) g_nav.sel = -1;
+		if (g_nav.sel < 0 && g_nav.mode != UK_OBJ_PICK) uk_objnav_end (g_nav);
+		g_nav.step = imax (1, (int) lroundf (8 / sc)); g_nav.fine = imax (1, (int) lroundf (1 / sc));	// (8 px, 1 px of the screen)
+		g_nav.minW = g_nav.minH = 8 * g_nav.fine;
+		UkObjRect page = { 0, 0, g_deck.sw, g_deck.sh };
+		// (an object that hangs out of the slide is moved freely: the slide's edges bind only what is inside)
+		bool inside = g_nav.sel >= 0 && R[g_nav.sel].x >= 0 && R[g_nav.sel].y >= 0 && R[g_nav.sel].x + R[g_nav.sel].w <= g_deck.sw && R[g_nav.sel].y + R[g_nav.sel].h <= g_deck.sh;
+		int r = uk_objnav_key (g_nav, k, R, n, inside || g_nav.mode != UK_OBJ_PICK ? &page : 0);
+		Object *o = g_nav.sel >= 0 && g_nav.sel < n ? s->obj[g_nav.sel] : 0;
+		switch (r)
+		{
+		case UK_OBJ_NO: return false;
+		case UK_OBJ_PICKED: if (o) { g_sel.clear (); g_sel.push (o->id); } break;
+		case UK_OBJ_BEGAN: begin_change (UK_MOVE); break;
+		case UK_OBJ_CHANGED: if (o) { o->x = g_nav.now.x; o->y = g_nav.now.y; o->w = g_nav.now.w; o->h = g_nav.now.h; } break;
+		case UK_OBJ_KEPT: done_change (); if (g_onSlides) g_onSlides (); break;
+		case UK_OBJ_CANCELLED: if (o) { o->x = g_nav.from.x; o->y = g_nav.from.y; o->w = g_nav.from.w; o->h = g_nav.from.h; } drop_change (); if (g_onSlides) g_onSlides (); break;
+		}
+		notify (); wake ();
+		return true;
+	}
+	// ... the object chosen put in the move mode (a new one: placed by the keys at once)
+	void nav_begin_move ()
+	{
+		Object *o = sel_one (); if (!o) return;
+		UkObjRect r = { o->x, o->y, o->w, o->h };
+		begin_change (UK_MOVE);
+		uk_objnav_begin (g_nav, UK_OBJ_MOVE, r);
+		wake ();
 	}
 
 	// ---- hit tests -------------------------------------------------------------------------------------------------
@@ -614,8 +668,10 @@ public:
 	{
 		unsigned mods = kapi_get_modifiers ();
 		bool shift = mods & MOD_SHIFT, ctrl = mods & MOD_CTRL;
+		if (g_showKey) { g_showKey (k); return true; }
 		if (g_edit) return text_key (k, shift, ctrl);
 		Slide *s = cur_slide (); if (!s) return false;
+		if (g_pk && uk_keys_drive () && !ctrl && nav_key (k, s)) return true;
 		if (k == 27) { if (g_tool != TOOL_SELECT) { g_tool = TOOL_SELECT; if (g_onTool) g_onTool (); } else g_sel.clear (); notify (); invalidate (true); return true; }
 		if (k == KEY_DEL || k == KEY_BACKSPACE) { if (g_sel.n) { cmd_delete_objects (); invalidate (true); } return true; }
 		if (k == KEY_TAB)

@@ -4982,8 +4982,37 @@ summary with lookups and a pie chart, the espresso machine's loan).
 ![Slides](../screenshots/slides.png)
 
 **In the pocket and console modes** its two toolbars keep what fits and put the rest behind **»** (F6 by the keys),
-as the Spreadsheet's. On a 640 × 480 screen the rest of Slides is **not yet fit for use**: the slide is squeezed
-between the thumbnails and the inspector (the audit: `docs/compact-shell/real/pocketterm/AUDIT-640.md`).
+as the Spreadsheet's.
+
+**On a small pocket screen (under 800 px wide: the PocketTerm35's 640 × 480) Slides shows the slide alone**, under
+one row of tools, and everything is done by the keys (no mouse):
+
+| Where | Key | Does |
+|---|---|---|
+| The slide | **D-pad** (the arrows) | the next object in that direction (none chosen: the first) |
+| | **A** (Enter) | the chosen object's text edited — **B** (Esc) ends |
+| | **M** / **S** | the **move** / the **size** mode |
+| | **Backspace** | the object deleted |
+| | **F6** | the toolbar (Left / Right, Enter; **»** has the rest) |
+| | **L** / **R** | the slides / the inspector (drawers, named in the band) |
+| | **F5** | the show (Shift + F5: from this slide) |
+| Move, size | **D-pad**; **Shift + D-pad** | 8 px; 1 px (the size mode moves the bottom right corner) |
+| | **A** / **B** | keep / cancel (the object as it was); **S** or **M** goes to the other mode |
+| The slides (L) | **Up / Down**, **A** | another slide, shown at once; A closes the drawer on it; **Ctrl + M** a new slide, **Backspace** deletes; **L** or **B** closes |
+| The inspector (R) | **Up / Down** | a row (a ring); **A** does what a click on it does (a list, a colour, a box ticked); a **digit** starts a value, Enter keeps it; **Left / Right** its tabs (Slide, Shape, Text, Animate); **R** or **B** closes |
+| The show | **Right** or **A** / **Left** | next / previous; **B** ends |
+
+While an object is moved or sized its place (or size) is said over it, the outline of where it was stays, and the
+slide's centre lines light up when the object is centred on them. **A new object** (a text box, a shape, a line, a
+picture, a table, a chart — the toolbar or the *Insert* menu) is put in the slide's middle at its usual size,
+**already in the move mode**. The hint line at the foot says the keys of the moment (MOVE, SIZE, TEXT as its pill).
+There the panes are dark surfaces, the notes' pane and the status bar are not shown. Not in pocket: dragging, turning
+an object freely, several objects chosen at once, the notes (on the desktop).
+
+![](compact-shell/real/pocketterm/pt-slides-640-edit.png)
+
+*Slides on a 640 × 480 pocket screen (the real program under PocketUI, run on the PC:
+`tools/tests/server_sim/pocket640.sh slides`); `pt-slides-640-move.png`, `-thumbnails`, `-inspector` beside it.*
 
 The third app of the office suite, with **Letters** and the **Spreadsheet** (their toolbars, their icons): a
 presentation program in the way of PowerPoint. **The window**: two toolbars (New slide, Layout, Duplicate, Delete;

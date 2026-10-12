@@ -62,6 +62,7 @@
 #include "uikit/sidepanel.h"	// (P6) a navigation / inspector side panel that each mode shows its way
 #include "uikit/form.h"		// (P6) FormDialog: a dialog of rows laid out for the mode
 #include "uikit/padhint.h"	// a handheld's buttons as glyphs, lines of hints (PocketUI's screens)
+#include "uikit/objnav.h"	// a canvas of objects by the keys: the D-pad from object to object, the move and size modes (pocket, console)
 // (uikit/toolbar.h -- ToolBar, ToolButton, the WKT_* icons -- is included by the app itself: Letters,
 //  the Spreadsheet and Cardfile have their own ToolBar / ToolButton next to `using namespace uikit`.)
 
