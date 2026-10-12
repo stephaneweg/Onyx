@@ -2044,12 +2044,13 @@ front as pad buttons. The system's actions are keys of the keyboard under the bu
 
 | control | what it does |
 |---|---|
-| **CMD** (the Super key) pressed and released | the **Menu** of the top band: the app's menus, then **Home**, **Open apps**, **Quit**; on the home: **Open apps**, **Quick settings**, **Shut Down...**; again: closed |
+| **CMD** (the Super key) pressed and released | the **Menu** of the top band: the app's menus, then **Home**, **Open apps**, **Clipboard history**, **Quit**; on the home: **Open apps**, **Quick settings**, **Shut Down...**; again: closed |
 | **CMD held** half a second | **Home** (on the home: the open apps) |
 | **F10** (Fn + 0 on the device) | the Menu too |
 | Alt + Tab | the open apps (the switcher) |
 | Ctrl + Esc, Alt + F1 | Home |
 | CMD + N | quick settings |
+| Ctrl + Shift + V | the clipboard's history: a sheet over the app in front (2026-10-12; A pastes into the app, Bksp forgets, B closes) |
 | D-pad | the arrows |
 | **A** / **B** | Enter / Esc |
 | **X** / **Y** | Delete / Shift+F10 (the context menu) |

@@ -1483,10 +1483,10 @@ clipped to a rounded box, the match in a text; `today.h`: the agenda; `catalog.h
 categories, the recent apps, the search — one unit; FT_APPS; `sdcard/apps/pocketshell.app/`, category `Shell`: the `onyx` package) is the pocket
 mode's shell, started by `SD:/etc/session/pocket` after the menu bar. One program, three windows (v94): its **home**
 (window 0, `WIN_FLAG_BACKMOST`: the launcher, its canvas the screen's size, resized to the work area), the
-**overlay** (window 1, topmost, `WIN_FLAG_ALPHA`, the work area: the switcher or quick settings; parked off the
+**overlay** (window 1, topmost, `WIN_FLAG_ALPHA`, the work area: the switcher, quick settings or the clipboard's sheet -- `clipsheet.h`: clipd's widget protocol, the paste typed with `kapi_inject_key`; parked off the
 screen and see-through when hidden — made on the screen first: a place off it would be "placed by the server") and
 the **toast** (window 2). It serves the IPC services **`shell`** (SystemKit's `systemkit/shell.h`: `shell_ask
-(SHELL_MSG_HOME | _SWITCHER | _QUICK | _SEARCH)`, `shell_running ()` — the menu bar's Onyx (the Home button in pocket) and its time ask it)
+(SHELL_MSG_HOME | _SWITCHER | _QUICK | _SEARCH | _CLIPBOARD)`, `shell_running ()` — the menu bar's Onyx (the Home button in pocket) and its time ask it)
 and **`notify`** (SystemKit's `notify.h`: in pocket no `notifyd` runs — a notification is a toast, then a line of
 quick settings; the message types are apart: `NOTIFY_MSG_SHOW` 1, `SHELL_MSG_*` from 101). Everything is drawn by
 hand (`look.h`, `uikit/paint.h`; FreeType faces of 10 to 22 lp times the scale, opened again when the scale changes)

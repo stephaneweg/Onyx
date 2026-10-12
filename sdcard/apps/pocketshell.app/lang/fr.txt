@@ -140,3 +140,13 @@ Open apps	Applis ouvertes
 the most recent first	la plus récente en premier
 close it	la fermer
 menu	menu
+Clipboard	Presse-papiers
+the last 10	les 10 derniers
+Nothing copied yet	Rien n'a encore été copié
+The clipboard's history is not running	L'historique du presse-papiers ne fonctionne pas
+picture	image
+(cut)	(coupé)
+(empty)	(vide)
+from	de
+paste here	coller ici
+forget it	l'oublier

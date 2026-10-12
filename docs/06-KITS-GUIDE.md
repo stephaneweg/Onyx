@@ -595,7 +595,7 @@ input_wheel_save (3);                                       // SD:/etc/theme.txt
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
-| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH / _CLIPBOARD)`, `shell_running ()`): the menu bar's way in pocket |
 | `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
 | `display.h` | The screen's resolution: the sizes, the one kept (`SD:/cmdline.txt`), the console's games' own (`SD:/etc/console.ini [screen]`) |
 | `input.h` | The keyboard's layouts (`SD:/etc/keymaps`, kept in `SD:/etc/autostart`) and the mouse wheel's speed |

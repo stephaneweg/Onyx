@@ -718,7 +718,7 @@ the home there is no Menu entry: the name is *Onyx* (a click on it: the Onyx men
 **Since 2026-10-11: CMD is the menu key.** What the two paragraphs around this one say of *Select*, *Start* and
 *Alt* is replaced by this: a handheld's **Start and Select do nothing in the shell and the apps** -- they are the
 games' buttons. The **CMD key** (the Super key) pressed and released opens the **Menu**: the app's menus, then
-**Home**, **Open apps** and **Quit** (on the home: Open apps, Quick settings, Shut Down...); CMD again closes it.
+**Home**, **Open apps**, **Clipboard history** and **Quit** (on the home: Open apps, Quick settings, Shut Down...); CMD again closes it.
 **CMD held half a second** goes Home. **F10** opens the Menu too; Alt + Tab shows the open apps, Ctrl + Esc goes
 Home. **Alt + Up / Down** scrolls what has the focus as the mouse wheel does (a page, a list, a text; Alt + Page Up /
 Page Down: five notches) -- on a handheld whose D-pad is the arrows: Alt held and the D-pad. **F6** puts a ring on the window's **toolbar**: Left / Right move it over the tools (the **»** too), Enter or Space
@@ -818,6 +818,18 @@ Lock and Power. Esc or a click beside the panel closes it.
 
 *Quick settings and the notifications.*
 
+**The clipboard's history** (pocket): **Ctrl + Shift + V** in any app -- or **Clipboard history** in the Menu -- lays a
+sheet over the app in front with the last ten things copied (a text's start, the files' names, a picture's size; the
+app each came from, how long ago), the clipboard's current entry chosen. **Up / Down** choose, **A** (Enter) *pastes
+it into the app under the sheet* -- the entry becomes the clipboard's current one, the sheet goes and the shell types
+Ctrl + V for you --, **Bksp** (or Del) forgets the entry, **B** (Esc) or Ctrl + Shift + V again closes the sheet. A
+pad's D-pad, A and B do the same. On the home, A only makes the entry the current one. The history is the same
+service as the desktop's Clipboard widget (`clipd`); what an app pastes is what its own *Paste* gives for that entry.
+
+![](compact-shell/real/pocketterm/pt-clip-640-1-chosen.png)
+
+*The clipboard's history over the Text Editor, 640 x 480.*
+
 **The on-screen keyboard** (pocket only): **Super+K**, or quick settings' **Show keyboard**, brings a keyboard up
 from the screen's bottom edge; the app in front is laid out again in the room left above it, and what you click
 is typed into it as a real keyboard's keys. Letters (QWERTY; **AZERTY** when the system's language is French),
@@ -841,6 +853,7 @@ its keys):
 | **Super** (the Windows key, alone), **Alt+F1**, **Ctrl+Esc**, a click on the gem before **Onyx** | Home; again: back to the app |
 | **Alt+Tab** / **Alt+Shift+Tab** | the switcher (release Alt to switch; Del closes the chosen app; Esc stays) |
 | **Super+N** | quick settings and the notifications |
+| **Ctrl+Shift+V** | the clipboard's history, a sheet over the app (A pastes the chosen entry, Bksp forgets it) |
 | **Super+Space** | the launcher, the search emptied |
 | **Super+K** | the on-screen keyboard shown / hidden |
 | **Super+←** / **Super+→**, **Super+↑** | the split view: the app in front to that half; the split ended |

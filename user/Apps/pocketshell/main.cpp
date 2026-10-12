@@ -58,7 +58,7 @@ static int g_fh = 16;
 enum { W_HOME = 0, W_OVER = 1, W_TOAST = 2 };
 static Canvas g_hc, g_oc, g_tc;				// their canvases
 static int g_overStride, g_homeStride;
-enum { OV_NONE, OV_SWITCHER, OV_QUICK };
+enum { OV_NONE, OV_SWITCHER, OV_QUICK, OV_CLIP };
 static int g_over = OV_NONE;
 static bool g_homeDirty = true, g_overDirty;
 
@@ -673,6 +673,8 @@ static void over_hide (void)
 	uk_win_select (0);
 }
 
+#include "clipsheet.h"				// the clipboard's history as a sheet (Ctrl + Shift + V)
+
 // ---- the toast --------------------------------------------------------------------------------------------
 static int g_toastState;				// 0 none, 1 in, 2 held, 3 out
 static unsigned g_toastT;
@@ -882,6 +884,14 @@ static void shell_event (unsigned long, int ev, long v)
 		switcher_key (code, mods);
 		return;
 	}
+	if ((code == 0x16 || code == 'v' || code == 'V') && (mods & MOD_CTRL) && (mods & MOD_SHIFT)) { clip_open (); return; }	// Ctrl + Shift + V: the clipboard's sheet, or away
+	if (g_over == OV_CLIP)
+	{
+		if (code == UK_SHELL_KEY_SUPER) { over_hide (); go_home (false); }
+		else if (code == 9 && (mods & MOD_ALT)) { over_hide (); open_switcher (true); }
+		else clip_key (code, mods);
+		return;
+	}
 	if (g_over == OV_QUICK)
 	{
 		bool onVol = g_qFocus >= 0 && g_qFocus < g_overHits.n && g_overHits.h[g_qFocus].kind == H_VOL;
@@ -943,6 +953,16 @@ static void ptr (unsigned long win, int ev, long v)
 		return;
 	}
 	if (win != W_OVER || g_over == OV_NONE) return;
+	if (g_over == OV_CLIP)
+	{
+		if (ev == GUI_EVENT_PTR_DOWN && (c & 1))
+		{
+			const Hit *h = g_overHits.at (x, y);
+			if (h == 0 || h->kind == H_BACK) over_hide ();
+			else if (h->kind == H_CLIPROW) clip_paste (h->i);
+		}
+		return;
+	}
 	if (g_over == OV_QUICK)
 	{
 		if (ev == GUI_EVENT_PTR_MOVE && g_volDrag) vol_at (x);
@@ -966,6 +986,7 @@ static void messages (void)
 	while ((n = kapi_mailbox_recv (&from, &type, buf, sizeof buf - 1, 0)) >= 0)
 	{
 		buf[n] = 0;
+		if (clip_message (from, type, buf, n)) continue;		// (clipd's: its types are numbers of the shell service's)
 		switch (type)
 		{
 		case NOTIFY_MSG_SHOW: note_add (buf, n); break;
@@ -973,6 +994,7 @@ static void messages (void)
 		case SHELL_MSG_SEARCH: over_hide (); go_home (true); break;
 		case SHELL_MSG_SWITCHER: if (g_over == OV_SWITCHER) over_hide (); else open_switcher (false); break;
 		case SHELL_MSG_QUICK: if (g_over == OV_QUICK) over_hide (); else over_show (OV_QUICK); break;
+		case SHELL_MSG_CLIPBOARD: if (g_over != OV_CLIP) over_hide (); clip_open (); break;
 		}
 	}
 }
@@ -1047,9 +1069,10 @@ int main (void)
 	static int K[32] = {
 		UK_SHELL_KEY (MOD_ALT, '\t'), UK_SHELL_KEY (MOD_ALT | MOD_SHIFT, '\t'), UK_SHELL_KEY (0, UK_SHELL_KEY_SUPER),
 		UK_SHELL_KEY (MOD_ALT, KEY_F1), UK_SHELL_KEY (MOD_CTRL, 0x1b), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'n'),
-		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' '), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'k') };
+		UK_SHELL_KEY (UK_SHELL_MOD_SUPER, ' '), UK_SHELL_KEY (UK_SHELL_MOD_SUPER, 'k'),
+		UK_SHELL_KEY (MOD_CTRL | MOD_SHIFT, 0x16) };			// Ctrl + Shift + V: the clipboard's history (clipsheet.h)
 	uk_shell_events (shell_event);
-	uk_shell_keys (K, 8);
+	uk_shell_keys (K, 9);
 	tasks_read ();
 	{ int r = kapi_sound_volume (-1, -1); g_vol = r & 0xFF; g_mute = (r & 0x100) ? 1 : 0; }
 
@@ -1087,6 +1110,7 @@ int main (void)
 			g_overDirty = false;
 			if (g_over == OV_SWITCHER) draw_switcher ();
 			else if (g_over == OV_QUICK) draw_quick ();
+			else if (g_over == OV_CLIP) draw_clip ();
 		}
 		msleep (g_over != OV_NONE || g_toastState != 0 ? 16 : 40);
 	}

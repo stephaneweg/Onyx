@@ -289,7 +289,15 @@ static void SimStaleScreen (int *w, int *h)
 }
 
 // The app's own typing (kapi_inject_key, kapi_inject_modifiers: the pocket shell's buttons) goes the keyboard's way.
-static void SimInjectKey (const char *keys) { if (keys != 0 && keys[0] != 0) ws_route_key (keys, s_nMods); }
+// (the last key typed so, with the modifiers held then: `expect typed <mods>:<code>` -- the clipboard sheet's paste)
+static char s_Typed[32] = "none";
+static void SimInjectKey (const char *keys)
+{
+	if (keys == 0 || keys[0] == 0) return;
+	snprintf (s_Typed, sizeof s_Typed, "%u:%d", s_nMods, (int) (unsigned char) keys[0]);
+	fprintf (stderr, "server_sim: the app typed the key %d with the modifiers %u\n", (int) (unsigned char) keys[0], s_nMods);
+	ws_route_key (keys, s_nMods);
+}
 static void SimInjectMods (unsigned mods)
 {
 	s_nMods = mods; el_core_modifiers (s_nMods & 7);
@@ -312,7 +320,9 @@ static int SimPad (int i, struct kapi_pad *p)
 	if (!s_bPad || i != 0 || p == 0) return 0;
 	memset (p, 0, sizeof *p);
 	p->vid = 0x1234; p->pid = 0x5678; p->props = 0; p->seq = 1;
-	p->focus = el_core_focus_pid () == APP_PID ? 1 : 0;
+	unsigned nFocus = el_core_focus_pid ();			// (who has the keys: the policy's word last, as route.cpp's turn --
+	if (g_pWsPolicy != 0 && g_pWsPolicy->focus != 0) nFocus = g_pWsPolicy->focus (nFocus);	// the shell while its overlay grabs them)
+	p->focus = nFocus == APP_PID ? 1 : 0;
 	p->nbuttons = 12; p->buttons = s_nPad & 0x1FF;
 	p->nhats = 1;
 	unsigned d = s_nPad >> 12;			// up 1, right 2, down 4, left 8
@@ -468,6 +478,7 @@ static void Expect (const char *key, const char *want)
 	else if (!strcmp (key, "menucmd")) snprintf (got, sizeof got, "%d", s_nMenuCmd);	// the last EL_OP_MENU_COMMAND the app sent
 	else if (!strcmp (key, "client")) snprintf (got, sizeof got, "%d,%d", F.content_w, F.content_h);
 	else if (!strcmp (key, "keys")) snprintf (got, sizeof got, "%d", s_nKeys);
+	else if (!strcmp (key, "typed")) snprintf (got, sizeof got, "%s", s_Typed);	// the last key the app typed (kapi_inject_key)
 	else if (!strcmp (key, "full"))					// the app has the full screen (the server's state, the list's)
 	{
 		struct kapi_win_info L[64];
@@ -636,6 +647,16 @@ extern "C" int sim_server_step (const char *st)
 		char keys[16];
 		KeyString (k, keys);
 		ws_route_key (keys, s_nMods);
+		return 1;
+	}
+	// menucmd N: the item N of the front app's menus chosen, as the menu bar sends it (EL_OP_MENU_COMMAND) -- the Menu's
+	// column is another program's, which this simulator does not run beside the app
+	if (!strcmp (cmd, "menucmd"))
+	{
+		sscanf (st, "%*s %d", &a);
+		long m[4] = { a, 0, 0, 0 }; unsigned len = 0;
+		long r = el_op (OTHER_PID, EL_OP_MENU_COMMAND, m, 0, 0, s_Out, &len);
+		fprintf (stderr, "server_sim: menu command %d -> %ld\n", a, r);
 		return 1;
 	}
 	if (!strcmp (cmd, "pad")) { sscanf (st, "%*s %255s", arg); s_nPad = (unsigned) strtoul (arg, 0, 0); s_bPad = true; return 1; }

@@ -924,6 +924,16 @@ static void FrontNow (void)
 
 // ---- the keys ------------------------------------------------------------------------------------------
 
+// Ctrl + Shift + a letter (the clipboard's sheet: Ctrl + Shift + V) is ONE key for the shell whatever the keyboard
+// sends for it -- the control byte (0x16, a USB keyboard's) or the letter with the two modifiers held (a remote
+// desktop's): the control byte with Ctrl and Shift. Every other key: k as it is.
+static unsigned CtrlShiftLetter (unsigned k, int code, unsigned mods)
+{
+	if ((mods & 15) != (MOD_CTRL | MOD_SHIFT)) return k;
+	if ((code >= 'A' && code <= 'Z') || (code >= 'a' && code <= 'z')) return (unsigned) UK_SHELL_KEY (MOD_CTRL | MOD_SHIFT, code & 0x1F);
+	return k;
+}
+
 // The shell's keys (PK_OP_KEYS): each key of the string -> 1 when the shell took the string (grabbed: every key).
 static int ShellKey (const char *keys, unsigned mods)
 {
@@ -944,6 +954,7 @@ static int ShellKey (const char *keys, unsigned mods)
 	unsigned k = (unsigned) UK_SHELL_KEY ((mods | m) & 15, code);
 	if (code >= 'A' && code <= 'Z' && ((mods | m) & (MOD_ALT | MOD_CTRL | KAPI_WS_MOD_SUPER)))	// (Super+N as Super+n)
 		k = (unsigned) UK_SHELL_KEY (((mods | m) & 15) & ~MOD_SHIFT, code + 32);
+	k = CtrlShiftLetter (k, code, mods | m);
 	for (int i = 0; i < s_nShellKeys; i++)
 		if ((unsigned) s_ShellKeys[i] == k) { ShellPush (UK_SHELL_KEYEV, (long) k); return 1; }
 	return s_nShellKeys < 0 ? -1 : 0;
@@ -1075,6 +1086,7 @@ static boolean ShellWants (const char *keys, unsigned mods)	// (one of the shell
 	unsigned k = (unsigned) UK_SHELL_KEY ((mods | m) & 15, code);
 	if (code >= 'A' && code <= 'Z' && ((mods | m) & (MOD_ALT | MOD_CTRL | KAPI_WS_MOD_SUPER)))
 		k = (unsigned) UK_SHELL_KEY (((mods | m) & 15) & ~MOD_SHIFT, code + 32);
+	k = CtrlShiftLetter (k, code, mods | m);
 	for (int i = 0; i < s_nShellKeys; i++) if ((unsigned) s_ShellKeys[i] == k) return TRUE;
 	return FALSE;
 }

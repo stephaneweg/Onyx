@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -621,6 +621,66 @@ if want stickies; then
 	busy pt-stickies-640 20 50 620 300 "the pinned notes are shown"
 	differ pt-stickies-640 pt-stickies-640-right "Right: the next card"
 	differ pt-stickies-640 pt-stickies-640-down "Left, Down: another card"
+fi
+
+# ---- the clipboard's history as a sheet (Q9): Ctrl + Shift + V over the app in front -- the shell's key, whatever the
+# app --; Up / Down choose, A pastes into the app under it (the entry made clipd's cursor, the sheet away, Ctrl + V typed
+# by the shell), Bksp forgets an entry, B closes. clipd runs as a thread of the test (clipsheet_demo.cpp, SIM_IPC=1), its
+# ring seeded with the mock-up's copies; the simulator's clock is 12:34.
+if want clipboard; then
+	echo "pocket640: the clipboard's history, a sheet over the app"
+	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -Dmain=shell_main -c user/Apps/pocketshell/main.cpp -o "$OUT/clipshell.o"
+	$CXX $INC -Iuser/Apps/clipd -o "$OUT/pocket_clipsheet" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" "$OUT/clipshell.o" $S/clipsheet_demo.cpp "$OUT/libuikit_pocket.a" "$OUT/libft.a" -lpthread
+	ftapp pocket menubar uikit_pocket user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp
+	app pocket tinypad uikit_pocket
+	CMENUS='MFile|I1~New~^N|I2~Open...~^O|I3~Save~^S|MEdit|I7~Cut~^X|I8~Copy~^C|I9~Paste~^V'
+	clip () {	# clip <tag> <lang>: the app (the Text Editor) and the band's pictures, then the shell over them
+		t=$1; lg=$2; WR=$(langdir "$lg")
+		printf '[default]\na = 1\nb = 2\nx = 3\ny = 4\nl = 5\nr = 6\nselect = 7\nstart = 8\nhome = 9\ndpad = hat\n' > "$WR/etc/gamepad.ini"
+		run pocket_tinypad pt-clip-pad$t "$WW;key P;key o;key c;key k;key e;key t;key T;key e;key r;key m;key 13;key 13;key T;key O;key D;key O;key :;$W;dump $OUT/pt-clip-pad$t.elsm" $P640 SIM_APPNAME=tinypad SIM_APP=tinypad SIM_WRITES=$WR
+		run pocket_menubar pt-clip-bar$t "other 640 450 Text_Editor;othermenu $CMENUS;$W;$W;$W;dump $OUT/pt-clip-bar$t.elsm" $P640 SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR
+		CE="$P640 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR SIM_IPC=1 SIM_SLEEP=1"
+		CAPP="otherpic 640 30 menubar $OUT/pt-clip-bar$t.elsm 0 0 0x35 0 0;$W;$W;otherpic 640 450 tinypad $OUT/pt-clip-pad$t.elsm 0 30;$W;$W;expect front other;expect shown1 0"
+		COPEN="mods 3;wait;key 0x16;wait;mods 0;$W;$W"
+	}
+	clip "" ""
+	# Ctrl + Shift + V: the sheet, the newest entry chosen; Down: the second (the mock-up's picture); Bksp forgets it (5 left,
+	# the next takes its place); Down, A: the sheet away, that entry clipd's cursor, Ctrl + V typed for the app
+	SC="$CAPP;dump $OUT/pt-clip-640-before.elsm;$COPEN;expect shown1 1;expect typed none;dump $OUT/pt-clip-640-0.elsm;key $DOWN;$W;dump $OUT/pt-clip-640-1-chosen.elsm"
+	SC="$SC;key 0x7f;$W;$W;$W;dump $OUT/pt-clip-640-2-forgotten.elsm;key $DOWN;$W;key 13;$W;$W;expect shown1 0;expect front other;expect typed 1:22;dump $OUT/pt-clip-640-3-pasted.elsm"
+	# again: the entry pasted is the chosen one now (the clipboard's current entry); B closes, nothing typed more; the
+	# letter with Ctrl and Shift held (a remote desktop's way) opens it too, and closes it; Ctrl + V alone is the app's
+	SC="$SC;$COPEN;expect shown1 1;dump $OUT/pt-clip-640-4-again.elsm;key 0x1b;$W;expect shown1 0"
+	SC="$SC;mods 3;wait;key V;wait;mods 0;$W;expect shown1 1;mods 3;wait;key v;wait;mods 0;$W;expect shown1 0;mods 1;wait;key 0x16;wait;mods 0;$W;expect shown1 0"
+	# a pad: Down and A do what the keys do (the first entry below the chosen one, pasted)
+	SC="$SC;$COPEN;expect shown1 1;pad 0x4000;$W;pad 0;$W;$W;dump $OUT/pt-clip-640-5-pad.elsm;pad 1;$W;pad 0;$W;$W;expect shown1 0;expect typed 1:22"
+	run pocket_clipsheet pt-clip-640 "$SC" $CE
+	for f in before 0 1-chosen 2-forgotten 3-pasted 4-again 5-pad; do out pt-clip-640-$f; size pt-clip-640-$f 640x480 "the sheet, $f: the whole 640 x 480 screen"; done
+	differ pt-clip-640-before pt-clip-640-0 "Ctrl + Shift + V: the sheet over the app"
+	pixel pt-clip-640-0 634 466 000000 "the sheet: its hint line's ground"; busy pt-clip-640-0 10 454 360 478 "the sheet: its hint line says the keys"
+	pixel pt-clip-640-0 110 120 3d86da "the newest entry is the chosen one (the accent)"
+	pixel pt-clip-640-1-chosen 110 174 3d86da "Down: the second entry chosen"
+	differ pt-clip-640-1-chosen pt-clip-640-2-forgotten "Bksp: the entry forgotten"
+	same pt-clip-640-before pt-clip-640-3-pasted "A: the sheet away, the app as it was"
+	pixel pt-clip-640-4-again 110 228 3d86da "again: the pasted entry is the clipboard's current one"
+	pixel pt-clip-640-5-pad 110 282 3d86da "a pad's Down: the next entry"
+	if grep -q 'clipsheet: delete -- 5 entries' "$OUT/log.txt"; then echo "  Bksp: clipd forgot the entry (5 left): ok"; else echo "  Bksp: clipd forgot the entry: FAILED (no line in the log)"; FAIL=1; fi
+	if grep -q 'clipsheet: cursor -- 5 entries, the cursor is "WHILE NOT ONGOAL ()"' "$OUT/log.txt"; then echo "  A: the chosen entry is what Ctrl + V pastes: ok"; else echo "  A: the chosen entry is what Ctrl + V pastes: FAILED (no line in the log)"; FAIL=1; fi
+	# nothing copied yet; more entries than the sheet shows (Down x 7: it scrolls); in French
+	run pocket_clipsheet pt-clip-640-empty "$CAPP;$COPEN;expect shown1 1;dump $OUT/pt-clip-640-empty.elsm;key 13;$W;expect shown1 0;expect typed none" $CE CLIPSHEET_EMPTY=1
+	KD7="key $DOWN;key $DOWN;key $DOWN;key $DOWN;key $DOWN;key $DOWN;key $DOWN"
+	run pocket_clipsheet pt-clip-640-many "$CAPP;$COPEN;expect shown1 1;dump $OUT/pt-clip-640-many-0.elsm;$KD7;$W;dump $OUT/pt-clip-640-many-7.elsm" $CE CLIPSHEET_MANY=1
+	clip -fr fr
+	run pocket_clipsheet pt-clip-640-fr "$CAPP;$COPEN;expect shown1 1;key $DOWN;$W;dump $OUT/pt-clip-640-fr.elsm" $CE
+	for f in empty many-0 many-7 fr; do out pt-clip-640-$f; done
+	differ pt-clip-640-empty pt-clip-640-0 "nothing copied: the sheet says so"
+	differ pt-clip-640-many-0 pt-clip-640-many-7 "nine entries: Down x 7 scrolls the sheet"
+	differ pt-clip-640-1-chosen pt-clip-640-fr "the sheet in French"
+	# the Menu's column has "Clipboard history" before Quit: Up twice from the first row, A -- the shell is asked (106)
+	WR=$(langdir "")
+	run pocket_menubar pt-clip-640-menu "other 640 450 Text_Editor;othermenu $CMENUS;$W;$W;$W;key $F10;$W;expect bargrab 1;key $UP;key $UP;$W;dump $OUT/pt-clip-640-menu.elsm;key 13;$W;expect bargrab 0" $P640 SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR SIM_SERVICES=shell
+	out pt-clip-640-menu
+	if grep -q 'sim: send shell type 106' "$OUT/log.txt"; then echo "  the Menu's Clipboard history asks the shell for the sheet: ok"; else echo "  the Menu's Clipboard history: FAILED (the shell was not asked)"; FAIL=1; fi
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

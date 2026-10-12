@@ -96,8 +96,16 @@ SidePanel is hidden while editing so that L reaches it), the panel a child of th
 `do_hint` / `do_run` (they are Menu shortcuts first). **Q9 in part (2026-10-12)**: the Home's Today line from 440 px of height and by the keys (`g_todayFocus`,
 pocketshell's home.h); Stickies' `PocketStickies` (its `main` branches on `uk_mode ()`). **The applets by the keys (2026-10-12)**: `fakekapi.cpp` queues a `key` step as an `AP_KEY` mailbox message when
 the program runs as an applet (`SIM_APPLET`; `server_sim.cpp` lets it through): `pocket640.sh applets` drives nine
-applets. Mode's cards take the focus where the keys drive (`ModeCard::onKey`). **NEXT, NOT started**: the clipboard's history as a sheet (Q9: Ctrl + Shift + V over the app in front -- a key
-PocketUI must catch for every app, the sheet in the pocket shell, the paste sent to the app under it); item 8 (Q4
+applets. Mode's cards take the focus where the keys drive (`ModeCard::onKey`). **Q9's last part, the clipboard's history as a sheet, built (2026-10-12, a second session)**: Ctrl + Shift + V is
+one more of the pocket shell's system keys (`uk_shell_keys`; `wm.cpp`'s `CtrlShiftLetter` makes the control byte and
+the letter with both modifiers the same key), the sheet is `user/Apps/pocketshell/clipsheet.h` (the overlay's third
+kind, `OV_CLIP`; clipd's widget protocol; a message FROM clipd is told by its sender -- its types are the shell
+service's numbers), A makes the entry clipd's cursor, hides the sheet and types Ctrl + V (`kapi_inject_key`); the
+menu bar's column has *Clipboard history* (`CX_CLIP`, SystemKit's `SHELL_MSG_CLIPBOARD` 106: a define, no abi
+entry). The test: `pocket640.sh clipboard` (clipd as a thread: `tools/tests/server_sim/clipsheet_demo.cpp`,
+`SIM_IPC=1 SIM_SLEEP=1`); `server_sim` learnt `expect typed`, `menucmd N` (a menu command sent to the app in front)
+and gives a simulated pad to the program the POLICY says has the keys (it asked the window manager only: a pad never
+reached the shell's overlay over an app). **NEXT, NOT started**: item 8 (Q4
 Koton: Song and Mixer under L / R, a "not in pocket" card); item 9 (Courier's migration); item 10 (the Control
 Panel's applets DRIVEN by the keys -- the simulator must run an applet under the Control Panel for that --, Theme's
 preview, Slides' inspector rows of several buttons, 3DForge's Operation list, the lesson / result cards still light,

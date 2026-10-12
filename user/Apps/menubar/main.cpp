@@ -364,17 +364,19 @@ static bool on_menu_entry (int x, int y) { return pk_has_menu () && y >= 0 && y 
 static int col_n (void) { return g_onyx || g_nmenus < 2 ? 0 : g_nmenus - 2; }	// the app's menus
 // The rows after them, the SYSTEM's -- an app in front: Home, Open apps, then Quit; on the home: Open apps, Quick
 // settings, Shut Down... (the menu key is the only system key of a handheld: CMD; Start and Select are the games').
-enum { CX_HOME, CX_APPS, CX_QUICK, CX_SHUT, CX_QUIT };
-static int col_total (void) { return col_n () + 3; }
-static int col_kind (int i) { static const int A[3] = { CX_HOME, CX_APPS, CX_QUIT }, H[3] = { CX_APPS, CX_QUICK, CX_SHUT }; int k = i - col_n (); return k < 0 || k > 2 ? -1 : g_onyx ? H[k] : A[k]; }
-static int col_seps (int i) { return (i >= col_n () && col_n () > 0 ? 1 : 0) + (i == col_n () + 2 ? 1 : 0); }	// the separators above row i
+// An app in front has one more: Clipboard history -- the clipboard's sheet over it (the shell's; Ctrl + Shift + V).
+enum { CX_HOME, CX_APPS, CX_QUICK, CX_SHUT, CX_QUIT, CX_CLIP };
+static int col_sys (void) { return g_onyx ? 3 : 4; }
+static int col_total (void) { return col_n () + col_sys (); }
+static int col_kind (int i) { static const int A[4] = { CX_HOME, CX_APPS, CX_CLIP, CX_QUIT }, H[3] = { CX_APPS, CX_QUICK, CX_SHUT }; int k = i - col_n (); return k < 0 || k >= col_sys () ? -1 : g_onyx ? H[k] : A[k]; }
+static int col_seps (int i) { return (i >= col_n () && col_n () > 0 ? 1 : 0) + (i == col_total () - 1 ? 1 : 0); }	// the separators above row i
 static const char *col_label (int i)
 {
 	if (i < col_n ()) return g_menus[2 + i].title;
-	switch (col_kind (i)) { case CX_HOME: return TR ("Home"); case CX_APPS: return TR ("Open apps"); case CX_QUICK: return TR ("Quick settings"); case CX_SHUT: return TR ("Shut Down..."); }
+	switch (col_kind (i)) { case CX_HOME: return TR ("Home"); case CX_APPS: return TR ("Open apps"); case CX_QUICK: return TR ("Quick settings"); case CX_SHUT: return TR ("Shut Down..."); case CX_CLIP: return TR ("Clipboard history"); }
 	return TR ("Quit");
 }
-static const char *col_keytext (int i) { int k = col_kind (i); return k == CX_QUIT ? "Ctrl+Q" : k == CX_APPS ? "Alt+Tab" : k == CX_HOME ? "Ctrl+Esc" : k == CX_QUICK ? "CMD+N" : ""; }
+static const char *col_keytext (int i) { int k = col_kind (i); return k == CX_QUIT ? "Ctrl+Q" : k == CX_APPS ? "Alt+Tab" : k == CX_HOME ? "Ctrl+Esc" : k == CX_QUICK ? "CMD+N" : k == CX_CLIP ? "Ctrl+Shift+V" : ""; }
 static int col_rh (void) { return uk_flat () ? 30 : g_fh + 10; }
 static int col_w (void)
 {
@@ -1140,6 +1142,7 @@ static void col_enter (int row, bool keys)	// a row chosen: a menu's items open 
 		else if (k == CX_HOME) shell_ask (SHELL_MSG_HOME);
 		else if (k == CX_APPS) shell_ask (SHELL_MSG_SWITCHER);
 		else if (k == CX_QUICK) shell_ask (SHELL_MSG_QUICK);
+		else if (k == CX_CLIP) shell_ask (SHELL_MSG_CLIPBOARD);
 		else if (k == CX_SHUT) kapi_launch ("shutdown");
 		return;
 	}

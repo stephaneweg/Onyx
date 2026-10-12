@@ -67,7 +67,7 @@ if want menu; then
 	# the flat look: the band continues the glass (bg0), the open column is a raised surface (bg2), the chosen item the accent
 	pixel pt-band-app-640 320 15 0b0c0e "the band is flat and dark"
 	pixel pt-menu-open-640 320 470 0b0c0e "the hint line's strip"
-	pixel pt-menu-open-640 320 278 3d86da "the chosen item is the accent"
+	pixel pt-menu-open-640 420 278 3d86da "the chosen item is the accent"
 	tone pt-band-app-640-milk 320 15 light "theme = system: the light band kept"
 fi
 

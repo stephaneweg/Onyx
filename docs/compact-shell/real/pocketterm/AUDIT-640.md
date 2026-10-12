@@ -204,9 +204,24 @@ the editor the levels' drawer is away, so L is free for the tools — the one pl
 (it was dropped under 560 px of height) and reached by the keys (Up from the first row, A opens the Calendar:
 `pt-home-640-today.png`); **Stickies** is a full-screen app in pocket (cards in two columns, the D-pad, A opens
 Notes on the note: `pt-stickies-640*.png`; "A writes in a note" is done by Notes, which Stickies opens on it).
-**NOT built: the clipboard's history as a sheet** (Ctrl + Shift + V over the app in front, *Edit ▸ Clipboard
-history* in every Menu): it needs a key caught by PocketUI for every app, the sheet in the shell, and the paste sent
-to the app under it — the shell, `clipd` and the server together.
+**The clipboard's history as a sheet — built (2026-10-12, later)**, driven by the keys alone and by a pad
+(`pocket640.sh clipboard`: 28 checks; `pt-clip-640-*.png`): **Ctrl + Shift + V** in any app lays the sheet over it
+(the last ten copies, each with the app it came from and how long ago; the clipboard's current entry chosen),
+Up / Down choose, **A pastes into the app under it**, Bksp forgets the entry, B closes; the Menu's column has
+*Clipboard history* too. **How, with no kernel change and no change in any app**: the key is one of the pocket
+shell's system keys (PocketUI already gives those before the app in front: `uk_shell_keys`; the server only learnt
+that Ctrl + Shift + a letter is one key whether the keyboard sends the control byte or the letter); the sheet is the
+shell's overlay (`user/Apps/pocketshell/clipsheet.h`) and talks to `clipd` with the desktop widget's protocol; A makes
+the entry clipd's cursor, hides the sheet and **types Ctrl + V** (`kapi_inject_key`, as the on-screen keyboard
+types) — the app in front pastes as it always does. **Differs from the mock-up**: the entry's line is clipd's
+preview (a file shows its name, not its whole path); the time is told from the entry's hour and minute ("now",
+"14 min", "3 h": to the minute, and wrong across midnight by a day at most); six entries show, the others by
+scrolling (a thin mark at the right says where one is); the command is ONE row of the Menu's column (*Clipboard
+history*, between *Open apps* and *Quit*), not an item added to every app's own *Edit* menu — the menus are each
+app's. **Limits**: an app with no *Paste* on Ctrl + V (the Terminal has none) is typed a key it ignores: there
+the entry is still made the clipboard's current one. On the home nothing is typed. In the simulator the proof is the key the
+shell types (Ctrl + V, to the program in front) and clipd's cursor (the chosen entry); a real app pasting under the
+real shell was not run (the simulator runs one program beside the server).
 
 **The Control Panel's applets DRIVEN BY THE KEYS (2026-10-12)** (`pocket640.sh applets`): the simulator now hands a
 program run as an applet its keys the way the Control Panel does on Onyx — as `AP_KEY` messages in its mailbox

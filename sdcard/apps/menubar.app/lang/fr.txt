@@ -50,3 +50,4 @@ Open apps	Applis ouvertes
 Quick settings	Réglages rapides
 Panel	Panneau
 Inspector	Inspecteur
+Clipboard history	Historique du presse-papiers
