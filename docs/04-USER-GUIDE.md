@@ -2208,7 +2208,9 @@ the **list** of the applets, one column (its icon, name, help line and a chevron
 screen under a bar **‹ Control Panel** + its title — a tap on it (or **Esc**) goes back to the list (a window
 narrower than 600 px shows the same list on the desktop); in **console** the links are a column of big rows and
 **L1 / R1** (Ctrl+Page Up / Down) step through the applets. (The applets keep their own layouts for now: in a small
-pane they scroll.)
+pane they scroll.) **On a pocket screen under 800 px wide** (640 × 480) an applet gets the pane as it is and the five
+made for 700 × 470 -- **Theme, Mode, Preload, App Settings, Panel** -- fit their layout to it: nothing is out at the
+right, nothing scrolls sideways (in Theme the preview's right edge alone is cut).
 
 | Applet | What it sets |
 |---|---|
@@ -2308,6 +2310,10 @@ done** empties the finished ones. A job waiting when the Pi is turned off is pri
 (`SD:/var/spool/print`).
 
 ### The Package Manager (`pkgman`)
+
+**On a small pocket screen (under 800 px wide)** its window is the screen's (it was a fixed 700 × 470 behind a
+viewport): the tabs, the search, the list and the foot's buttons are all in it; **L / R** step *Updates / Installed /
+Available*, the keys start in the list (Up / Down a package, Space its box, Enter its button).
 
 The **Packages** applet installs, updates and removes the system and the apps from the **package
 repository** (`stephaneweg/onyx-packages`; the same as the `pkg` command, §8 *Packages*). When it
@@ -4168,7 +4174,9 @@ screens, one at a time**, made for the keys alone (no mouse):
    put a ring on its buttons one after the other (an earlier message folded, the sender, reply, reply all,
    forward, the star, *Show the pictures*, an attachment), **Enter** uses the ringed one.
 
-In the reply's field **Enter** (A) sends what was typed. The message's text is 15 px with 22 px lines, its title
+*Contacts* and *Accounts and settings* are the last two rows of the folders' list there (the arrows reach
+them, Enter opens them); the accounts' assistant and the *Accounts and settings* box are whole inside the window
+(600 × 440, 624 × 440) and **B** (Esc) cancels / closes them. In the reply's field **Enter** (A) sends what was typed. The message's text is 15 px with 22 px lines, its title
 20 px. **The hint line** at the foot says each screen's keys (the folders: move, open, Ctrl+N to write; the list:
 move, open, back, L / R the folder, typing searches; the message: scroll, the buttons, use, back; writing:
 Ctrl+Enter sends, Tab the next field).
@@ -6867,7 +6875,9 @@ and the board are worked with a pointer — on such a device, levels are made on
 screen there, **one page a step**: a bar with the step's title and *3 of 5*, and at the foot **B: Back, A: Continue**
 (Esc and Enter). The welcome page shows the language (Left / Right) and the device's four controls -- the D-pad, A, B
 and CMD (the Menu). Then *Region & keyboard* (Up / Down the country; the arrows reach the lists beside it), *Wi-Fi*
-(Up / Down a network: its row opens and the password is typed there, Enter connects; A with no network skips),
+(Up / Down put a bar on a network -- Up from the first: none, and A is *Continue* again; **A** on an open network
+connects, on one with a password shows **the password's page**: that network alone and its field, the password
+**shown as it is typed**; A connects, **B** goes back to the list),
 *Name & privacy* (the name typed; Down to the services, Up / Down one of them, Space its switch) and *Ready* (A starts
 Onyx). The *Display* and *Appearance* steps are not asked on such a device: its screen has one size, and its look is
 pocket's own (the Control Panel has both for the desktop mode).

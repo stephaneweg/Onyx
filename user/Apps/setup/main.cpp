@@ -596,10 +596,16 @@ class NetList : public Widget
 public:
 	int sel, state; char err[96]; static const int RH = 42, OPEN_H = 92, OPEN_H0 = 50;
 	Textbox *pass; AccentButton *go; Checkbox *autoc;
-	NetList (int l, int t, int w, int h, Action onConnect) : Widget (l, t, w, h), sel (-1), state (NET_LIST)
+	Action conn;					// (pocket: A on an open network connects at once)
+	// POCKET (no pointer): Up / Down go from network to network (a bar on the one they are on; Up from the first: none),
+	// A (Enter) chooses it -- an open one connects; one with a password shows THE PASSWORD'S PAGE: that network alone,
+	// its field (the password shown as it is typed: a hidden one on a thumb keyboard is a locked door), A connects,
+	// B (Esc) goes back to the list.
+	bool page () const { return g_pk && open (); }
+	NetList (int l, int t, int w, int h, Action onConnect) : Widget (l, t, w, h), sel (-1), state (NET_LIST), conn (onConnect)
 	{
 		err[0] = 0;
-		pass = new Textbox (54, 0, width - 250, 30, "", onConnect); pass->password = true; pass->maxLen = 63;
+		pass = new Textbox (54, 0, width - 250, 30, "", onConnect); pass->password = !g_pk; pass->maxLen = 63;
 		go = new AccentButton (width - 178, 0, 160, 32, TR ("Connect"), onConnect);
 		autoc = new Checkbox (54, 0, 240, 22, TR ("Connect automatically"), true, 0, sel_bg ());
 		addChild (pass); addChild (go); addChild (autoc);
@@ -610,8 +616,8 @@ public:
 	bool open () const { return sel >= 0 && sel < g_nnets && state == NET_PASSWORD; }
 	bool needPass () const { return open () && g_nets[sel].sec != WLAN_SEC_OPEN; }
 	int openH () const { return open () ? (needPass () ? OPEN_H : OPEN_H0) : 0; }
-	int rowY (int i) const { return 4 + i * RH + (sel >= 0 && i > sel ? openH () : 0); }
-	int total () const { return 8 + (g_nnets ? g_nnets : 1) * RH + openH (); }
+	int rowY (int i) const { return page () ? 4 : 4 + i * RH + (sel >= 0 && i > sel ? openH () : 0); }
+	int total () const { return page () ? 8 + RH + openH () : 8 + (g_nnets ? g_nnets : 1) * RH + openH (); }
 	void place ()
 	{
 		bool o = open (), p = needPass ();
@@ -637,6 +643,8 @@ public:
 		for (int i = 0; i < g_nnets; i++)
 		{
 			const Net &n = g_nets[i]; int y = rowY (i); bool s = i == sel;
+			if (page () && !s) continue;		// (the password's page: that network alone)
+			if (g_pk && s && !open () && state != NET_CONNECTING) sel_row (canvas, 4, y, width - 8, RH - 4);	// (the keys' network)
 			if (s && open ()) sel_row (canvas, 4, y, width - 8, RH + openH () - 4);
 			else if (i > 0 && !(sel == i - 1 && open ())) canvas.fillRect (14, y, width - 28, 1, line_c (card_c ()));
 			bars (canvas, 18, y + 14, bars_of (n.level), C_FIELD_TEXT, uk_mix (card_c (), C_TEXT, 60));
@@ -665,14 +673,27 @@ public:
 	}
 	bool onKey (long k) override			// (pocket: Up / Down a network -- its row opens, the password's field has the keys)
 	{
-		if (!g_pk || (k != KEY_UP && k != KEY_DOWN) || g_nnets <= 0 || state == NET_CONNECTING) return false;
+		if (!g_pk || g_nnets <= 0 || state == NET_CONNECTING) return false;
+		if (open ())					// the password's page (an open network's: its Connect button)
+		{
+			if (k == 27) { state = NET_LIST; err[0] = 0; place (); setFocus (); return true; }
+			if (k == KEY_ENTER) { if (conn) conn (*this); return true; }
+			return k == KEY_UP || k == KEY_DOWN;
+		}
+		if (k == KEY_ENTER && sel >= 0 && sel < g_nnets && !(g_nets[sel].con && state == NET_CONNECTED))
+		{
+			err[0] = 0; pass->setText ("");
+			if (g_nets[sel].sec == WLAN_SEC_OPEN) { state = NET_PASSWORD; place (); if (conn) conn (*this); return true; }
+			state = NET_PASSWORD; place (); invalidate (true); pass->setFocus ();
+			return true;
+		}
+		if (k != KEY_UP && k != KEY_DOWN) return false;
 		int i = sel + (k == KEY_DOWN ? 1 : -1);
-		if (sel < 0) i = 0;
-		if (i < 0 || i >= g_nnets) return true;
-		if (g_nets[i].con && state == NET_CONNECTED) return true;
-		sel = i; state = NET_PASSWORD; err[0] = 0; pass->setText ("");
-		place (); invalidate (true);
-		if (needPass ()) pass->setFocus (); else go->setFocus ();
+		if (sel < 0) i = k == KEY_DOWN ? 0 : -1;
+		if (i >= g_nnets) return true;
+		if (i < 0) { sel = -1; invalidate (true); return true; }	// (none: A is "Continue" again)
+		sel = i; err[0] = 0;
+		invalidate (true);
 		return true;
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -753,6 +774,7 @@ public:
 		uk_rbox (canvas, 0, 0, width, height, 8, bg, bg);
 		uk_rline (canvas, 0, 0, width, height, 8, uk_mix (card_c (), c, 120));
 		unsigned ink = uk_tone (c, 70);
+		if (g_pk && uk_flat ()) ink = uk_mix (c, 0x00FFFFFF, 150);	// (pocket's dark card: a light shade of the colour, readable)
 		if (kind == 0) { disc (canvas, 14, height / 2 - 13, 26, c); uk_glyph (canvas, WKG_CHECK, 27, height / 2, 12, 0x00FFFFFF); }
 		else
 		{

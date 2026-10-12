@@ -574,6 +574,32 @@ void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p)
 	if (p.held) uk_rbox (cv, p.x - 3, p.y - 3, 7, 7, 3, a, a);
 }
 
+// A fixed layout brought to a smaller pane (uikit/adapt.h).
+static void fit_children (Widget *parent, int fromW, int fromH, int toW, int toH)
+{
+	if (parent == 0 || fromW <= 0 || fromH <= 0 || toW <= 0 || toH <= 0 || (fromW == toW && fromH == toH)) return;
+	for (Widget *c = parent->firstChild; c; c = c->nextSib)
+	{
+		int l = c->left * toW / fromW, r = (c->left + c->width) * toW / fromW;
+		int t = c->top * toH / fromH, b = (c->top + c->height) * toH / fromH;
+		c->left = l; c->top = t;
+		if (r - l != c->width || b - t != c->height) c->resizeTo (r - l > 1 ? r - l : 1, b - t > 1 ? b - t : 1);
+	}
+	parent->invalidate (true);
+}
+
+void uk_fit_pane (Widget *pane, int layoutW, int layoutH, Widget *const *groups, int ngroups)
+{
+	if (pane == 0 || layoutW <= 0 || layoutH <= 0) return;
+	int toW = pane->width < layoutW ? pane->width : layoutW, toH = pane->height < layoutH ? pane->height : layoutH;
+	if (toW == layoutW && toH == layoutH) return;
+	int gw[16], gh[16];
+	if (ngroups > 16) ngroups = 16;
+	for (int i = 0; i < ngroups; i++) { gw[i] = groups[i]->width; gh[i] = groups[i]->height; }
+	fit_children (pane, layoutW, layoutH, toW, toH);
+	for (int i = 0; i < ngroups; i++) fit_children (groups[i], gw[i], gh[i], groups[i]->width, groups[i]->height);
+}
+
 // The pad's actions for a program that runs its own loop (uikit/adapt.h): what Root::step does each turn.
 void uk_input_turn (Root *root) { internal::pad_turn (root); }
 

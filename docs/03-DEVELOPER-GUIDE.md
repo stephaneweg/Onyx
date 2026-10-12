@@ -1818,7 +1818,11 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   `_CANCELLED`: it takes `nav.from` back, `_USED`, `_NO`: the view's own key). `uk_objnav_begin` puts a new object in
   the move mode; `uk_objnav_draw` draws the frame, the handles, the outline of where it was, a pill with its place and
   the bounds' centre lines; `uk_objnav_hints` gives the hint line its hints and its pill (MOVE, SIZE). Used where
-  `uk_keys_drive ()`; five entries appended to `uikit.abi`. **The
+  `uk_keys_drive ()`; five entries appended to `uikit.abi`. (9) **`uk_fit_pane (pane, layoutW, layoutH, groups, n)`**
+  (`uikit/adapt.h`): a fixed layout brought to a smaller pane -- the children of the pane (and of the GroupBoxes named)
+  scaled in place and size, the texts as they are; nothing happens when the pane is the layout's size at least (the
+  desktop). The Control Panel gives its applets the pane as it is in pocket under 800 px (`surface_fit`), and Theme,
+  Mode, Preload, App Settings, Panel and the Package Manager's own window call it. **The
   pattern for an app whose left column is a list of places it draws itself** (Circuits, Turtle Quest, GPIO Lab): when
   `uk_mode () == UK_MODE_POCKET` and the screen (`kapi_screen_size`) is under 800 px wide, the column's widget is made
   the content of a navigation SidePanel instead of a child of the Root (decided once, in `main`: the mode never changes

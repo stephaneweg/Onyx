@@ -300,6 +300,12 @@ static void side_build ()			// the items: made again when the accounts, the fold
 		}
 	}
 	if (!g_m.accts.n) g_side->addItem (S_ADD, TR ("Add an account..."), I_PLUS);
+	if (g_three)						// (pocket's three screens, no pointer: the foot's two rows are rows of the
+	{							//  list -- the arrows reach them, Enter uses them)
+		g_side->addSeparator ();
+		g_side->addItem (S_CONTACTS, TR ("Contacts"), I_PERSON);
+		g_side->addItem (S_SETTINGS, TR ("Accounts and settings"), I_GEAR);
+	}
 	side_select ();
 }
 static void side_chosen (SidePanel &, int id)
@@ -309,6 +315,8 @@ static void side_chosen (SidePanel &, int id)
 	else if (id == S_UNIFIED) { show_contacts (false); select_view (SEL_UNIFIED); }
 	else if (id == S_STARRED) { show_contacts (false); select_view (SEL_STARRED); }
 	else if (id == S_ADD) { side_select (); open_wizard (); return; }
+	else if (id == S_CONTACTS) { side_select (); show_contacts (true); return; }
+	else if (id == S_SETTINGS) { side_select (); open_settings (); return; }
 	if (g_three) three_go (SC_LIST);			// (pocket's three screens: a folder chosen -- its messages)
 }
 class SideFoot : public Widget
@@ -335,15 +343,19 @@ public:
 		hits.clear ();
 		canvas.fillRect (width - 1, 0, 1, height, con () ? 0x00304870 : uk_mix (col_side (), C_TEXT, 40));
 		canvas.fillRect (10, 0, width - 20, 1, uk_mix (face (), ink (), 40));
+		if (!g_three)					// (pocket's three screens: they are rows of the list above)
+		{
 		row (6, S_CONTACTS, I_PERSON, TR ("Contacts"), g_showContacts);
 		row (38, S_SETTINGS, I_GEAR, TR ("Accounts and settings"), false);
+		}
 		const char *st = g_m.worker.current[0] ? g_m.worker.current : (g_note[0] && kapi_get_ticks () - g_noteT < 800) ? g_note : g_m.lastError;
 		bool isErr = !g_m.worker.current[0] && !(g_note[0] && kapi_get_ticks () - g_noteT < 800) && g_m.lastError[0];
 		if (st && st[0])
 		{
-			if (isErr) icon (canvas, I_WARN, 12, 78, 14, 0xC5221F);
-			text (canvas, isErr ? 32 : 14, 77, st, uk_mix (face (), ink (), 150), F_SMALL, 0, width - (isErr ? 40 : 24));
-			if (isErr) hits.add (0, 72, width, 26, S_ERROR);
+			int sy = g_three ? 8 : 77;			// (pocket's three screens: the foot is this line alone)
+			if (isErr) icon (canvas, I_WARN, 12, sy + 1, 14, 0xC5221F);
+			text (canvas, isErr ? 32 : 14, sy, st, uk_mix (face (), ink (), 150), F_SMALL, 0, width - (isErr ? 40 : 24));
+			if (isErr) hits.add (0, sy - 5, width, 26, S_ERROR);
 		}
 	}
 	bool onMouse (int mx, int my, int bl, int, int, int) override
@@ -635,6 +647,7 @@ static void layout_three (int W, int H)
 	g_onePane = g_oneConv = false;
 	g_tb->resizeTo (W, TB_H); g_tb->place ();
 	g_side->setRail (false);
+	g_side->setFooter (g_foot, 30);				// (its two rows are rows of the list here: the status line alone)
 	g_side->place (s == SC_FOLDERS ? 0 : W, TB_H, W, H - TB_H);
 	((Widget *) g_side)->hidden = s != SC_FOLDERS && s != SC_LIST;
 	((Widget *) g_side)->disabled = s != SC_FOLDERS;
@@ -650,7 +663,7 @@ static void layout_parts ()
 	int W = g_root->width, H = g_root->height;
 	{
 		bool three = uk_mode () == UK_MODE_POCKET && uk_size_class () == UK_SC_COMPACT && W < 800;
-		if (g_three && !three) { g_side->setRail (true); ((Widget *) g_side)->hidden = false; ((Widget *) g_side)->disabled = false; }
+		if (g_three && !three) { g_side->setRail (true); g_side->setFooter (g_foot, 108); ((Widget *) g_side)->hidden = false; ((Widget *) g_side)->disabled = false; }
 		bool first = three && !g_three;
 		g_three = three;
 		if (three) { side_build (); layout_three (W, H); if (first) three_focus (); return; }
@@ -1289,6 +1302,8 @@ int main (void)
 	{							// (pocket on a small screen: a message's title 20 px, not 24)
 		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
 		if (uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800 && g_face[F_H1]) g_face[F_H1]->open ("DejaVu Sans", 20);
+		// (... and the two account dialogs inside the 640 x 450 window, whole: no sheet to scroll)
+		if (uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800) { Wizard::W = 600; Wizard::H = 440; SettingsBox::W = sw - 16 < 680 ? sw - 16 : 680; SettingsBox::H = 440; }
 	}
 	root.setResizable (true);
 	root.setBg (C_BG);

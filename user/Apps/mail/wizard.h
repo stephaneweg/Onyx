@@ -33,7 +33,8 @@ public:
 	Dropdown *dKind, *dInSec, *dOutSec; Checkbox *cKeep;
 	Button *bBack, *bNext, *bCancel, *bExtra;
 	DeviceCode dc; bool haveCode, waiting, copied;
-	static const int W = 600, H = 470, PAD = 26;
+	inline static int W = 600, H = 470;		// (pocket on a small screen: 600 x 440 -- inside a 640 x 450 window; main sets it)
+	static const int PAD = 26;
 
 	Wizard () : Modal (W, H), page (P_START), prevPage (P_START), provider (-1), haveCode (false), waiting (false), copied (false)
 	{
@@ -126,6 +127,7 @@ public:
 		Job *j = new Job; memset (j, 0, sizeof *j); j->kind = J_CHECK; j->acct = a;
 		g_m.worker.cancel = 0; g_m.worker.push (j);
 	}
+	bool onKey (long k) override { if (g_three && k == 27) { onButton (1); return true; } return false; }	// (pocket, no pointer: B is Cancel)
 	void onButton (int tag) override
 	{
 		read_fields ();
@@ -319,7 +321,8 @@ public:
 	int cur;
 	Textbox *tName, *tLabel, *tPw; Textarea *tSig; Dropdown *dEvery;
 	HitList hits;
-	static const int W = 680, H = 500, LW = 200, PAD = 20;
+	inline static int W = 680, H = 500;		// (pocket on a small screen: 624 x 440)
+	static const int LW = 200, PAD = 20;
 	SettingsBox () : Modal (W, H), cur (0) { tName = tLabel = tPw = 0; tSig = 0; dEvery = 0; build (); }
 	~SettingsBox () { g_settings = 0; free_dead (); }
 	// (rebuilt from a button's callback too: the old widgets kept until the next rebuild, as the Wizard's)
@@ -358,6 +361,7 @@ public:
 		if (tPw && tPw->text[0]) { scpy (a.inSecret, tPw->text, sizeof a.inSecret); tPw->setText (""); g_m.accts.save_secrets (); }
 		g_m.accts.save ();
 	}
+	bool onKey (long k) override { if (g_three && k == 27) { onButton (2); return true; } return false; }	// (pocket, no pointer: B is Close)
 	void onButton (int tag) override
 	{
 		if (tag == 2) { save_cur (); close (0); return; }

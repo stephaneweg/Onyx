@@ -164,6 +164,7 @@ int main (void)
 	g_status = new Label (X + 216, 380, 472, 22, "", C_DIS, root.bg); root.addChild (g_status);
 	root.addChild (new Button (X + 216 + 472 - 212, H - 42, 106, 32, TR ("Save"), on_save));
 	root.addChild (new Button (X + 216 + 472 - 100, H - 42, 100, 32, TR ("Reload"), on_reload));
+	uk_fit_pane (&root, W, H);			// (pocket's 640 px pane: the layout fitted to it)
 	root.run ();
 	return 0;
 }

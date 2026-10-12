@@ -78,8 +78,13 @@ each edit), `Toolbox::onKey`, `PropGrid::onKey`, main.cpp's `Pane` (the two draw
 / _TEXT), `pk_start`, `pk_key`, `pocket_layout`, `pocket_tick`; the tasks and the ratios are two SegmentedControls
 (the ratios' is the window's tabs while cropping: `uk_segmented_nav`, so L / R step it by keys and pad alike);
 `focus_view ()` gives the keys to what the task needs (the commands all end with it); `g_enterPutsText` (pview.h).
-The crop's frame is the document's rectangle selection, applied by the existing `cmd_crop`. **Next**: item 5 of the
-list (the applets' least width, the Package Manager, Mail's two dialogs, Setup's leftovers), then Q7 3DForge.
+The crop's frame is the document's rectangle selection, applied by the existing `cmd_crop`. **The medium fixes, built (2026-10-12)**: UIKit's `uk_fit_pane` (adapt.h; one abi entry); the Control Panel's
+`surface_fit` gives the pane as it is in pocket under 800 px; Theme / Mode / Preload / App Settings / Panel and the
+Package Manager call `uk_fit_pane` (pkgman: its Root is the screen's size there, `uk_segmented_nav` on its tabs);
+Mail: `Wizard::W / H`, `SettingsBox::W / H` are variables (pocket: 600 x 440, 624 x 440), Esc closes both in
+`g_three`, Contacts and Accounts are items of the SidePanel there (its foot: the status line alone); Setup:
+`NetList::page ()` (the password's page), its keys, the banner's ink. **Next**: Q7 3DForge, then Q8 / Q9, Q4 Koton,
+Courier.
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached

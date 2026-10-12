@@ -296,6 +296,7 @@ int main (void)
 	root.addChild (new Button (X + W - 196, H - 42, 90, 32, TR ("Apply"), on_apply));
 	root.addChild (new Button (X + W - 100, H - 42, 90, 32, TR ("Discard"), on_discard));
 
+	{ Widget *g[3] = { gd, gw, gl }; uk_fit_pane (&root, W, H, g, 3); }	// (pocket's 640 px pane: the layout fitted to it)
 	fill_all ();
 	root.run ();
 	return 0;

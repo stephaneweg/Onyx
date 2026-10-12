@@ -74,7 +74,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 969 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 970 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -448,6 +448,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_keys_drive` | pocket and console: the keys (a d-pad) may be all there is -> true | `adapt.h` |
 | `uk_keypointer_move` | An arrow moved the pointer by `step` px inside (x0, y0)-(x1, y1) -> true (the first time | `adapt.h` |
 | `uk_keypointer_draw` | a ring and a cross at its place (held: filled) | `adapt.h` |
+| `uk_fit_pane` | The children of `pane` (an applet's Root), laid out by the app for a pane of layoutW x layoutH, are brought to the pane's real size where it is smaller | `adapt.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
 | `bmp_decode` | (the name the programs knew | `bmp.h` |
 | `Calendar` | uikit/calendar.h -- Calendar | `calendar.h` |
@@ -1859,6 +1860,14 @@ An arrow moved the pointer by `step` px inside (x0, y0)-(x1, y1) -> true (the fi
 ```cpp
 bool uk_keypointer_move (UkKeyPointer &p, long key, int step, int x0, int y0, int x1, int y1);
 void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p);	// a ring and a cross at its place (held: filled)
+```
+
+### a fixed layout in a smaller pane (pocket: a Control Panel applet made for 700 x 470 shown in 640 x 406)
+
+The children of `pane` (an applet's Root), laid out by the app for a pane of layoutW x layoutH, are brought to the pane's real size where it is smaller: each one's place and size scaled as a whole (its right and bottom edges with its neighbours'), and so are the children of the boxes named in `groups` (a GroupBox's controls). The texts keep their size. Called once, after the widgets are made; it does nothing when the pane is the layout's size at least -- the desktop, always.
+
+```cpp
+void uk_fit_pane (Widget *pane, int layoutW, int layoutH, Widget *const *groups = 0, int ngroups = 0);
 ```
 
 ### the console's shoulders

@@ -188,10 +188,14 @@ static int last_read (void)
 	return link_by_target (v);
 }
 
+static bool narrow ();
 // The surface the pane's size, the applets' at least (made again only when that changed: before an applet starts).
 static bool surface_fit (void)
 {
 	int w = g_aw > AW ? g_aw : AW, h = g_ah > AH ? g_ah : AH;
+	// (pocket under 800 px wide -- one thing at a time: the applet gets the pane as it is, 640 x 406 on a 640 x 480 screen,
+	//  and fits its layout to it -- uk_fit_children: no pane scrolled sideways, nothing out of the keys' reach)
+	if (uk_mode () == UK_MODE_POCKET && narrow () && g_aw > 0 && g_ah > 0) { w = g_aw; h = g_ah; }
 	if (g_sid > 0 && g_sw == w && g_sh == h) return true;
 	if (g_sid > 0) kapi_surface_destroy (g_sid);
 	g_sid = kapi_surface_create (w, h);

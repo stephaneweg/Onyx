@@ -250,7 +250,11 @@ int main (void)
 	root.addChild (new Label (X + 12, y + 20, W - 200, 20, TR ("each one asks about its unsaved work."), C_TEXT, root.bg));
 	g_status = new Label (X + 12, y + 48, W - 24, 22, "", C_TEXT, root.bg);
 	root.addChild (g_status);
-	root.addChild (new Label (X + 12, H - 26, W - 24, 20, TR ("Kept in SD:/etc/system.ini (shell=); the programs of each mode: SD:/etc/session."), C_DIS, root.bg));
+	Label *foot = new Label (X + 12, H - 26, W - 24, 20, TR ("Kept in SD:/etc/system.ini (shell=); the programs of each mode: SD:/etc/session."), C_DIS, root.bg);
+	root.addChild (foot);
+	// (pocket's 640 px pane: the layout fitted to its width -- the cards keep their height, their words whole; the line
+	//  of where it is kept gives its room)
+	{ Widget *g[1] = { gb }; uk_fit_pane (&root, W, root.height < H ? root.height : H, g, 1); if (root.height < H) ((Widget *) foot)->hidden = true; }
 	root.run ();
 	return 0;
 }

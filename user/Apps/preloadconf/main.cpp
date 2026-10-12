@@ -220,6 +220,7 @@ int main (void)
 	g_status = new Label (X + 12, 418, W - 24, 22, "", C_DIS, root.bg); root.addChild (g_status);
 	root.addChild (new Label (X + 12, H - 26, W - 24, 20, TR ("Kept in SD:/etc/preload.ini; read at boot by the last line of SD:/etc/autostart: preload /boot."), C_DIS, root.bg));
 
+	{ Widget *g[2] = { gl, ga }; uk_fit_pane (&root, W, H, g, 2); }	// (pocket's 640 px pane: the layout fitted to it)
 	scan_progs ();
 	for (int i = 0; i < g_nprogs; i++) g_lbAll->add (g_progs[i].label);
 	preload_ini_load (&g_list);

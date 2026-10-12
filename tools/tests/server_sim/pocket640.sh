@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -120,6 +120,20 @@ if want mail; then
 		# a reply from the message (Ctrl+R): the writing screen over it, Esc back to the message
 		mrun pt-mail-640-reply "" "$(K 13)$(K 13)$W40;key 18;$W;$W;dump $OUT/pt-mail-640-reply.elsm"
 		out pt-mail-640-reply
+		# the two account dialogs, whole inside the window: "Accounts and settings" (the folders' last row: Down to it, Enter),
+		# Esc closes; a Mail without account: Enter on its welcome opens the assistant
+		D30="$(printf "key $DOWN;wait;%.0s" $(seq 1 30))"
+		mrun pt-mail-640-settings "" "${D30}$W;$(K 13)$W;$W;dump $OUT/pt-mail-640-settings.elsm;$(K 27)$W;dump $OUT/pt-mail-640-settings-closed.elsm"
+		out pt-mail-640-settings; out pt-mail-640-settings-closed
+		differ pt-mail-640-1-folders pt-mail-640-settings "Down to the last row, Enter: Accounts and settings"
+		footdiffer pt-mail-640-1-folders pt-mail-640-settings "the settings' box is over the window (whole: 624 x 440 in 640 x 450)"
+		differ pt-mail-640-settings pt-mail-640-settings-closed "Esc (B) closes the box"
+		footsame pt-mail-640-1-folders pt-mail-640-settings-closed "... the folders' keys again"
+		rm -rf "$OUT/mailw-none"; mkdir -p "$OUT/mailw-none/etc"
+		run pocket_mail pt-mail-640-wizard "$W40;$W40;$(K 13)$W;$W;dump $OUT/pt-mail-640-wizard.elsm;$(K 27)$W;dump $OUT/pt-mail-640-wizard-closed.elsm" $P640 SIM_APPNAME=mail SIM_APP=mail SIM_WRITES="$OUT/mailw-none" SIM_SLEEP=1 SIM_REALCLOCK=1
+		out pt-mail-640-wizard; out pt-mail-640-wizard-closed
+		differ pt-mail-640-wizard pt-mail-640-wizard-closed "Esc (B) cancels the assistant"
+		busy pt-mail-640-wizard 30 420 620 470 "the assistant's buttons are in the window (600 x 440 in 640 x 450)"
 		# in French
 		mrun pt-mail-640-fr fr "dump $OUT/pt-mail-640-1-folders-fr.elsm;$(K 13)$W;dump $OUT/pt-mail-640-2-list-fr.elsm;$(K 13)$W40;dump $OUT/pt-mail-640-3-message-fr.elsm"
 		out pt-mail-640-1-folders-fr; out pt-mail-640-2-list-fr; out pt-mail-640-3-message-fr
@@ -407,6 +421,47 @@ if want paint; then
 	out pt-paint-640-view-fr
 fi
 
+# ---- the Control Panel's applets made for 700 x 470 (Theme, Mode, Preload, App Settings, Panel): in pocket under 800 px
+# the pane is given as it is (640 px wide) and each fits its layout to it (uk_fit_pane) -- nothing out at the right, no pane
+# scrolled sideways; the keys move the focus over what they show
+if want applets; then
+	echo "pocket640: the Control Panel's applets in a 640 px pane"
+	ftapp pocket control uikit_pocket >>"$OUT/log.txt" 2>&1
+	for a in theme modeconf preloadconf config dockconf; do
+		ftapp pocket $a uikit_pocket -lm -Wl,--unresolved-symbols=ignore-all >>"$OUT/log.txt" 2>&1 || { echo "  $a: NOT BUILT (see $OUT/log.txt)"; FAIL=1; continue; }
+		WR=$(langdir "")
+		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=control SIM_APP=control SIM_ARGS=$a SIM_WRITES=$WR SIM="$WWW;exit" "$OUT/pocket_control" > "$OUT/cp-$a.txt" 2>&1 || true
+		pane=$(sed -n 's/^sim: surface_create //p' "$OUT/cp-$a.txt" | tail -1)
+		case "$pane" in 640x*) echo "  $a: the pane is the window's width ($pane): ok" ;; *) echo "  $a: FAILED (the pane asked is '$pane', not 640 wide)"; FAIL=1 ;; esac
+		# the applet in that pane (its keys come from the Control Panel's own process on Onyx: the simulator runs an applet
+		# alone and cannot type in it -- what is checked is that its right part, out of the pane before, is drawn in it)
+		env SIM_OVERLAY=$D/sd SIM_APPLET=1 SIM_SURFSIZE=$pane $P640 SIM_APPNAME=$a SIM_APP=$a SIM_WRITES=$WR SIM="$W;$W;dump $OUT/pt-applet-$a-0.elsm;exit" timeout 120 "$OUT/pocket_$a" >>"$OUT/log.txt" 2>&1 || true
+		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=control SIM_APP=control SIM_ARGS=$a SIM_MAIL=40:7 SIM_SURFACE="$OUT/pt-applet-$a-0.elsm" SIM_WRITES=$WR SIM="$WWW;$WW;dump $OUT/pt-applet-$a-640.elsm;exit" timeout 120 "$OUT/pocket_control" >>"$OUT/log.txt" 2>&1 || true
+		for f in pt-applet-$a-0 pt-applet-$a-640; do python3 $D/shot.py "$OUT/$f.elsm" "$OUT/$f.png" >/dev/null 2>&1 || { echo "  $a: FAILED (no picture $f)"; FAIL=1; }; done
+		[ -n "$SHOTS_PNG" ] && { mkdir -p "$SHOTS_PNG"; cp "$OUT/pt-applet-$a-640.png" "$SHOTS_PNG/"; }
+		size pt-applet-$a-640 640x480 "$a in the Control Panel: the whole 640 x 480 screen"
+		busy pt-applet-$a-640 560 80 636 470 "$a: its right part is in the pane"
+	done
+fi
+
+# ---- the Package Manager: its window is the screen's (it was a fixed 700 x 470 in a viewport), its tabs under L / R -----------
+if want pkgman; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}; M=third_party/mbedtls-3.6.3
+	if [ -f "$MS/libmb.a" ]; then
+		echo "pocket640: the Package Manager"
+		Z="$OUT/auz"; if [ ! -f "$Z/zutil.o" ]; then mkdir -p "$Z"; for f in adler32 crc32 deflate inflate inffast inftrees trees zutil; do gcc -O2 -w -c third_party/zlib-1.3.1/$f.c -o "$Z/$f.o"; done; fi
+		ftapp pocket pkgman uikit_pocket -Ithird_party/zlib-1.3.1 -I$M/include "$Z"/*.o "$MS/libmb.a"
+		RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"; LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"
+		WR=$(langdir "")
+		run pocket_pkgman pt-pkgman-640 "$WWW;$WW;expect kind fill;expect frame 0;expect client 640,450;dump $OUT/pt-pkgman-640.elsm;${RR}$WW;dump $OUT/pt-pkgman-640-installed.elsm;key $DOWN;$W;key $DOWN;$W;dump $OUT/pt-pkgman-640-row.elsm;${LL}$WW;dump $OUT/pt-pkgman-640-back.elsm" $P640 SIM_APPNAME=pkgman SIM_APP=pkgman SIM_WRITES=$WR
+		for f in pt-pkgman-640 pt-pkgman-640-installed pt-pkgman-640-row pt-pkgman-640-back; do out $f; size $f 640x480 "$f is the whole 640 x 480 screen"; done
+		busy pt-pkgman-640 450 440 636 476 "the buttons of its foot are in the window"
+		differ pt-pkgman-640 pt-pkgman-640-installed "R: the next tab (Installed)"
+		differ pt-pkgman-640-installed pt-pkgman-640-row "Down, Down: the keys in the list"
+		bardiffer pt-pkgman-640-installed pt-pkgman-640-back "L: the tab before"
+	else echo "pocket640: the Package Manager skipped (no $MS/libmb.a)"; fi
+fi
+
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------
 if want setup; then
 	echo "pocket640: Setup"
@@ -423,6 +478,19 @@ if want setup; then
 	differ pt-setup-640-4-name pt-setup-640-4-name-switch "Setup: Down, Down, Space flips a service's switch"
 	differ pt-setup-640-4-name-switch pt-setup-640-5-ready "Setup: A, ready"
 	barsame pt-setup-640-4-name pt-setup-640-back "Setup: B goes back one step"
+	# the Wi-Fi step by the keys: Down -- the next network (one with a password) under the bar; A: ITS PASSWORD'S PAGE (that network
+	# alone, the field); typed (shown as typed); B: the list again; Down, A, the password, A: connecting
+	WR=$(langdir "")
+	WF="$WWW;$(K 13)$(K $DOWN)$(K 13)$W;$(K $DOWN)dump $OUT/pt-setup-640-wifi-row.elsm;$(K 13)dump $OUT/pt-setup-640-wifi-password.elsm;key 0x6f;$W;key 0x6e;$W;key 0x79;$W;key 0x78;$W;dump $OUT/pt-setup-640-wifi-typed.elsm;$(K 27)dump $OUT/pt-setup-640-wifi-back.elsm"
+	WF="$WF;$(K $DOWN)$(K 13)key 0x6f;$W;key 0x6e;$W;key 0x79;$W;key 0x78;$W;key 0x6f;$W;key 0x6e;$W;key 0x79;$W;key 0x78;$W;$(K 13)$W;dump $OUT/pt-setup-640-wifi-joining.elsm"
+	run pocket_setup pt-setup-640-wifi "$WF" $P640 SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
+	for f in wifi-row wifi-password wifi-typed wifi-back wifi-joining; do out pt-setup-640-$f; done
+	differ pt-setup-640-3-wifi pt-setup-640-wifi-row "Setup, Wi-Fi: Down puts the bar on the next network"
+	differ pt-setup-640-wifi-row pt-setup-640-wifi-password "Setup, Wi-Fi: A opens the password's page"
+	differ pt-setup-640-wifi-password pt-setup-640-wifi-typed "Setup, Wi-Fi: the password typed is shown"
+	differ pt-setup-640-wifi-typed pt-setup-640-wifi-back "Setup, Wi-Fi: B goes back to the list (every network again)"
+	barsame pt-setup-640-wifi-row pt-setup-640-wifi-back "Setup, Wi-Fi: ... on the same step"
+	differ pt-setup-640-wifi-back pt-setup-640-wifi-joining "Setup, Wi-Fi: the password typed, A: connecting"
 	WR=$(langdir fr)
 	run pocket_setup pt-setup-640-fr "$WWW;dump $OUT/pt-setup-640-1-welcome-fr.elsm" $P640 SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
 	out pt-setup-640-1-welcome-fr

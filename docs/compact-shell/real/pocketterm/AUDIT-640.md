@@ -69,14 +69,14 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Telegram** | fine (its look is its own; the contact's column is wide: 150 px) | ok | the contact's column away under 720 px (it already goes under 640 of pane) | small | no |
 | **Courier** | **broken**: *Import* is under the environment's list; the collections take 250 px, the welcome page is cut on both sides | partly | P7's unfinished migration: its rail and collections a navigation SidePanel, the translation due | large | no (the pattern exists) |
 | **Ledger** | fine (a customer's name cut in *Invoices overdue*) | partly (its tables' rows by the mouse) | the name's column wider there | small | no |
-| **Package Manager** | **broken**: a fixed 900 × 540 window in a viewport — the search, *Install Updates* and the bottom line are out of the screen | partly | resizable in pocket, laid out by the width (as the Icon Editor was made in P7) | medium | no |
+| **Package Manager** | was **broken** (a fixed window in a viewport) → **fine** (below: the medium fixes) | **driven**: R (Installed), Down ×2, L | resizable in pocket, laid out by the width (as the Icon Editor was made in P7) | medium | no |
 | **Disks** | fine | ok | — | — | no |
 | **Task Manager** | fine | ok | — | — | no |
 | **Terminal** | fine | ok | — | — | no |
 | **Screenshot** | fine | ok | — | — | no |
 | **Setup** (the first start) | **broken**: a fixed 800 × 600 window in a viewport: the right 160 px and the bottom 150 px are out of the screen — and it is the first thing a new card shows | ok inside what shows | its pages for 640 × 450: see Q5 | large | **yes** — Q5 |
 | **Control Panel** | fine (one thing at a time: the list, then an applet under "‹ Control Panel") | ok | — | — | no |
-| its applets: **Theme, Mode, Panel, Preload, App Settings** | minor / **broken** for *Panel*: an applet is 700 × 470 at least, the pane is 640 × 406 — the right 60 px (Mode's third card, Panel's workspaces, App Settings' *Delete*) and the bottom 64 px are reached by the pane's scroll bars only | partly: the pane does not follow the focus to what is out of sight | each applet's least width down to 640 (five layouts), and the Control Panel's pane scrolled to the focused control | medium | no |
+| its applets: **Theme, Mode, Panel, Preload, App Settings** | were minor / **broken** (700 × 470 in a 640 × 406 pane) → **fine** (below: the medium fixes): each fits the pane | not driven in the simulator (an applet's keys come from the Control Panel's process); nothing is out of sight any more | each applet's least width down to 640 (five layouts), and the Control Panel's pane scrolled to the focused control | medium | no |
 | its applets: **Display, Sound, Keyboard & Mouse, Language & Region, Gamepad, Wi-Fi** | fine (what they show fits in the 640 px) | ok | — | — | no |
 | its applet **Printers** | not judged (it drew nothing in the simulator: no printing service there) | — | — | — | — |
 | **QBStudio** | was **broken** (the form and the code 185 px wide between three panes) → **fine since Q6 was built** (below) | **driven**: Down (a control), M, Right, Enter; S, Right ×2, Esc; Down; L, Down ×3, Enter (a control added), Enter; R, Down ×2, R; F7, F7 | an IDE on 640 × 480: see Q6 | large | **yes** — Q6 |
@@ -156,6 +156,23 @@ under the picture; Text has no colour row of its own (the text colour last used)
 is NOT flattened nor saved under another name — it is shown whole and saved with its layers, which loses nothing;
 no "not in pocket" card (nothing leads to a drawing tool there: one line says it). Paint stays untranslated but for
 its pocket words.
+
+**The medium fixes — built (2026-10-12)** (`pocket640.sh applets pkgman mail setup`):
+- **the five applets made for 700 × 470** (Theme, Mode, Preload, App Settings, Panel): in pocket under 800 px the
+  Control Panel gives an applet its pane as it is (640 × 410) and each fits its layout to it (`uk_fit_pane`, UIKit):
+  **fine** now — nothing out at the right, no sideways scroll (`pt-applet-<name>-640.png`). Mode keeps its cards'
+  height (its last line of text gives its room); in Theme the preview picture is cut by 28 px at its right, the rest
+  is whole. *Not driven by keys in the simulator*: an applet's keys come from the Control Panel's process, which the
+  simulator does not run with it — the check is the pane's size and the right part drawn in it;
+- **the Package Manager**: its window is the screen's (640 × 450), the layout fitted; L / R its tabs, the keys in the
+  list — **fine**, driven (R, Down ×2, L);
+- **Mail's two account dialogs**: 600 × 440 and 624 × 440, whole in the window; *Contacts* and *Accounts and settings*
+  are rows of the folders' list in pocket (they were a foot only a pointer reached), B closes the boxes — **fine**,
+  driven (Down to the last row, Enter, Esc; Enter on the welcome, Esc);
+- **Setup's leftovers**: the Wi-Fi list by the keys (a bar; A chooses), **the password on its own page** (the
+  network alone, its field, the password shown), B back; "You are online" readable on the dark card — driven (Down,
+  A, four letters, B, Down, A, eight letters, A: connecting). **Still differs from the mock-up**: the rows are 42 px
+  (not 46), *Rescan* and *Other network* stay around the list, *Skip* stays in the foot, Region keeps two columns.
 
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the

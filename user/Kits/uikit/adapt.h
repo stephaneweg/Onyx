@@ -107,6 +107,14 @@ bool uk_keys_drive ();			// pocket and console: the keys (a d-pad) may be all th
 bool uk_keypointer_move (UkKeyPointer &p, long key, int step, int x0, int y0, int x1, int y1);
 void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p);	// a ring and a cross at its place (held: filled)
 
+// ---- a fixed layout in a smaller pane (pocket: a Control Panel applet made for 700 x 470 shown in 640 x 406) ------------
+// The children of `pane` (an applet's Root), laid out by the app for a pane of layoutW x layoutH, are brought to the
+// pane's real size where it is smaller: each one's place and size scaled as a whole (its right and bottom edges with
+// its neighbours'), and so are the children of the boxes named in `groups` (a GroupBox's controls). The texts keep
+// their size. Called once, after the widgets are made; it does nothing when the pane is the layout's size at least --
+// the desktop, always.
+void uk_fit_pane (Widget *pane, int layoutW, int layoutH, Widget *const *groups = 0, int ngroups = 0);
+
 // ---- the console's shoulders -------------------------------------------------------------------------------------
 // L1 / R1 (on a keyboard: Ctrl+Page Up / Ctrl+Page Down) step through the window's tabs, else through its navigation
 // SidePanel's sections; L2 / R2 (Page Up / Page Down) page a list. The pad's buttons are given these keys by the

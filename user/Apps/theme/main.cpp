@@ -683,6 +683,13 @@ int main (void)
 	desk_add (g_pkC1);
 	g_ddMode = new Dropdown (96, y0, 200, 28, tr_list (MODES, WP_NMODES, g_trMode), WP_NMODES, 0, on_mode); desk_add (g_ddMode);
 
+	{						// (pocket's 640 px pane: the layout fitted to it; the swatches keep their height: their names)
+		int sh = g_sw[0] ? ((Widget *) g_sw[0])->height : 0;
+		uk_fit_pane (&root, W, H);
+		bool fitted = false;
+		for (int i = 0; i < NTHEMES; i++) if (g_sw[i] && ((Widget *) g_sw[i])->height != sh) { ((Widget *) g_sw[i])->resizeTo (((Widget *) g_sw[i])->width, sh); ((Widget *) g_sw[i])->top = 24; fitted = true; }
+		if (fitted) ((Widget *) g_segTheme)->top = 1;	// (the rows are closer: the swatches right under the theme's switch)
+	}
 	load_current ();
 	root.run ();
 	return 0;

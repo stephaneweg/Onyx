@@ -588,7 +588,11 @@ int main (void)
 	if (strstr (args, "--updates")) g_tab = T_UPDATES;
 	else if (!count (T_UPDATES) && g_haveIndex) g_tab = T_INSTALLED;
 	refilter ();
-	App root (W, H);
+	// (pocket on a small screen -- under 800 px wide: the window is the screen's, 640 x 450, and the layout made for
+	//  700 x 470 is fitted to it; elsewhere, and as the Control Panel's applet: as it was)
+	int ww = W, wh = H;
+	{ int sw = 0, sh = 0; kapi_screen_size (&sw, &sh); if (!uk_applet () && uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800 && sh > 60) { ww = sw; wh = sh - 30; } }
+	App root (ww, wh);
 	if (root.canvas.px == 0) return 1;
 	int X = root.width > W ? (root.width - W) / 2 : 0;
 	g_tabs = new SegmentedControl (X + 12, 10, 384, TABH, 0, 0, g_tab, on_tab); tabs_labels (); g_tabs->select (g_tab); root.addChild (g_tabs);
@@ -599,6 +603,8 @@ int main (void)
 	g_lblStatus = new Label (X + 14, H - FOOT + 12, W - 24 - 328, 22, "", C_DIS, root.bg); root.addChild (g_lblStatus);
 	g_btnCheck = new Button (X + W - 12 - 318, H - FOOT + 8, 110, 30, TR ("Check Now"), on_check); root.addChild (g_btnCheck);
 	g_btnMain = new Button (X + W - 12 - 200, H - FOOT + 8, 200, 30, TR ("Install Updates"), on_install); root.addChild (g_btnMain);
+	uk_fit_pane (&root, W, H);
+	if (ww != W) { uk_segmented_nav (g_tabs); g_list->setFocus (); }	// (pocket: Updates / Installed / Available are the window's tabs -- L / R; the keys start in the list)
 	status_idle (); update_main_button ();
 	on_check (*g_btnCheck);					// the repository read again at once
 	root.run ();
