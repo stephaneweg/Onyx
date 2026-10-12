@@ -867,7 +867,7 @@ static void compute (const Doc &d, Styles &S, int node, const Style &parent)
 	S.s[node] = st;
 }
 // all the elements' styles (the tree walked in order: a parent before its children)
-static void cascade (const Doc &d, Styles &S, int viewW, int baseFontSize, unsigned textColour)
+static void cascade (const Doc &d, Styles &S, int viewW, int baseFontSize, unsigned textColour, float baseLine = 0)
 {
 	S.viewW = viewW;
 	S.ua.reset (); S.author.reset ();
@@ -876,6 +876,7 @@ static void cascade (const Doc &d, Styles &S, int viewW, int baseFontSize, unsig
 	S.s.clear ();
 	for (int i = 0; i < d.nodes.n; i++) S.s.push ();
 	Style top; style_initial (top); top.fontSize = baseFontSize; top.color = textColour; top.display = D_BLOCK;
+	if (baseLine > 0) top.lineNum = baseLine;
 	S.root = top;
 	for (int i = 0; i < d.nodes.n; i++)
 	{

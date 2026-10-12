@@ -40,6 +40,11 @@ private:
 	void	 place ();
 };
 
+// A SegmentedControl that switches the window's views (Pins / Code) IS its tabs: Prev / Next (L / R, Ctrl + Page Up /
+// Down) step it, round, as they step a TabStrip (uikit/adapt.h; in pocket and console a left drawer keeps L: R then
+// goes round them). on = false: no longer.
+void uk_segmented_nav (SegmentedControl *s, bool on = true);
+
 } // namespace uikit
 
 #endif

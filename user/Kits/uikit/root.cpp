@@ -400,7 +400,9 @@ void Root::ptrEvent (unsigned long sender, int ev, gui_value v)
 		r->m_tipDone = ev != GUI_EVENT_PTR_MOVE && ev != GUI_EVENT_PTR_ENTER;	// clicks: no tip
 	}
 	int c = GUI_PTR_CHANGED (v);
-	if (ev != GUI_EVENT_PTR_LEAVE) internal::pointer_note ();	// (a pointer exists: pocket shows what only a pointer uses)
+	// (a pointer exists: pocket shows what only a pointer uses -- its own events only: a window resized, the screen's
+	//  size, a title button come through here too and say nothing of a pointer)
+	if (((ev >= GUI_EVENT_PTR_MOVE && ev <= GUI_EVENT_PTR_WHEEL) || ev == GUI_EVENT_DROP || ev == GUI_EVENT_DRAG_OVER) && ev != GUI_EVENT_PTR_LEAVE) internal::pointer_note ();
 	switch (ev)
 	{
 	case GUI_EVENT_PTR_DOWN:

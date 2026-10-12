@@ -51,6 +51,21 @@ object stepping), Q6, Q2, Q7, Q8, Q9, Q4 and item 10's medium fixes; of the revi
 review (the hint line first: one UIKit helper for a 30 px line of `uk_pad_hints` at a window's foot), then Slides
 with the stepping written once.
 
+**Update, 2026-10-12: the review finished -- the hint line, the L / R rule** (PC simulator only; the desktop's
+pictures compared before / after from two clean exports of the tree: the same). UIKit, pocket and console only:
+`uk_hint_line` / `uk_hint_line_height` (`uikit/padhint.h`: a line of hints at the window's foot, a mode's pill;
+`UK_HINTS_STANDARD`), `uk_segmented_nav` (a SegmentedControl as the window's tabs), **the drawer's key before the
+tabs** (`nav_step`'s pass 0, `dir * 3`: L a LEFT drawer without places, R then the tabs; a window of tabs without one is unchanged -- `pocketterm.sh`'s gallery checks), an open drawer ends
+above the hint line (`internal::hint_room`), and a fix: `pointer_note` only for real pointer events (a WINRESIZE
+showed GPIO Lab's tab). Apps: Mail (hints a screen, 15 / 22 px text, A sends the reply), Circuits and Turtle Quest
+(`dark ()` cards, 14 px margins, one row of buttons, cards whole in the window's middle), GPIO Lab (`BANNER`,
+`PANEL_H`... are variables: a tighter pocket layout, the status on two lines, R = Pins / Code), Letters (the standard
+hints). `AUDIT-640.md` has the table by directive. **A trap met**: `tools/tests/desktop_sim/shots.sh` run in the
+worktree while sources are being edited mixes old and new -- compare from two exports (`git archive` into WSL, the
+second with the changed folders copied over; `circle/lib/font8x16.cpp` copied in, `media` and `ndsemu` left out).
+**Next**: Q1 Slides with the shared object stepping (a first `uikit/objnav.h` was written and set aside, not
+committed), then the list's order.
+
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached
 another way, everything by the keys). Tested on the PC only (`sh tools/tests/server_sim/pocket640.sh <out> [mail

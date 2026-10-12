@@ -84,6 +84,8 @@ Widget *tool_ring ();			// the tool the ring is on, 0: none
 void focus_ring (Canvas &cv, Widget *c, int x, int y);	// the ring around c, at x, y of cv (Widget::draw)
 void root_tick (Root *r);
 void redraw_soon (Widget *w);		// w's window drawn again at its next turn (a widget that moved while drawn)		// the focused control's rectangle, a field's type -> the server
+int  hint_room (Widget *parent);		// what the hint line takes at the foot of `parent` (0: none, or not a window)
+void hint_fit (Root *r);			// the hint line (uikit/padhint.cpp) kept at the window's foot
 void each_root (void (*fn) (Root *));
 unsigned ptr_release (int *x, int *y);	// the left button's releases counted (root.cpp), where the last one was (window)	// each of the program's windows (root.cpp)
 Root *root_of (Widget *w);		// the Root a widget is in, 0

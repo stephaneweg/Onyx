@@ -108,6 +108,7 @@ static void shown_layout (Shown &s, int w)
 	{
 		s.html = new html::Html;
 		s.html->textColour = 0xFF000000u | (C_FIELD_TEXT & 0xFFFFFF);
+		if (g_three) { s.html->baseSize = 15; s.html->baseLine = 22.0f / 15; }	// (pocket's three screens: the text 15 px, its lines 22)
 		int p = s.mime->body_part (true);
 		Buf t; if (p >= 0) s.mime->text (s.mime->parts[p], t);
 		s.isHtml = p >= 0 && ieq (s.mime->parts[p].sub, "html");

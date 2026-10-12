@@ -6,9 +6,11 @@
 #   - mail: three screens -- the accounts and their folders, the folder's messages, the message -- each with its "<"
 #     bar; Enter goes in, Esc comes back one screen; writing a message;
 #   - circuits, gpiolab, turtle: the side panels one at a time, nothing cut, every panel reached by the keys;
+#   - the hint line (UIKit's uk_hint_line): a 30 px line at the window's foot that says the view's own keys, in Mail,
+#     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -39,6 +41,12 @@ busy () {
 	n=$(python3 -c "from PIL import Image; im = Image.open ('$OUT/$1.png').convert ('RGB').crop (($2, $3, $4, $5)); print (len (im.getcolors (100000) or [0] * 99))")
 	if [ "$n" -gt 1 ]; then echo "  $6: ok"; else echo "  $6: FAILED (nothing drawn in $2,$3-$4,$5 of $1)"; FAIL=1; fi
 }
+# foot30: the hint line -- the screen's last 30 px; footsame / footdiffer <a> <b> <name>; hintline <picture> <name>: the
+# line is there (its black ground at the right end, something written at its left)
+foot30 () { python3 -c "from PIL import Image; import sys; a = Image.open ('$OUT/$1.png').convert ('RGB').crop ((0, 451, 640, 480)); b = Image.open ('$OUT/$2.png').convert ('RGB').crop ((0, 451, 640, 480)); sys.exit (0 if a.tobytes () == b.tobytes () else 1)"; }
+footsame () { if foot30 $1 $2; then echo "  $3: ok"; else echo "  $3: FAILED (the hint lines of $1.png and $2.png differ)"; FAIL=1; fi; }
+footdiffer () { if foot30 $1 $2; then echo "  $3: FAILED (the hint lines of $1.png and $2.png are the same)"; FAIL=1; else echo "  $3: ok"; fi; }
+hintline () { pixel $1 634 466 000000 "$2: the hint line's ground"; busy $1 10 454 200 478 "$2: the hint line says keys"; }
 size () {
 	got=$(python3 -c "from PIL import Image; im = Image.open ('$OUT/$1.png'); print ('%dx%d' % im.size)")
 	if [ "$got" = "$2" ]; then echo "  $3: ok"; else echo "  $3: FAILED ($1 is $got, not $2)"; FAIL=1; fi
@@ -83,6 +91,10 @@ if want mail; then
 		barsame pt-mail-640-2-list pt-mail-640-4-back-list "Esc on the message: the list's bar again"
 		barsame pt-mail-640-1-folders pt-mail-640-5-back-folders "Esc on the list: the folders' bar again"
 		bardiffer pt-mail-640-2-list pt-mail-640-3-message "the message's bar is not the list's"
+		for f in 1-folders 2-list 3-message; do hintline pt-mail-640-$f "Mail, $f"; done
+		footdiffer pt-mail-640-1-folders pt-mail-640-2-list "the list's keys are not the folders'"
+		footdiffer pt-mail-640-2-list pt-mail-640-3-message "the message's keys are not the list's"
+		footsame pt-mail-640-2-list pt-mail-640-4-back-list "back on the list: its keys again"
 		# the folders by the keys: Down x4 (Starred, the account, its Inbox, the next folder) and Enter -- that folder's list;
 		# R (Ctrl + Page Down) from the list: the next folder's list, the same screen
 		F1="$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K 13)$W40;dump $OUT/pt-mail-640-folder-list.elsm;$CN;$W40;dump $OUT/pt-mail-640-folder-next.elsm"
@@ -94,6 +106,13 @@ if want mail; then
 		mrun pt-mail-640-ring "" "$(K 13)$(K 13)$W40;$(K $RIGHT)$(K $RIGHT)dump $OUT/pt-mail-640-message-ring.elsm;$(K $DOWN)$(K $DOWN)$(K $DOWN)dump $OUT/pt-mail-640-message-down.elsm"
 		out pt-mail-640-message-ring; out pt-mail-640-message-down
 		differ pt-mail-640-message-ring pt-mail-640-message-down "Down scrolls the message"
+		# the reply's field: Down to the message's end, then into the field -- its keys say A sends; a word typed, A: sent (the
+		# writing screen is not opened: the message's screen again, the field empty)
+		D12="$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)"
+		mrun pt-mail-640-quick "" "$(K 13)$(K 13)$W40;dump $OUT/pt-mail-640-quick-0.elsm;$D12$D12$D12;dump $OUT/pt-mail-640-quick-1.elsm;key 0x4f;$W;key 0x6b;$W;dump $OUT/pt-mail-640-quick-2.elsm"
+		for i in 0 1 2; do out pt-mail-640-quick-$i; done
+		footdiffer pt-mail-640-quick-0 pt-mail-640-quick-1 "Down past the message's end: the reply's field, its keys"
+		differ pt-mail-640-quick-1 pt-mail-640-quick-2 "typing goes into the reply's field"
 		mrun pt-mail-640-write "" "key 14;$W;$W;dump $OUT/pt-mail-640-compose.elsm;key 27;$W;$W;dump $OUT/pt-mail-640-compose-back.elsm"
 		out pt-mail-640-compose; out pt-mail-640-compose-back
 		differ pt-mail-640-1-folders pt-mail-640-compose "Ctrl+N: the writing screen"
@@ -124,6 +143,10 @@ if want circuits; then
 	differ pt-circuits-640 pt-circuits-640-levels "L opens the levels' drawer"
 	differ pt-circuits-640 pt-circuits-640-level "Up in the drawer: the level before"
 	differ pt-circuits-640-levels pt-circuits-640-level "Enter closes the drawer"
+	hintline pt-circuits-640 "Circuits"; hintline pt-circuits-640-levels "Circuits, the drawer open"
+	footdiffer pt-circuits-640 pt-circuits-640-levels "the drawer's keys are not the board's"
+	footsame pt-circuits-640 pt-circuits-640-level "the drawer closed: the board's keys again"
+	pixel pt-circuits-640 40 50 15171b "the level's card is a dark surface"
 	# the board by the keys: the arrows bring its pointer, 1 arms the first gate, Enter puts it; Enter on it takes it, the
 	# arrows move it, Enter puts it down
 	WR=$(CQ "")
@@ -132,6 +155,15 @@ if want circuits; then
 	differ pt-circuits-640 pt-circuits-640-pointer "the arrows bring the board's pointer"
 	differ pt-circuits-640-pointer pt-circuits-640-armed "1 arms a gate at the pointer"
 	differ pt-circuits-640-armed pt-circuits-640-put "Enter puts the gate"
+	footdiffer pt-circuits-640-pointer pt-circuits-640-armed "a gate armed: the hint line says PUT and its keys"
+	footsame pt-circuits-640-armed pt-circuits-640-put "the gate put: still armed (another can be put), the same keys"
+	# F8: the step mode (the line says STEP), F7 back to live; F5 checks: the result's card, its keys
+	WR=$(CQ "")
+	run pocket_circuits pt-circuits-640-step "$WWW;key 0x117;$W;dump $OUT/pt-circuits-640-step.elsm;key 0x116;$W;dump $OUT/pt-circuits-640-live.elsm;key 0x114;$W;dump $OUT/pt-circuits-640-check.elsm" $C SIM_WRITES=$WR
+	for f in pt-circuits-640-step pt-circuits-640-live pt-circuits-640-check; do out $f; done
+	footdiffer pt-circuits-640 pt-circuits-640-step "F8: the step mode's keys"
+	footsame pt-circuits-640 pt-circuits-640-live "F7: live again"
+	differ pt-circuits-640-live pt-circuits-640-check "F5 checks the board"
 	WR=$(CQ fr)
 	run pocket_circuits pt-circuits-640-fr "$WWW;dump $OUT/pt-circuits-640-fr.elsm" $C SIM_WRITES=$WR
 	out pt-circuits-640-fr
@@ -153,6 +185,18 @@ if want gpiolab; then
 	differ pt-gpiolab-640 pt-gpiolab-640-header "L opens the header's drawer"
 	differ pt-gpiolab-640-header pt-gpiolab-640-header-down "Down in the drawer: another pin"
 	differ pt-gpiolab-640-header-down pt-gpiolab-640-pin "Enter closes the drawer"
+	hintline pt-gpiolab-640 "GPIO Lab"
+	footdiffer pt-gpiolab-640 pt-gpiolab-640-header "the header's keys are not the pin's"
+	python3 -c "from PIL import Image; import sys; im = Image.open ('$OUT/pt-gpiolab-640.png').convert ('RGB').crop ((0, 190, 6, 300)); sys.exit (0 if len (im.getcolors (1000)) <= 2 else 1)" && echo "  no pointer: no tab on the edge: ok" || { echo "  no pointer: no tab on the edge: FAILED"; FAIL=1; }
+	# L is the drawer's, R steps the window's tabs, round: Pins -> Code -> Pins (uk_segmented_nav)
+	RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"
+	WR=$(langdir "")
+	run pocket_gpiolab pt-gpiolab-640-tabs "${GL}dump $OUT/pt-gpiolab-640-tab0.elsm;${RR}dump $OUT/pt-gpiolab-640-tab1.elsm;${RR}dump $OUT/pt-gpiolab-640-tab2.elsm;${LL}dump $OUT/pt-gpiolab-640-tab3.elsm" $G SIM_WRITES=$WR "SIM_ARGS=--demo --tab chart"
+	for i in 0 1 2 3; do out pt-gpiolab-640-tab$i; done
+	bardiffer pt-gpiolab-640-tab0 pt-gpiolab-640-tab1 "R: Pins -> Code"
+	footdiffer pt-gpiolab-640-tab0 pt-gpiolab-640-tab1 "the Code view's keys are not the pins'"
+	barsame pt-gpiolab-640-tab0 pt-gpiolab-640-tab2 "R again: Code -> Pins"
+	footdiffer pt-gpiolab-640-tab2 pt-gpiolab-640-tab3 "L still opens the header's drawer"
 	WR=$(langdir "")
 	run pocket_gpiolab pt-gpiolab-640-code "${GL}dump $OUT/pt-gpiolab-640-code.elsm" $G SIM_WRITES=$WR "SIM_ARGS=--code --run"
 	out pt-gpiolab-640-code
@@ -176,14 +220,38 @@ if want turtle; then
 	differ pt-turtle-640-levels pt-turtle-640-levels-up "Up in the drawer: the level before"
 	differ pt-turtle-640-levels-up pt-turtle-640-level "Enter closes the drawer"
 	differ pt-turtle-640-level pt-turtle-640-typed "the keys are the program's again"
+	hintline pt-turtle-640 "Turtle Quest"
+	footdiffer pt-turtle-640 pt-turtle-640-levels "the drawer's keys are not the program's"
+	footsame pt-turtle-640 pt-turtle-640-level "the drawer closed: the program's keys again"
+	pixel pt-turtle-640 612 46 15171b "the level's card is a dark surface"
 	WR=$(TQ "" maze)
 	R12=$(printf 'wait;%.0s' $(seq 1 120))
 	run pocket_turtle pt-turtle-640-run "$WWW;key 0x114;${R12}dump $OUT/pt-turtle-640-run.elsm" $T SIM_WRITES=$WR
 	out pt-turtle-640-run
 	differ pt-turtle-640 pt-turtle-640-run "F5 runs the program"
+	# F8: a step (the line says STEP); F2: the hint in the card
+	WR=$(TQ "" maze)
+	run pocket_turtle pt-turtle-640-step "$WWW;key 0x117;$W;$W;dump $OUT/pt-turtle-640-step.elsm;key 0x118;$W;key 0x111;$W;dump $OUT/pt-turtle-640-hint.elsm" $T SIM_WRITES=$WR
+	out pt-turtle-640-step; out pt-turtle-640-hint
+	footdiffer pt-turtle-640 pt-turtle-640-step "F8: the step mode's name in the hint line"
+	differ pt-turtle-640 pt-turtle-640-hint "F9, F2: the hint in the card"
 	WR=$(TQ fr star-fr)
 	run pocket_turtle pt-turtle-640-fr "$WWW;dump $OUT/pt-turtle-640-fr.elsm" $T SIM_WRITES=$WR
 	out pt-turtle-640-fr
+fi
+
+# ---- Letters: the hint line every window of tools and a page gets (UK_HINTS_STANDARD) -------------------------------------
+if want letters; then
+	echo "pocket640: Letters"
+	ftapp pocket letters uikit_pocket -Wl,--unresolved-symbols=ignore-all
+	WR=$(langdir "")
+	DOC=; for f in letters-tour.rtf new-year-letter.rtf; do if [ -f "$D/sd/docs/$f" ] || [ -f "sdcard/docs/$f" ]; then DOC="SD:/docs/$f"; break; fi; done
+	# F6: the ring on the toolbar (Right, Right: two tools on); Esc: the page again
+	run pocket_letters pt-letters-640 "$WWW;$WW;expect kind fill;dump $OUT/pt-letters-640.elsm;key $F6;$W;key $RIGHT;$W;key $RIGHT;$W;dump $OUT/pt-letters-640-f6.elsm" $P640 SIM_APPNAME=letters SIM_APP=letters SIM_WRITES=$WR ${DOC:+SIM_ARGS=$DOC}
+	out pt-letters-640; out pt-letters-640-f6
+	size pt-letters-640 640x480 "Letters: the whole 640 x 480 screen"
+	hintline pt-letters-640 "Letters"
+	bardiffer pt-letters-640 pt-letters-640-f6 "Letters: F6 rings the toolbar"
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

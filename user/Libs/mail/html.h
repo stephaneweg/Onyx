@@ -35,7 +35,8 @@ struct Html
 	Styles styles;
 	Layout *lay;
 	int baseSize; unsigned textColour;
-	Html () : lay (0), baseSize (14), textColour (0xFF202124) {}
+	float baseLine;					// the text's line height as a factor of its size (0: the face's own)
+	Html () : lay (0), baseSize (14), textColour (0xFF202124), baseLine (0) {}
 	~Html () { delete lay; }
 	Html (const Html &) = delete;
 	Html &operator= (const Html &) = delete;
@@ -78,7 +79,7 @@ struct Html
 	}
 	void layout (Host &host, int w)
 	{
-		cascade (doc, styles, w, baseSize, textColour);
+		cascade (doc, styles, w, baseSize, textColour, baseLine);
 		delete lay; lay = new Layout (doc, styles, host);
 		lay->run (w);
 	}

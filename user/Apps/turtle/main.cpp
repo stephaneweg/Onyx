@@ -28,6 +28,7 @@
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"	// the system's language (locale.h)
 #include "uikit/uikit.h"
+#include "uikit/padhint.h"
 #include "fontkit/uikitface.h"
 #include "world.h"
 
@@ -235,6 +236,8 @@ static void show_level (int pack, int lv, bool keepCode);
 // L (Ctrl + Page Up) opens and closes it; in it Up / Down go from level to level, Left / Right from pack to pack, Enter
 // closes it -- and the program and the board share the window. (uikit/sidepanel.h; main makes it.)
 static bool g_pk = false;
+// (pocket's dark look: the cards are surfaces of the theme, colour kept for one accent -- the board keeps its own)
+static bool dark () { return g_pk && uk_flat (); }
 static SidePanel *g_side = 0;
 static void refresh_count ();
 static void set_message (int kind, const char *text, int stars = 0);
@@ -770,31 +773,41 @@ public:
 	{
 		canvas.clear (bgColor ());
 		if (!g_L) return;
-		uk_rbox (canvas, 0, 0, width, height, 10, uk_mix (C_FIELD, 0xFFF6D8, 120), uk_mix (C_FIELD, 0xFFEFC2, 120));
-		uk_rline (canvas, 0, 0, width, height, 10, 0xE0C77A);
+		bool dk = dark ();				// (pocket: a surface of the theme, the level's number the one accent)
+		unsigned inkT = dk ? (unsigned) UK_N_TEXT1 : 0x3A2E10, inkB = dk ? (unsigned) UK_N_TEXT2 : 0x3A3A3A, inkH = dk ? (unsigned) UK_N_WARNING : 0x8A5A00;
+		if (dk) uk_rbox (canvas, 0, 0, width, height, 10, UK_N_BG1, UK_N_BG1);
+		else
+		{
+			uk_rbox (canvas, 0, 0, width, height, 10, uk_mix (C_FIELD, 0xFFF6D8, 120), uk_mix (C_FIELD, 0xFFEFC2, 120));
+			uk_rline (canvas, 0, 0, width, height, 10, 0xE0C77A);
+		}
 		char t[160];
 		if (g_editing) snprintf (t, sizeof t, "%s -- %s", L2 ("Level editor", "Éditeur de niveaux"), g_L->titleOf (g_lang));
 		else snprintf (t, sizeof t, "%d. %s", g_level + 1, g_L->titleOf (g_lang));
 		{
 			// (a title too wide beside Hint and Lesson: the UI face, bold; then cut, ending with ".")
 			int room = width - 28 - (g_editing || g_cardBelow ? 0 : 170), bw; { UkFaceScope fs (g_big); bw = uk_tw (t, 2); }
-			if (bw <= room) { UkFaceScope fs (g_big); uk_text (canvas, 14, 8, t, 0x3A2E10, 2); }
+			if (bw <= room)
+			{
+				UkFaceScope fs (g_big); uk_text (canvas, 14, 8, t, inkT, 2);
+				if (dk && !g_editing) { char num[16]; snprintf (num, sizeof num, "%d.", g_level + 1); uk_text (canvas, 14, 8, num, UK_N_ACCENT_HI, 2); }
+			}
 			else
 			{
 				cut_to (t, room, 2);
-				uk_text (canvas, 14, 12, t, 0x3A2E10, 2);
+				uk_text (canvas, 14, 12, t, inkT, 2);
 			}
 		}
 		int y = 8 + (g_big ? g_big->height () : 20) + 4;
 		char lines[8][200]; int n;
 		wrap_lines (cardText (), width - 28 - (g_editing || g_cardBelow ? 0 : 170), lines, CARD_LINES, &n);
-		for (int i = 0; i < n; i++) { uk_text (canvas, 14, y, lines[i], 0x3A3A3A); y += uk_fh () + 2; }
+		for (int i = 0; i < n; i++) { uk_text (canvas, 14, y, lines[i], inkB); y += uk_fh () + 2; }
 		if (g_showHint && !g_editing)
 		{
 			char hl[4][200]; int hn; char h[500]; snprintf (h, sizeof h, "%s %s", L2 ("Hint:", "Indice :"), g_L->hintOf (g_lang));
 			wrap_lines (h, width - 28, hl, 4, &hn);
 			y += 2;
-			for (int i = 0; i < hn; i++) { uk_text (canvas, 14, y, hl[i], 0x8A5A00, i == 0 ? 0 : 0); y += uk_fh () + 2; }
+			for (int i = 0; i < hn; i++) { uk_text (canvas, 14, y, hl[i], inkH, i == 0 ? 0 : 0); y += uk_fh () + 2; }
 		}
 	}
 	int need ()
@@ -820,10 +833,12 @@ public:
 		canvas.clear (bgColor ());
 		if (kind == M_NONE || !text[0]) return;
 		unsigned face = kind == M_OK ? 0xDFF3DA : kind == M_ERR ? 0xFBE0DC : 0xE4ECF7, edge = kind == M_OK ? 0x4E9A57 : kind == M_ERR ? 0xC8463B : 0x5B7FB5;
+		bool dk = dark ();				// (pocket: a surface of the theme; the disc keeps the message's colour)
+		if (dk) { face = UK_N_BG1; edge = kind == M_OK ? UK_N_SUCCESS : kind == M_ERR ? UK_N_DANGER : UK_N_ACCENT; }
 		uk_rbox (canvas, 0, 0, width, height, 10, face, face);
-		uk_rline (canvas, 0, 0, width, height, 10, edge);
+		if (!dk) uk_rline (canvas, 0, 0, width, height, 10, edge);
 		int x = 14;
-		if (kind == M_OK && stars) for (int k = 0; k < 3; k++) { star (canvas, x + 11, height / 2, 11, k < stars ? 0xF2B705 : 0xC9D6C5, true); x += 26; }
+		if (kind == M_OK && stars) for (int k = 0; k < 3; k++) { star (canvas, x + 11, height / 2, 11, k < stars ? 0xF2B705 : dk ? (unsigned) UK_N_BG3 : 0xC9D6C5, true); x += 26; }
 		else if (kind == M_OK)
 		{
 			VPath d; d.circle (V (x + 10), V (height / 2), V (10)); d.fill (canvas, edge);
@@ -834,7 +849,7 @@ public:
 		char lines[3][200]; int n; wrap_lines (text, room, lines, 3, &n);
 		int lh = uk_fh () + 1, y = (height - n * lh) / 2;
 		bool titled = strchr (text, '\n') != 0;
-		for (int i = 0; i < n; i++) { uk_text (canvas, x + 6, y, lines[i], uk_mix (edge, 0x000000, 140), i == 0 && titled ? 2 : 0); y += lh; }
+		for (int i = 0; i < n; i++) { uk_text (canvas, x + 6, y, lines[i], dk ? (unsigned) UK_N_TEXT1 : uk_mix (edge, 0x000000, 140), i == 0 && titled ? 2 : 0); y += lh; }
 	}
 };
 static void set_message (int kind, const char *text, int stars)
@@ -1549,7 +1564,8 @@ enum { PAD = 10, LISTW = 220, EDW = 340, TOOLH = 32 };
 static void layout ()
 {
 	Root &R = *g_root;
-	int W = R.width, H = R.height;
+	const int PAD = g_pk ? 14 : ::PAD;		// (pocket: 14 px round the window)
+	int W = R.width, H = R.height - uk_hint_line_height (&R);	// (pocket: the hint line at the window's foot)
 	int mid = PAD + LISTW + PAD;
 	// wider than the default 1000: the board's column about as wide as the window is high (the board grows with the
 	// height, its cells square), the program's column (the second) takes all the rest
@@ -1557,9 +1573,9 @@ static void layout ()
 	bool narrow = W < 920;
 	int listW = narrow ? 170 : LISTW;
 	if (narrow) mid = PAD + listW + PAD;
-	if (g_pk) { g_side->place (0, 0, LISTW + 2 * PAD, H); mid = g_side->reservedWidth () + PAD; }	// (the levels: a drawer -- no tab without a pointer: the band names it)
+	if (g_pk) { g_side->place (0, 0, LISTW + 2 * ::PAD, H); mid = g_side->reservedWidth () + PAD; }	// (the levels: a drawer -- no tab without a pointer: the band names it)
 	int edw = narrow ? 270 : EDW;
-	if (g_pk && narrow) edw = 290;			// (the count's line whole: its two star thresholds)
+	if (g_pk && narrow) edw = 286;			// (the count's line whole: its two star thresholds)
 	if (W > 1000)
 	{
 		int bw = H - 120, most = W - mid - EDW - 2 * PAD;
@@ -1567,7 +1583,7 @@ static void layout ()
 		if (bw > most) bw = most;
 		edw = W - mid - PAD - bw - PAD;
 	}
-	int right = mid + edw + PAD, rw = W - right - PAD;
+	int right = mid + edw + (g_pk ? 8 : PAD), rw = W - right - PAD;
 	// left: the pack and its levels, or the level editor
 	if (!g_pk)					// (pocket's drawer: its pane places them -- LeftPane)
 	{
@@ -1585,13 +1601,23 @@ static void layout ()
 	g_lbSpeed->left = mid; g_lbSpeed->top = PAD + TOOLH + 6; g_lbSpeed->resizeTo (70, 22);
 	g_speed->left = mid + 72; g_speed->top = PAD + TOOLH + 6; g_speed->resizeTo (edw - 72, 22);
 	int ey = PAD + TOOLH + 6 + 22 + 8;
+	if (g_pk)					// (pocket: ONE row -- Run, Step, Stop, Reset, then the speed's slider; 30 px more for the program)
+	{
+		int w4[4] = { 48, 50, 50, 56 }; x = mid;
+		for (int i = 0; i < 4; i++) { bts[i]->left = x; bts[i]->resizeTo (w4[i], TOOLH); x += w4[i] + 4; }
+		((Widget *) g_lbSpeed)->hidden = true;
+		g_speed->left = x + 4; g_speed->top = PAD + (TOOLH - 22) / 2; g_speed->resizeTo (mid + edw - x - 4, 22);
+		ey = PAD + TOOLH + 8;
+	}
 	g_words->resizeTo (edw, 60); g_words->build ();
 	int wordsH = 0; for (int i = 0; i < g_words->n; i++) if (g_words->chips[i].y + 24 > wordsH) wordsH = g_words->chips[i].y + 24;
 	((Widget *) g_words)->hidden = g_pk;		// (a small pocket screen: the room is the program's; the words are typed)
 	if (g_pk) wordsH = -8;
 	g_words->resizeTo (edw, wordsH > 1 ? wordsH : 1);
 	int countH = 22;
-	g_ed->left = mid; g_ed->top = ey; g_ed->resizeTo (edw, H - ey - PAD - countH - 8 - wordsH - 8);
+	int edh = H - ey - PAD - countH - 8 - wordsH - 8;
+	if (g_pk && g_mono) { int lh = g_mono->height () + 3; edh = 8 + (edh - 8) / lh * lh; }	// (pocket: whole lines of program, never half of one)
+	g_ed->left = mid; g_ed->top = ey; g_ed->resizeTo (edw, edh);
 	g_words->left = mid; g_words->top = g_ed->top + g_ed->height + 8;
 	g_lbCount->left = mid; g_lbCount->top = H - PAD - countH; g_lbCount->resizeTo (edw, countH);
 	// the right: the card, the board, the message
@@ -1603,8 +1629,8 @@ static void layout ()
 	g_btHint->left = right + rw - 176; g_btHint->top = bty; g_btHint->resizeTo (80, 28);
 	((Widget *) g_btHint)->hidden = ((Widget *) g_btLesson)->hidden = g_editing;
 	int msgH = 62;
-	int by = PAD + ch + PAD;
-	g_board->left = right; g_board->top = by; g_board->resizeTo (rw, H - by - PAD - msgH - PAD);
+	int by = PAD + ch + (g_pk ? 8 : PAD);
+	g_board->left = right; g_board->top = by; g_board->resizeTo (rw, H - by - PAD - msgH - (g_pk ? 8 : PAD));
 	g_msg->left = right; g_msg->top = H - PAD - msgH; g_msg->resizeTo (rw, msgH);
 	g_btNext->left = right + rw - 140; g_btNext->top = H - PAD - msgH + 15; g_btNext->resizeTo (126, 32);
 	// the lesson: centred on the whole right column (the card and the board), so a long card does not shrink it
@@ -1617,11 +1643,29 @@ static void layout ()
 	R.invalidate (true);
 }
 
+// Pocket: the hint line at the window's foot -- the keys the view has of its own, by what it is doing.
+static void hints ()
+{
+	if (!g_pk) return;
+	static UkPadHint H[6]; int n = 0; const char *mode = 0;
+	if (g_side && g_side->isOpen () && !g_editing) { H[n++] = { "|", L2 ("level", "niveau") }; H[n++] = { "A", L2 ("play it", "y jouer") }; H[n++] = { "L", L2 ("close", "fermer") }; }
+	else if (!((Widget *) g_lesson)->hidden) { H[n++] = { "B", L2 ("close the lesson", "fermer la leçon") }; }
+	else if (g_mode == P_RUN) { mode = L2 ("RUNNING", "EN COURS"); H[n++] = { "[F7]", L2 ("stop", "arrêter") }; H[n++] = { "[F9]", L2 ("reset", "remettre") }; }
+	else
+	{
+		if (g_mode == P_PAUSE) mode = L2 ("STEP", "PAS À PAS");
+		H[n++] = { "[F5]", L2 ("run", "lancer") }; H[n++] = { "[F8]", L2 ("step", "un pas") }; H[n++] = { "[F9]", L2 ("reset", "remettre") };
+		H[n++] = { "[F2]", L2 ("hint", "indice") }; H[n++] = { "[F1]", L2 ("lesson", "leçon") };
+	}
+	int was = uk_hint_line_height (g_root);
+	if (uk_hint_line (g_root, H, n, mode) != was) layout ();
+}
+
 class TurtleRoot : public Root
 {
 public:
 	TurtleRoot () : Root (1000, 640, "Turtle Quest") {}
-	void onTick () override { playback_tick (); }
+	void onTick () override { playback_tick (); hints (); }
 	void onResized () override { ::layout (); }	// (:: -- Root has a layout () of its own)
 	bool onKey (long k) override
 	{
@@ -1787,6 +1831,7 @@ int main (void)
 	else root.setMinSize (800, 440);		// (a pocket's 800 x 480: the narrow layout)
 	retitle ();
 	build_menu ();
+	hints ();
 	layout ();
 	root.fitWorkArea ();
 	if (g_npacks == 0)

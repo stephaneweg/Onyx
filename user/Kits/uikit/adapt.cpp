@@ -290,7 +290,12 @@ static bool nav_step (Root *r, int dir)
 	// drawer of free content, an inspector -- it opens and closes instead, by ITS side's key) lets the next one try;
 	// when none took the key they are asked once more (dir * 2: "nobody did") -- a window's only panel then takes
 	// either key.
-	for (int pass = 1; pass <= 2; pass++)
+	// THE LEFT DRAWER'S KEY FIRST (pass 0, dir * 3; pocket and console): L opens and closes a left drawer that has no
+	// place to step, everywhere -- one rule for every app -- BEFORE the tabs take the key. So in a window with a left
+	// drawer and tabs, L is the drawer's and R steps the tabs, round (Pins -> Code -> Pins). Nothing else changes: a
+	// window of tabs without such a drawer steps them back and forth by L / R (even with an inspector at its right),
+	// and a key or a pad's button bound to the same action come here alike.
+	for (int pass = ring_on () ? 0 : 1; pass <= 2; pass++)
 	{
 		bool tried[16];
 		for (int i = 0; i < 16; i++) tried[i] = false;
@@ -301,7 +306,7 @@ static bool nav_step (Root *r, int dir)
 				if (!tried[i] && s_nav[i].w && root_of (s_nav[i].w) == r && shown (s_nav[i].w) && (best < 0 || s_nav[i].prio > s_nav[best].prio)) best = i;
 			if (best < 0) break;
 			tried[best] = true;
-			if (s_nav[best].step && s_nav[best].step (s_nav[best].w, dir * pass)) return true;
+			if (s_nav[best].step && s_nav[best].step (s_nav[best].w, pass == 0 ? dir * 3 : dir * pass)) return true;
 		}
 	}
 	return false;
@@ -470,6 +475,7 @@ void root_tick (Root *r)
 	if (s_later) { Root *l = s_later; s_later = 0; l->invalidate (true); }
 	pad_turn (r);
 	if (!ring_on () || r == 0) return;
+	hint_fit (r);
 	static Root *s_r; static int s_x = -1, s_y, s_w, s_h, s_type = -2;
 	Widget *f = leaf (modal_or (r));
 	int x = -1, y = 0, w = 0, h = 0, type = -1;

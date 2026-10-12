@@ -1794,7 +1794,22 @@ What an app needs to know of PocketUI on a small screen without a pointer (`docs
   a time, Enter is the button; the view gives itself the place through its own `onMouse`). (3)
   **`ToolBar::setShown (w, shown)`**: a tool the app takes off the bar for now -- the desktop hides it as the app did;
   compact, the row is laid out without it (setting `hidden` by hand did nothing there: the bar's layout shows what it
-  places -- Circuits' palette showed the gates a level does not allow). Four entries appended to `uikit.abi`. **The
+  places -- Circuits' palette showed the gates a level does not allow). Four entries appended to `uikit.abi`. (4)
+  **The hint line** (`uikit/padhint.h`, pocket and console; nothing on the desktop): `int uk_hint_line (Root *,
+  const UkPadHint *hints, int n, const char *mode = 0)` -- a 30 px line UIKit keeps at the window's foot (a widget of
+  its own, above an open drawer's foot: the drawer ends over it) with the app's hints, copied, and a mode's name as a
+  pill; it returns the height the app's layout leaves (30; 0 on the desktop and when n = 0);
+  `uk_hint_line_height (root)` says it later. The app calls it each time its state may have changed (its `onTick` is
+  fine: nothing is redrawn when the hints are the same) and lays itself out again when the height it returns changes.
+  `uk_hint_line (root, 0, UK_HINTS_STANDARD)`: "F6 tools, Alt + D-pad scroll, CMD Menu" in UIKit's own words (Letters).
+  (5) **`uk_segmented_nav (SegmentedControl *)`** (`uikit/segmented.h`): a segmented control that switches the
+  window's views is its tabs -- Prev / Next step it, round, as a TabStrip. (6) **The drawer's key first**: in pocket and
+  console `nav_step` asks the LEFT drawer before the tabs (`dir * 3`): L opens a left drawer that has no place to
+  step, everywhere; R then steps the tabs, round. A window of tabs without such a drawer is as before (L / R step its
+  tabs back and forth, an inspector at its right or not). (7) A pointer
+  "exists" (the closed drawer's tab comes back) only after a real pointer event: a window resized, the screen's size
+  and a title button come through `Root::ptrEvent` too and used to count (GPIO Lab showed its tab at once). Three
+  entries appended to `uikit.abi` (`uk_hint_line`, `uk_hint_line_height`, `uk_segmented_nav`). **The
   pattern for an app whose left column is a list of places it draws itself** (Circuits, Turtle Quest, GPIO Lab): when
   `uk_mode () == UK_MODE_POCKET` and the screen (`kapi_screen_size`) is under 800 px wide, the column's widget is made
   the content of a navigation SidePanel instead of a child of the Root (decided once, in `main`: the mode never changes

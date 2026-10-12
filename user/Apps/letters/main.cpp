@@ -796,13 +796,15 @@ int main (void)
 	bool small = uk_compact ();
 	int tbh = tb1->rows () * TB_H, rh = small ? 0 : RULER_H;
 	g_fitWidth = small;
+	// (pocket: the hint line at the window's foot -- F6 the tools, Alt + D-pad scrolls, CMD the Menu; 0 on the desktop)
+	int hh = uk_mode () == UK_MODE_POCKET ? uk_hint_line (&root, 0, UK_HINTS_STANDARD) : 0;
 
 	// the page, its ruler, the status bar
 	int vy = tbh + rh;
-	g_view = new PageView (0, vy, W, H - vy - STATUS_H);
+	g_view = new PageView (0, vy, W, H - hh - vy - STATUS_H);
 	g_ruler = new Ruler (0, tbh, W, g_view);
 	g_ruler->hidden = small;
-	g_status = new StatusBar (0, H - STATUS_H, W);
+	g_status = new StatusBar (0, H - hh - STATUS_H, W);
 	g_status->zoomBy = zoom_by;
 	root.addChild (g_ruler); root.addChild (g_status);
 	root.addChild (g_view);			// (last: on top -- a drag ended over another part still reaches it)

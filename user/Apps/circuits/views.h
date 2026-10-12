@@ -14,8 +14,8 @@ class LevelList : public Widget
 {
 public:
 	int sc, hot;					// the scroll (px), the row under the pointer (-1)
-	enum { HEAD = 30, ROW = 28 };
-	LevelList (int l, int t, int w, int h) : Widget (l, t, w, h), sc (0), hot (-1) {}
+	int HEAD, ROW;					// a pack's header, a level's row (pocket: 44 px rows)
+	LevelList (int l, int t, int w, int h) : Widget (l, t, w, h), sc (0), hot (-1), HEAD (g_pk ? 34 : 30), ROW (g_pk ? 44 : 28) {}
 	int total () { int n = 0; for (int p = 0; p < g_npacks; p++) n += HEAD + g_packs[p]->n * ROW; return n; }
 	int view () { return height - 4; }
 	void clamp () { int m = total () - view (); if (sc > m) sc = m; if (sc < 0) sc = 0; }
@@ -136,13 +136,26 @@ public:
 	{
 		canvas.clear (bgColor ());
 		if (!g_L) return;
-		uk_rbox (canvas, 0, 0, width, height, 10, uk_mix (C_FIELD, 0xFFF6D8, 120), uk_mix (C_FIELD, 0xFFEFC2, 120));
-		uk_rline (canvas, 0, 0, width, height, 10, 0xE0C77A);
+		bool dk = dark ();				// (pocket: a surface of the theme, the level's number the one accent)
+		if (dk) uk_rbox (canvas, 0, 0, width, height, 10, UK_N_BG1, UK_N_BG1);
+		else
+		{
+			uk_rbox (canvas, 0, 0, width, height, 10, uk_mix (C_FIELD, 0xFFF6D8, 120), uk_mix (C_FIELD, 0xFFEFC2, 120));
+			uk_rline (canvas, 0, 0, width, height, 10, 0xE0C77A);
+		}
 		char t[120], f[120]; snprintf (t, sizeof t, "%d.%d  %s", g_pack + 1, g_level + 1, g_L->titleOf (g_lang));
-		{ UkFaceScope fs (g_big); uk_text_fit (t, textW (), f, sizeof f, 2); uk_text (canvas, 14, 7, f, 0x3A2E10, 2); }
+		if (dk)
+		{
+			UkFaceScope fs (g_big);
+			char num[24]; snprintf (num, sizeof num, "%d.%d", g_pack + 1, g_level + 1);
+			uk_text (canvas, 14, 7, num, UK_N_ACCENT_HI, 2);
+			int nw = uk_tw (num, 2) + 10;
+			uk_text_fit (g_L->titleOf (g_lang), textW () - nw, f, sizeof f, 2); uk_text (canvas, 14 + nw, 7, f, UK_N_TEXT1, 2);
+		}
+		else { UkFaceScope fs (g_big); uk_text_fit (t, textW (), f, sizeof f, 2); uk_text (canvas, 14, 7, f, 0x3A2E10, 2); }
 		int y = 7 + face_h (g_big) + 3;
-		int n = wrap_draw (canvas, 14, y, textW (), g_L->textOf (g_lang), 0x3A3A3A, 4, uk_fh () + 2);
-		if (g_showHint) { char h[600]; hint_text (h, sizeof h); wrap_draw (canvas, 14, y + n * (uk_fh () + 2) + 2, width - 28, h, 0x8A5A00, 3, uk_fh () + 2); }
+		int n = wrap_draw (canvas, 14, y, textW (), g_L->textOf (g_lang), dk ? (unsigned) UK_N_TEXT2 : 0x3A3A3A, 4, uk_fh () + 2);
+		if (g_showHint) { char h[600]; hint_text (h, sizeof h); wrap_draw (canvas, 14, y + n * (uk_fh () + 2) + 2, width - 28, h, dk ? (unsigned) UK_N_WARNING : 0x8A5A00, 3, uk_fh () + 2); }
 	}
 };
 
@@ -158,15 +171,17 @@ public:
 		canvas.clear (bgColor ());
 		if (kind == M_NONE || !text[0]) return;
 		unsigned face = kind == M_OK ? 0xDFF3DA : kind == M_ERR ? 0xFBE0DC : 0xE4ECF7, edge = kind == M_OK ? 0x4E9A57 : kind == M_ERR ? 0xC8463B : 0x5B7FB5;
+		bool dk = dark ();				// (pocket: a surface of the theme; the disc keeps the message's colour)
+		if (dk) { face = UK_N_BG1; edge = kind == M_OK ? UK_N_SUCCESS : kind == M_ERR ? UK_N_DANGER : UK_N_ACCENT; }
 		uk_rbox (canvas, 0, 0, width, height, 10, face, face);
-		uk_rline (canvas, 0, 0, width, height, 10, edge);
+		if (!dk) uk_rline (canvas, 0, 0, width, height, 10, edge);
 		int x = 14;
-		if (kind == M_OK && stars) for (int k = 0; k < 3; k++) { star (canvas, x + 10, height / 2, 10, k < stars ? STAR_GOLD : 0xC9D6C5, true); x += 23; }
+		if (kind == M_OK && stars) for (int k = 0; k < 3; k++) { star (canvas, x + 10, height / 2, 10, k < stars ? STAR_GOLD : dk ? (unsigned) UK_N_BG3 : 0xC9D6C5, true); x += 23; }
 		else if (kind == M_OK) { VPath d; d.circle (V (x + 10), V (height / 2), V (10)); d.fill (canvas, edge); uk_glyph (canvas, WKG_CHECK, x + 10, height / 2, 12, 0xFFFFFF); x += 26; }
 		else { VPath d; d.circle (V (x + 10), V (height / 2), V (10)); d.fill (canvas, edge); uk_text_c (canvas, x, height / 2 - 10, 20, 20, kind == M_ERR ? "!" : "i", 0xFFFFFF, 2); x += 26; }
 		int room = width - x - 16 - (roomForNext ? 140 : 0);
 		int lh = uk_fh () + 1, n = wrap_count (text, room, 2), y = (height - n * lh) / 2;
-		wrap_draw (canvas, x + 6, y, room, text, uk_mix (edge, 0, 140), 2, lh);
+		wrap_draw (canvas, x + 6, y, room, text, dk ? (unsigned) UK_N_TEXT1 : uk_mix (edge, 0, 140), 2, lh);
 	}
 };
 
@@ -180,7 +195,7 @@ public:
 	int need () { return g_L ? Y0 + g_L->rows () * rh + 8 : 60; }
 	int cols () { return g_L->ninputs + g_L->noutputs * (g_checked ? 2 : 1); }
 	int colW () { int cw = (width - 16 - MARK) / cols (); return cw > 44 ? 44 : cw; }
-	int x0 () { return (width - (cols () * colW () + MARK)) / 2 + 4; }
+	int x0 () { return g_pk ? 14 : (width - (cols () * colW () + MARK)) / 2 + 4; }	// (pocket: from the bench's left edge, as the count under it)
 	void onDraw () override
 	{
 		canvas.clear (bgColor ());
@@ -189,6 +204,7 @@ public:
 		const Level &L = *g_L;
 		int rows = L.rows (), nc = cols (), cw = colW (), tw = nc * cw + MARK, X0 = x0 ();
 		unsigned dim = uk_mix (C_FIELD, C_FIELD_TEXT, 130), grid = uk_mix (C_FIELD, C_FIELD_TEXT, 30);
+		if (dark ()) dim = UK_N_TEXT2;
 		int xo = X0 + L.ninputs * cw, xg = xo + L.noutputs * cw;
 		{
 			UkFaceScope fs (g_small);
@@ -204,7 +220,8 @@ public:
 		{
 			int y = Y0 + r * rh;
 			bool wrong = g_checked && ((g_res.wrong >> r) & 1);
-			if (wrong) uk_rbox (canvas, X0 - 4, y + 1, tw + 2, rh - 2, 4, 0x00FBE0DC, 0x00FBE0DC);
+			unsigned pink = dark () ? uk_mix (C_FIELD, UK_N_DANGER, 70) : 0x00FBE0DC;	// (dark: the light text stays readable on it)
+			if (wrong) uk_rbox (canvas, X0 - 4, y + 1, tw + 2, rh - 2, 4, pink, pink);
 			else if (r == hot) canvas.fillRect (X0 - 4, y + 1, tw + 2, rh - 2, uk_mix (C_FIELD, C_ACCENT, 26));
 			else if (r & 1) canvas.fillRect (X0 - 4, y + 1, tw + 2, rh - 2, uk_mix (C_FIELD, C_FIELD_TEXT, 8));
 			if (r == (int) g_row) uk_rline (canvas, X0 - 4, y + 1, tw + 2, rh - 2, 4, wrong ? ERR_RED : C_ACCENT, 255);
@@ -253,8 +270,9 @@ public:
 		int n = g_c.gates ();
 		char t[16]; snprintf (t, sizeof t, "%d", n);
 		int nw;
-		{ UkFaceScope fs (g_huge); uk_text (canvas, 4, 0, t, n <= g_L->par3 ? OK_GREEN : C_TEXT, 2); nw = uk_tw (t, 2); }
-		int x = 4 + 6 + nw;
+		int X = g_pk ? 14 : 4;				// (pocket: on the table's left edge; the number 18 px, not 30)
+		{ UkFaceScope fs (g_huge); uk_text (canvas, X, g_pk ? 2 : 0, t, n <= g_L->par3 ? OK_GREEN : C_TEXT, 2); nw = uk_tw (t, 2); }
+		int x = X + 6 + nw;
 		uk_text (canvas, x, 4, gates_word (n), C_TEXT, 2);
 		char a[40], b[40]; snprintf (a, sizeof a, "\xE2\x89\xA4 %d", g_L->par3); snprintf (b, sizeof b, "\xE2\x89\xA4 %d", g_L->par2);
 		int y = 22; unsigned dim = uk_mix (C_BG, C_TEXT, 170);
@@ -266,7 +284,7 @@ public:
 		if (n)
 		{
 			char d[120]; snprintf (d, sizeof d, TR ("Depth %d \xC2\xB7 Step (F8) to watch it"), g_ev.maxDepth);
-			char f[120]; uk_text_fit (d, width - 8, f, sizeof f); uk_text (canvas, 4, 46, f, dim);
+			char f[120]; uk_text_fit (d, width - 8 - X, f, sizeof f); uk_text (canvas, X, 46, f, dim);
 		}
 	}
 };
@@ -300,7 +318,7 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (BOARD_BG);			// (its rounded corners over the board)
+		canvas.clear (g_pk ? C_BG : BOARD_BG);		// (its rounded corners over the board; pocket: over the window)
 		if (!ls) return;
 		uk_rbox (canvas, 0, 0, width, height, 14, 0xFFFFFF, 0xF6F4FB);
 		uk_rline (canvas, 0, 0, width, height, 14, 0x8E6CC8);
@@ -362,7 +380,7 @@ public:
 	void place () { stay->left = 18; stay->top = height - 46; next->left = width - 158; next->top = height - 46; }
 	void onDraw () override
 	{
-		canvas.clear (BOARD_BG);
+		canvas.clear (g_pk ? C_BG : BOARD_BG);
 		if (!g_L) return;
 		uk_rbox (canvas, 0, 0, width, height, 14, 0xFFFFFF, 0xF3FAF3);
 		uk_rline (canvas, 0, 0, width, height, 14, 0x4E9A57);

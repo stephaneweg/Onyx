@@ -43,7 +43,10 @@
 using namespace uikit;
 
 static int W = 1120, H = 640;		// (smaller on a small screen: main)
-#define BANNER	48			// the 3.3 V warning's band
+static int BANNER = 48;			// the 3.3 V warning's band (pocket: 40, the bar under the band)
+// The pin's panel: its height, where its rows are (pocket on a small screen: tighter -- the chart under it has the rest);
+// the foot under the views: the status line and what drives the pins (pocket: the status on two lines, then the hint line).
+static int PANEL_H = 214, Y_MODELBL = 46, Y_MODES = 68, Y_ROW = 108, Y_CB = 150, Y_TABS = 12, TABS_H = 38, FOOT = 40;
 #define HIST	512			// the timing chart's samples (the screen's rate: about 8 s)
 #define NWATCH	6			// pins in the chart at most
 #define NLOG	200			// edges kept
@@ -335,9 +338,9 @@ public:
 			uk_text_l (canvas, 14, 52, 20, t, C_DIS);
 			return;
 		}
-		uk_text_l (canvas, 14, 46, 18, TR ("MODE"), uk_mix (bg, C_TEXT, 140), 2);
+		uk_text_l (canvas, 14, Y_MODELBL, 18, TR ("MODE"), uk_mix (bg, C_TEXT, 140), 2);
 		if (p.mode == GK_I2C || p.mode == GK_SPI)
-			uk_text_l (canvas, 14, 120, 20, p.mode == GK_I2C ? TR ("A pin of the I2C bus (the I2C tab: Close Bus gives it back).") : TR ("A pin of SPI 0."), C_TEXT);
+			uk_text_l (canvas, 14, Y_ROW + 12, 20, p.mode == GK_I2C ? TR ("A pin of the I2C bus (the I2C tab: Close Bus gives it back).") : TR ("A pin of SPI 0."), C_TEXT);
 		if (p.mode == GK_PWM)
 		{
 			snprintf (t, sizeof t, TR ("%u Hz, %u.%02u %% high: a pulse of %u us every %u us"), p.pwm_freq, p.pwm_duty / 100, p.pwm_duty % 100,
@@ -823,6 +826,7 @@ public:
 	bool onKey (long k) override;
 };
 
+static void pocket_hints ();
 class LabRoot : public Root
 {
 public:
@@ -837,26 +841,38 @@ public:
 		if (g_pk) { ink = amber; amber = bg; }			// (a small pocket screen: a line of warning text, no filled box)
 		else
 		uk_rbox (canvas, 12, 8, width - 24 - vsw - 8, BANNER - 14, 8, amber, uk_mix (amber, 0xE0A020, 128));
-		VPath t; int tx = 32, ty = 25;
+		int bo = (BANNER - 48) / 2;				// (pocket's lower band: its words centred in it)
+		VPath t; int tx = 32, ty = 25 + bo;
 		int tri[6] = { V (tx), V (ty - 10), V (tx + 11), V (ty + 9), V (tx - 11), V (ty + 9) };
 		t.poly (tri, 3); t.fill (canvas, ink);
 		uk_text_c (canvas, tx - 6, ty - 7, 12, 16, "!", amber, 2);
 		const char *w1 = TR ("3.3 V only: never connect 5 V to a GPIO pin."), *w2 = TR ("16 mA a pin at most: an LED through 330 ohm.");
 		int x2 = 52 + uk_text_w (w1, 2) + 10;
-		uk_text_l (canvas, 52, 11, 28, w1, ink, 2);
-		if (x2 + uk_text_w (w2) <= width - 32 - vsw) uk_text_l (canvas, x2, 11, 28, w2, ink);	// (where the band has the room)
+		uk_text_l (canvas, 52, 11 + bo, 28, w1, ink, 2);
+		if (x2 + uk_text_w (w2) <= width - 32 - vsw) uk_text_l (canvas, x2, 11 + bo, 28, w2, ink);	// (where the band has the room)
+		if (g_pk)						// (pocket: the status WHOLE, on two lines if it needs them -- never cut;
+		{							//  what drives the pins is said in the hint line under it)
+			int st[2], ln[2], hh = uk_hint_line_height (this);
+			int n = uk_text_wrap (g_status, (int) strlen (g_status), width - 28, 2, st, ln);
+			for (int i = 0; i < n; i++)
+			{
+				char l[200]; int k = ln[i] < 199 ? ln[i] : 199; memcpy (l, g_status + st[i], k); l[k] = 0;
+				uk_text_l (canvas, 14, height - hh - FOOT + 4 + (n == 1 ? 8 : 0) + i * 16, 16, l, uk_flat () ? (unsigned) UK_N_TEXT2 : uk_mix (bg, C_TEXT, 150));
+			}
+			return;
+		}
 		// what drives the pins, and the last message
 		const char *who = gk_available () == 2 ? TR ("SIMULATOR") : gk_available () == 1 ? TR ("RASPBERRY PI HEADER") : TR ("NO GPIO");
 		int ww = uk_text_w (who, 2) + 20;
 		unsigned bc = gk_available () == 2 ? 0x8E6BD8 : gk_available () == 1 ? 0x3B9A4A : 0x9A3B3B;
 		uk_rbox (canvas, width - ww - 12, height - 30, ww, 22, 11, bc, bc);
 		uk_text_c (canvas, width - ww - 12, height - 30, ww, 22, who, 0xFFFFFF, 2);
-		if (g_pk) { char st[200]; uk_text_fit (g_status, width - ww - 12 - 28, st, sizeof st); uk_text_l (canvas, 16, height - 30, 22, st, uk_mix (bg, C_TEXT, 150)); }	// (cut before the pill)
-		else uk_text_l (canvas, 16, height - 30, 22, g_status, uk_mix (bg, C_TEXT, 150));
+		uk_text_l (canvas, 16, height - 30, 22, g_status, uk_mix (bg, C_TEXT, 150));
 	}
 	void onTick () override
 	{
 		frames++;
+		pocket_hints ();
 		unsigned long long now = gk_now_us ();
 		// the blinks: 2 Hz
 		if (now - g_blinkUs >= 250000)
@@ -1257,6 +1273,27 @@ static void apply_view (void)
 	if (g_root) g_root->invalidate (true);
 }
 
+// Pocket: the hint line at the window's foot -- what drives the pins as its label (SIMULATOR), then the keys the view has.
+static void pocket_hints ()
+{
+	if (!g_pk || g_root == 0) return;
+	static UkPadHint H[6]; int n = 0;
+	static char st[sizeof g_status];
+	const char *who = gk_available () == 2 ? TR ("SIMULATOR") : gk_available () == 1 ? TR ("PI HEADER") : TR ("NO GPIO");
+	if (g_side && g_side->isOpen ()) { H[n++] = { "+", TR ("pin") }; H[n++] = { "[Space]", TR ("level") }; H[n++] = { "A", TR ("choose") }; H[n++] = { "L", TR ("close") }; }
+	else if (g_running) { H[n++] = { "B", TR ("stop") }; }
+	else if (g_view == 1) { H[n++] = { "L", TR ("header") }; H[n++] = { "R", TR ("Pins") }; H[n++] = { "[F5]", TR ("run") }; H[n++] = { "[F8]", TR ("step") }; }
+	else
+	{
+		H[n++] = { "L", TR ("header") }; H[n++] = { "R", TR ("Code") }; H[n++] = { "+", TR ("control") };
+		if (g_pin[g_sel].mode == GK_OUT) H[n++] = { "[Space]", TR ("level") };
+		H[n++] = { "[F5]", TR ("run") };
+	}
+	int was = uk_hint_line_height (g_root);
+	if (uk_hint_line (g_root, H, n, who) != was) g_root->onResized ();
+	if (strcmp (st, g_status)) { strcpy (st, g_status); g_root->invalidate (true); }	// (the status changed: the window's own drawing)
+}
+
 bool LabRoot::onKey (long k)
 {
 	if (k == KEY_F1 + 4) { do_run (); return true; }			// F5
@@ -1310,23 +1347,23 @@ static void m_demo (void) { demo (); refresh_pins (); sync_controls (); redraw_a
 // column -- the pin's panel, the tabs and their views, or the Code view -- takes the rest; the same sums as main's.
 void LabRoot::onResized ()
 {
-	W = width; H = height;
+	W = width; H = height - uk_hint_line_height (this);	// (pocket: the hint line at the window's foot)
 	int rx = g_pk ? 12 : 436, rw = W - rx - 12;		// (pocket: the header is a drawer, named in the band)
-	if (g_pk) g_side->place (0, 0, 412, H);
+	if (g_pk) { if (g_side) g_side->place (0, 0, 412, H); }
 	else g_header->resizeTo (412, H - BANNER - 44);
-	g_panel->resizeTo (rw, 214);
+	g_panel->resizeTo (rw, PANEL_H);
 	g_modes->resizeTo (rw - 28, 28);
 	Widget *duty = (Widget *) g_slDuty; duty->resizeTo (rw - 274 - ((Widget *) g_lbDuty)->width, 30);
 	((Widget *) g_btPause)->left = W - 12 - 90; ((Widget *) g_btScan)->left = W - 12 - 90;
 	((Widget *) g_btOled)->left = W - 12 - 90 - 8 - 130;
-	int vy = BANNER + 6 + 214 + 12 + 38, vh = H - vy - 40;
+	int vy = BANNER + 6 + PANEL_H + Y_TABS + TABS_H, vh = H - vy - FOOT;
 	g_chart->resizeTo (rw, vh); g_i2c->resizeTo (rw, vh); g_edges->resizeTo (rw, vh);
 	((Widget *) g_viewSw)->left = W - 12 - (g_pk ? 150 : 192);
 	int cy = BANNER + 6, ddx = W - 12 - (g_pk ? 160 : 190);
 	((Widget *) g_ddEx)->left = ddx;
 	int x = ((Widget *) g_speed)->left, wSlider = ddx - 12 - x; if (wSlider > 120) wSlider = 120; if (wSlider < 60) wSlider = 60;
 	g_speed->resizeTo (wSlider, 30);
-	int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
+	int conH = g_pk ? 110 : 150, ey = cy + 40, eh = H - FOOT - ey - conH - 8;
 	g_ed->resizeTo (rw, eh);
 	((Widget *) g_con)->top = ey + eh + 8; ((Widget *) g_con)->resizeTo (rw, conH);
 	invalidate (true);
@@ -1364,7 +1401,11 @@ int main (void)
 	{
 		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
 		g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
-		if (g_pk) { W = sw; H = sh - 30; }		// (the widgets made for the window PocketUI gives: no column of the header's)
+		if (g_pk)					// (the widgets made for the window PocketUI gives: no column of the header's;
+		{						//  a 40 px bar, a tighter panel, the status on two lines over the hint line)
+			W = sw; H = sh - 30;
+			BANNER = 40; PANEL_H = 190; Y_MODELBL = 40; Y_MODES = 60; Y_ROW = 98; Y_CB = 134; Y_TABS = 8; TABS_H = 36; FOOT = 38;
+		}
 	}
 	HeadPane *headPane = g_pk ? new HeadPane : 0;
 	Widget *headOf = g_pk ? (Widget *) headPane : (Widget *) &root;
@@ -1376,46 +1417,46 @@ int main (void)
 	sync_sim_switch ();
 
 	int rx = g_pk ? 12 : 436, rw = W - rx - 12;		// (pocket: the header is a drawer, named in the band)
-	g_panel = new PinPanel (rx, BANNER + 6, rw, 214);
+	g_panel = new PinPanel (rx, BANNER + 6, rw, PANEL_H);
 	root.addChild (g_panel);
 	int py = BANNER + 6;
 	// (the words of the segments, in the language: a SegmentedControl copies them)
 	const char *const MODES[6] = { TR ("Free"), TR ("Input"), TR ("Pull-up"), TR ("Pull-down"), TR ("Output"), "PWM" };
-	g_modes = new SegmentedControl (rx + 14, py + 68, rw - 28, 28, MODES, 6, 0, on_mode);
+	g_modes = new SegmentedControl (rx + 14, py + Y_MODES, rw - 28, 28, MODES, 6, 0, on_mode);
 	g_modes->tip = TR ("The pin's mode (Free gives it back: an input with no pull)");
 	root.addChild (g_modes);
-	g_btLevel = new Button (rx + 14, py + 108, 110, 30, TR ("Set High"), on_level);
+	g_btLevel = new Button (rx + 14, py + Y_ROW, 110, 30, TR ("Set High"), on_level);
 	g_btLevel->tip = TR ("The output's level (Space)");
 	root.addChild (g_btLevel);
-	g_cbBlink = new Checkbox (rx + 136, py + 112, 150, 24, TR ("Blink (2 Hz)"), false, on_blink, uk_mix (C_BG, C_FIELD, 140));
+	g_cbBlink = new Checkbox (rx + 136, py + Y_ROW + 4, 150, 24, TR ("Blink (2 Hz)"), false, on_blink, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_cbBlink);
-	g_lbFreq = new Label (rx + 14, py + 112, 80, 22, TR ("Frequency"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	g_lbFreq = new Label (rx + 14, py + Y_ROW + 4, 80, 22, TR ("Frequency"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbFreq);
-	g_ddFreq = new Dropdown (rx + 94, py + 108, 150, 30, FREQS, 6, 3, on_freq);
+	g_ddFreq = new Dropdown (rx + 94, py + Y_ROW, 150, 30, FREQS, 6, 3, on_freq);
 	root.addChild (g_ddFreq);
 	// the duty's label as wide as its words ("Rapport cyclique"), the slider after it
 	char dt[64]; snprintf (dt, sizeof dt, TR ("Duty  %d.%d %%"), 100, 0);
 	int dw = uk_text_w (dt) + 8; if (dw < 90) dw = 90;
 	snprintf (dt, sizeof dt, TR ("Duty  %d.%d %%"), 50, 0);
-	g_lbDuty = new Label (rx + 260, py + 112, dw, 22, dt, C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	g_lbDuty = new Label (rx + 260, py + Y_ROW + 4, dw, 22, dt, C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbDuty);
-	g_slDuty = new Slider (rx + 260 + dw, py + 108, rw - 274 - dw, 30, 0, 1000, 500, on_duty, uk_mix (C_BG, C_FIELD, 140));
+	g_slDuty = new Slider (rx + 260 + dw, py + Y_ROW, rw - 274 - dw, 30, 0, 1000, 500, on_duty, uk_mix (C_BG, C_FIELD, 140));
 	g_slDuty->tip = TR ("How long the pin is high in each period (a servo: 2.5 % to 12.5 %, 7.5 % the middle)");
 	root.addChild (g_slDuty);
-	g_lbDrive = new Label (rx + 14, py + 112, 120, 22, TR ("Driven outside"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
+	g_lbDrive = new Label (rx + 14, py + Y_ROW + 4, 120, 22, TR ("Driven outside"), C_TEXT, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_lbDrive);
 	const char *const DRIVE[3] = { TR ("Nothing"), TR ("Low"), TR ("High") };
-	g_drive = new SegmentedControl (rx + 134, py + 108, 220, 28, DRIVE, 3, 0, on_drive);
+	g_drive = new SegmentedControl (rx + 134, py + Y_ROW, 220, 28, DRIVE, 3, 0, on_drive);
 	g_drive->tip = TR ("The simulator: what a wire brings to the input (Nothing: it floats, or follows its pull)");
 	root.addChild (g_drive);
-	g_cbEdges = new Checkbox (rx + 14, py + 150, 184, 24, TR ("Log its edges"), false, on_edges, uk_mix (C_BG, C_FIELD, 140));
+	g_cbEdges = new Checkbox (rx + 14, py + Y_CB, 184, 24, TR ("Log its edges"), false, on_edges, uk_mix (C_BG, C_FIELD, 140));
 	g_cbEdges->tip = TR ("Its rising and falling edges, with their time, in the Edges tab");
 	root.addChild (g_cbEdges);
-	g_cbWatch = new Checkbox (rx + 200, py + 150, 260, 24, TR ("Show in the timing chart"), true, on_watch, uk_mix (C_BG, C_FIELD, 140));
+	g_cbWatch = new Checkbox (rx + 200, py + Y_CB, 260, 24, TR ("Show in the timing chart"), true, on_watch, uk_mix (C_BG, C_FIELD, 140));
 	root.addChild (g_cbWatch);
 
 	const char *const TABS[3] = { TR ("Timing Chart"), TR ("I2C Bus"), TR ("Edges") };
-	int ty = BANNER + 6 + 214 + 12;
+	int ty = BANNER + 6 + PANEL_H + Y_TABS;
 	g_tabs = new SegmentedControl (rx, ty, 360, 28, TABS, 3, g_tab, on_tab);
 	root.addChild (g_tabs);
 	g_btPause = new Button (W - 12 - 90, ty, 90, 28, TR ("Pause"), on_pause);
@@ -1426,14 +1467,15 @@ int main (void)
 	g_btOled = new Button (W - 12 - 90 - 8 - 130, ty, 130, 28, TR ("Test Display"), on_oled);
 	g_btOled->tip = TR ("Send a test picture to an SSD1306 display found at 0x3C / 0x3D");
 	root.addChild (g_btOled);
-	int vy = ty + 38, vh = H - vy - 40;
+	int vy = ty + TABS_H, vh = H - vy - FOOT;
 	g_chart = new ChartView (rx, vy, rw, vh);  root.addChild (g_chart);
 	g_i2c = new I2CView (rx, vy, rw, vh);      root.addChild (g_i2c);
 	g_edges = new EdgeView (rx, vy, rw, vh);   root.addChild (g_edges);
 
 	// the view: the pins, or the code (the mini IDE)
 	const char *const VIEWS[2] = { TR ("Pins"), TR ("Code") };
-	g_viewSw = new SegmentedControl (W - 12 - (g_pk ? 150 : 192), 10, g_pk ? 150 : 192, 30, VIEWS, 2, 0, on_view);
+	g_viewSw = new SegmentedControl (W - 12 - (g_pk ? 150 : 192), g_pk ? 5 : 10, g_pk ? 150 : 192, 30, VIEWS, 2, 0, on_view);
+	if (g_pk) uk_segmented_nav (g_viewSw);		// (pocket: the window's tabs -- L is the header's drawer, R steps Pins -> Code -> Pins)
 	g_viewSw->tip = TR ("Pins: drive them by hand. Code: write a BASIC program and watch it drive them.");
 	root.addChild (g_viewSw);
 	{
@@ -1451,7 +1493,7 @@ int main (void)
 		g_speed = new Slider (x, cy, wSlider, 30, 1, 10, 6, cb_speed, root.bg);
 		g_speed->tip = TR ("How fast the lines run (each lit as it runs); full: as fast as it can"); root.addChild (g_speed);
 		g_ddEx = new Dropdown (ddx, cy, exW, 30, g_exNames, NEX, 0, cb_example); root.addChild (g_ddEx);
-		int conH = 150, ey = cy + 40, eh = H - 40 - ey - conH - 8;
+		int conH = g_pk ? 110 : 150, ey = cy + 40, eh = H - FOOT - ey - conH - 8;
 		g_ed = new CodeEdit (rx, ey, rw, eh);
 		g_ed->mono = g_mono; g_ed->ui = ft_uikit_face ();
 		g_ed->isKeyword = [] (const char *w, int n) -> bool {
@@ -1502,6 +1544,7 @@ int main (void)
 		g_side->setContent (headPane);
 		g_side->setName (TR ("Header"));
 		root.addChild (g_side);
+		pocket_hints ();			// (the hint line: the views are laid out again above it)
 	}
 	if (g_view == 1) g_ed->setFocus (); else if (g_pk) ((Widget *) g_modes)->setFocus (); else g_header->setFocus ();
 	root.setResizable (true);

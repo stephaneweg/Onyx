@@ -721,7 +721,11 @@ folders, FM Tracker's and the PDF Viewer's panels, the levels of Circuits and Tu
 and close that drawer: **L the left one, R the right one** (the Icon Editor's colours; a window's only panel: either
 key). **The band names a window's drawers beside their buttons** -- `L Levels` after *Menu*, `Colours R` before the
 status icons, lit while the drawer is open; a closed drawer shows nothing on the window's edge (its tab comes back
-when a mouse is plugged in and moved: it is a pointer's target). An open drawer has the keys (its list's, its fields'), Esc closes it and gives them back to what had them. In pocket mode under 800 px wide the Control
+when a mouse is plugged in and moved: it is a pointer's target). **In a window that has tabs too, a left drawer keeps
+L and R steps the tabs, round** (GPIO Lab: L its header, R *Pins → Code → Pins*). **The hint line**: where a view has keys of its own, a black line at
+the window's foot says them with the device's buttons — `✚ point  Ⓐ press  [F5] Check` — and changes with what the
+view is doing; a mode is named first, in a blue pill (PUT, MOVE, STEP, SIMULATOR). Mail, Circuits, Turtle Quest,
+GPIO Lab and Letters have it. An open drawer has the keys (its list's, its fields'), Esc closes it and gives them back to what had them. In pocket mode under 800 px wide the Control
 Panel shows one thing at a time: its list, then an applet whole with a "< Control Panel" bar; **Mail** is three
 screens there (its folders, a folder's messages, a message: §Mail). In a game or an emulator the pad's buttons are the game's only (nothing is typed). The Terminal, in the pocket
 mode's dark look, draws its text in a TrueType face (DejaVu Sans Mono 15: 69 × 22 on a 640 × 480 screen);
@@ -2852,6 +2856,9 @@ header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same En
 ![Letters](../screenshots/letters.png)
 *Letters with its sample document (`SD:/docs/letters-tour.rtf`): its table of contents, a word selected, the toolbar showing its style, font and size.*
 
+**In the pocket mode** a **hint line** at the window's foot says the keys every window of tools and a page has: **F6**
+the tools, **Alt + D-pad** scrolls, **CMD** the Menu.
+
 **In a small window** (the pocket and console modes: a handheld's 640 × 480) the two toolbars are **one row**: the
 tools that matter most stay -- Save, Undo, the style, the size, bold / italic / underline, then Open, Redo, Find,
 the colour, the alignments while there is room --, the font list shrinks then becomes an **F** that still opens it,
@@ -4135,6 +4142,11 @@ screens, one at a time**, made for the keys alone (no mouse):
    put a ring on its buttons one after the other (an earlier message folded, the sender, reply, reply all,
    forward, the star, *Show the pictures*, an attachment), **Enter** uses the ringed one.
 
+In the reply's field **Enter** (A) sends what was typed. The message's text is 15 px with 22 px lines, its title
+20 px. **The hint line** at the foot says each screen's keys (the folders: move, open, Ctrl+N to write; the list:
+move, open, back, L / R the folder, typing searches; the message: scroll, the buttons, use, back; writing:
+Ctrl+Enter sends, Tab the next field).
+
 **Esc** (a pad's **B**) goes back one screen each time. The bar under the band says where one is: at its
 left **‹** and the screen Esc goes back to (*‹ Mail*, *‹ Inbox*), then the folder's name or whom the
 message is from; at its right that screen's tools (the list's: All / Unread, a pen for a new message, the
@@ -5391,8 +5403,11 @@ Arguments: `--sim`, `--demo`, `--tab chart | i2c | edges`, `--code` (the Code vi
 **Space** switches an output, **Enter** or **Esc** closes it — and the pin's panel, the charts or the Code view take the
 window's width. Out of the drawer the arrows move the focus over the panel's controls (**Left / Right** inside a row of
 choices: the pin's mode, *Pins / Code*, *Timing Chart / I2C Bus / Edges*; Enter or Space on a button or a box), Space
-still sets the chosen output high or low. Known there: the I2C map shows its first rows only (the list of what was
-found beside it is whole).
+still sets the chosen output high or low. ***Pins / Code* are the window's tabs: R** (Ctrl + Page Down) goes from one
+to the other, round, **L** stays the header's. The status line under the views is whole (two lines when it needs
+them); what drives the pins (**SIMULATOR**, **PI HEADER**) is the pill of the **hint line** at the foot, followed by
+the view's keys (L header, R Code, the D-pad a control, Space the level of an output, F5 run; while a program runs:
+B stops it). Known there: the I2C map shows its first rows only (the list of what was found beside it is whole).
 
 ![](compact-shell/real/pocketterm/pt-gpiolab-640.png)
 
@@ -5506,7 +5521,13 @@ gate: taken (the arrows move it, Enter puts it down; Del deletes it); on an outp
 Enter on an input pin lays it; Enter on a fed input picks its wire up); with a gate armed (**1** to **6**): put there.
 Esc cancels. **On a small pocket screen (under 800 px wide: 640 × 480)** the levels are a **drawer** — **L** (Ctrl +
 Page Up) opens and closes it, **Up / Down** go from level to level, **Enter** closes it — and the board has their room;
-Undo and Redo leave the palette when it is narrow (Ctrl+Z, Ctrl+Y, the Menu).
+Undo and Redo leave the palette when it is narrow (Ctrl+Z, Ctrl+Y, the Menu). The gates stay in the palette (**1** to
+**6**, or **F6** then Left / Right and Enter). **The hint line** at the foot says the keys of the moment: on the board
+*point, press, 1-6 a gate, F5 Check, F8 Step, F2 Hint*; a gate armed **PUT** (place, put, cancel); a gate taken
+**MOVE**; a wire begun **WIRE**; **STEP** in the step mode (F8 the next depth, F9 the start, F7 live); a card (A goes
+on, B closes). There the level's card and the message under the board are dark surfaces (the level's number alone in
+blue), the board keeps its colours, the truth table and the gate count start at the same left edge, and the lesson
+and the result cards are shown whole in the window's middle.
 
 ![](compact-shell/real/pocketterm/pt-circuits-640.png)
 
@@ -6778,7 +6799,9 @@ heading, a space: water. A pack that breaks the gems' or the portals' rule is re
 **drawer**: **L** (Ctrl + Page Up) opens and closes it — in it **Up / Down** go from level to level, **Left / Right**
 from pack to pack, **Enter** closes it — and the program and the board share the window. The keys are the program's
 (the editor's); Run, Step, Stop and Reset are F5, F8, F7 and F9 and in the **Menu** (CMD or F10: *Game*), as the
-lesson and the hint. Known there: the **level editor**'s panel (Ctrl+E) is taller than a 480 px screen and its tools
+lesson and the hint — **the hint line** at the foot says them (and **RUNNING** or **STEP** while the program runs or
+is stepped). Run, Step, Stop, Reset and the speed's slider are one row; the program's box shows whole lines; the
+level's card and the message are dark surfaces (the level's number in blue), the board keeps its colours. Known there: the **level editor**'s panel (Ctrl+E) is taller than a 480 px screen and its tools
 and the board are worked with a pointer — on such a device, levels are made on another screen.
 
 ![](compact-shell/real/pocketterm/pt-turtle-640.png)

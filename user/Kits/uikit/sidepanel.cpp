@@ -291,6 +291,7 @@ namespace { bool sp_step (Widget *w, int dir)	// (Prev / Next -- L / R, Ctrl + P
 	SidePanel *p = (SidePanel *) w;
 	SpExt *e = sp (p);
 	bool again = dir == 2 || dir == -2;			// (asked a second time: no other owner took the key)
+	bool first = dir == 3 || dir == -3;			// (asked before the tabs: a drawer's own key -- its side's)
 	dir = dir > 0 ? 1 : -1;
 	int places = 0;
 	for (int i = 0; i < e->n; i++) if (sp_pickable (e->items[i]) && !(e->items[i].flags & (UK_SPI_ACTION | UK_SPI_SEPARATOR))) places++;
@@ -302,10 +303,11 @@ namespace { bool sp_step (Widget *w, int dir)	// (Prev / Next -- L / R, Ctrl + P
 		int pres = p->presentation ();
 		if (pres != UK_SP_DRAWER && pres != UK_SP_SLIDEOVER && pres != UK_SP_SHEET) return false;
 		if (((e->side == UK_SP_LEFT) != (dir < 0)) && !again) return false;
+		if (first && e->side != UK_SP_LEFT) return false;	// (before the tabs: the LEFT drawer's L only -- a window of tabs with an inspector at its right keeps R for its tabs)
 		p->open (!p->isOpen ());
 		return true;
 	}
-	if (again) return false;
+	if (again || first) return false;
 	int cur = sp_index (e, e->sel);
 	int from = cur >= 0 ? cur : dir > 0 ? -1 : 0;
 	for (int k = 1; k <= e->n; k++)
@@ -412,6 +414,7 @@ static void sp_sync (SidePanel *p, SpExt *e)
 static void sp_rect (SidePanel *p, SpExt *e, int pres, int side, int *x, int *y, int *w, int *h)
 {
 	int pw = p->parent ? p->parent->width : e->homeW, ph = p->parent ? p->parent->height : e->homeH;
+	ph -= internal::hint_room (p->parent);			// (the window's hint line stays in sight under an open drawer)
 	*x = e->homeL; *y = e->homeT; *w = e->homeW; *h = e->homeH;
 	switch (pres)
 	{

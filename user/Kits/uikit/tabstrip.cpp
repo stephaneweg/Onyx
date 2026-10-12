@@ -32,7 +32,7 @@ const int MORE_W = 30;
 bool tab_step (Widget *w, int dir)		// (the console's L1 / R1)
 {
 	TabStrip *t = (TabStrip *) w;
-	if (t->count () < 2) return false;
+	if (t->count () < 2 || dir == 3 || dir == -3) return false;	// (3: the drawers' turn -- uikit/adapt.cpp nav_step)
 	t->selectNext (dir, true);
 	return true;
 }

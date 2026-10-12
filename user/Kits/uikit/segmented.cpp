@@ -2,6 +2,7 @@
 // uikit/segmented.cpp -- SegmentedControl (uikit/segmented.h): one rounded field, its segments split by
 // etched lines, the chosen one the accent's (rounded only at the pill's ends).
 //
+#include "uikit/internal/adapt_int.h"
 #include "uikit/segmented.h"
 
 namespace uikit {
@@ -119,6 +120,37 @@ bool SegmentedControl::onKey (long k)
 	while (i >= 0 && i < m_n && m_off[i]) i += d;
 	if (i >= 0 && i < m_n) select (i, true);
 	return true;
+}
+
+// ---- the window's tabs (uikit/segmented.h) ---------------------------------------------------------------------------
+namespace {
+bool seg_step (Widget *w, int dir)
+{
+	SegmentedControl *s = (SegmentedControl *) w;
+	int n = s->count ();
+	if (n < 2 || s->disabled || dir == 3 || dir == -3) return false;	// (3: the drawers' turn -- uikit/adapt.cpp nav_step)
+	int d = dir < 0 ? n - 1 : 1, i = s->selected < 0 ? 0 : s->selected;
+	for (int k = 0; k < n; k++)
+	{
+		i = (i + d) % n;
+		if (i == s->selected) return false;
+		int before = s->selected;
+		s->select (i, true);				// (a segment that is off refuses: the next one)
+		if (s->selected != before) return true;
+	}
+	return false;
+}
+}
+
+void uk_segmented_nav (SegmentedControl *s, bool on)
+{
+	if (s == 0) return;
+	if (!on) { internal::nav_unregister (s); return; }
+	internal::ExtHead *h = internal::ext_head (s);
+	if (h == 0) { h = new internal::ExtHead (); internal::ext_set (s, h, internal::EXT_PLAIN); }
+	if (h->kind == internal::EXT_PLAIN && h->destroy == 0)	// (its end: no longer an owner of the keys)
+		h->destroy = [] (internal::ExtHead *x) { internal::nav_unregister (x->owner); delete x; };
+	internal::nav_register (s, 2, seg_step);
 }
 
 } // namespace uikit

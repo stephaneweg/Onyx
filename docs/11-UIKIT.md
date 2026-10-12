@@ -73,7 +73,7 @@ UIKit is the interface: the windows and their frames, the widgets, the dialogs, 
 |---|---|
 | Include | `#include "uikit/uikit.h"` |
 | Link | `lib/uikit.imp.a` |
-| Library | `SD:/lib/uikit.so` — 956 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
+| Library | `SD:/lib/uikit.so` — 964 entries in its table (`user/Kits/uikit/uikit.abi`, append-only) |
 | Sources | `user/Kits/uikit/` |
 
 ## Using it
@@ -444,6 +444,9 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_focus_move` | The focus moved from the focused control of root's tree to the nearest focusable one in that direction (dx, dy | `adapt.h` |
 | `uk_nav_key` |  | `adapt.h` |
 | `uk_input_turn` | A program with a loop of its own (pump_events, no Root::run / step) calls this each turn | `adapt.h` |
+| `uk_keys_drive` | pocket and console: the keys (a d-pad) may be all there is -> true | `adapt.h` |
+| `uk_keypointer_move` | An arrow moved the pointer by `step` px inside (x0, y0)-(x1, y1) -> true (the first time | `adapt.h` |
+| `uk_keypointer_draw` | a ring and a cross at its place (held: filled) | `adapt.h` |
 | `icon_load` | The picture of a file (new[] | `bmp.h` |
 | `bmp_decode` | (the name the programs knew | `bmp.h` |
 | `Calendar` | uikit/calendar.h -- Calendar | `calendar.h` |
@@ -524,6 +527,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `uk_pad_glyph` | A button's glyph, h px high, at (x, y) -> its width (measure | `padhint.h` |
 | `uk_pad_key` | A key's cap (a keyboard's equivalent | `padhint.h` |
 | `uk_pad_hints` | The line of hints at (x, y), h px high, the words in `ink` -> its width (measure | `padhint.h` |
+| `uk_hint_line` |  | `padhint.h` |
+| `uk_hint_line_height` |  | `padhint.h` |
 | `uk_paint_alpha` | The alpha mode | `paint.h` |
 | `uk_blend_px` | One pixel of c at opacity a (0..255) over what the canvas holds (the alpha mode heeded). | `paint.h` |
 | `uk_tone` | the grey profile: 128 = c, 255 = white, 0 = black | `paint.h` |
@@ -567,6 +572,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `RichTextBox` | (a type) | `richtextbox.h` |
 | `Scrollbar` | uikit/scrollbar.h -- draggable thumb (vertical or horizontal), value in [0,vmax]. | `scrollbar.h` |
 | `SegmentedControl` | uikit/segmented.h -- SegmentedControl | `segmented.h` |
+| `uk_segmented_nav` | A SegmentedControl that switches the window's views (Pins / Code) IS its tabs | `segmented.h` |
 | `SpIconFn` | The app's icons | `sidepanel.h` |
 | `SidePanel` | (a type) | `sidepanel.h` |
 | `uk_tint` | Multiply a 0x00RRGGBB pixel by a 0x00RRGGBB tint (per channel /255). | `skin.h` |
@@ -1825,6 +1831,29 @@ A program with a loop of its own (pump_events, no Root::run / step) calls this e
 void uk_input_turn (Root *root);
 ```
 
+### the keys' pointer (pocket, console: no mouse)
+
+A view worked with the pointer -- a board where parts are put and wired, a header's pins, a drawing -- gets a pointer of its own that the ARROWS move while the view has the keys (Shift: four steps at a time) and that Enter (a pad's A) presses: the view's onKey calls uk_keypointer_move, then gives itself the pointer's place as it would a mouse's (its own onMouse: Enter = the button down then up -- or held while it says a drag goes on), and its onDraw ends with uk_keypointer_draw. Used where there is no mouse (uk_keys_drive ()); the desktop never shows it.
+
+```
+  bool Board::onKey (long k) {
+    if (!uk_keys_drive ()) return false;
+    if (uk_keypointer_move (kp, k, cell, 0, 0, width - 1, height - 1)) { onMouse (kp.x, kp.y, kp.held, 0, 0, 0); return true; }
+    if (k == KEY_ENTER) { ...press at (kp.x, kp.y), release at once unless a drag began: kp.held = true... }
+```
+
+```cpp
+struct UkKeyPointer { int x = -1, y = -1; bool held = false; };
+bool uk_keys_drive ();			// pocket and console: the keys (a d-pad) may be all there is -> true
+```
+
+An arrow moved the pointer by `step` px inside (x0, y0)-(x1, y1) -> true (the first time: put at the middle).
+
+```cpp
+bool uk_keypointer_move (UkKeyPointer &p, long key, int step, int x0, int y0, int x1, int y1);
+void uk_keypointer_draw (Canvas &cv, const UkKeyPointer &p);	// a ring and a cross at its place (held: filled)
+```
+
 ### the console's shoulders
 
 L1 / R1 (on a keyboard: Ctrl+Page Up / Ctrl+Page Down) step through the window's tabs, else through its navigation SidePanel's sections; L2 / R2 (Page Up / Page Down) page a list. The pad's buttons are given these keys by the console's shell (phase P9).
@@ -2730,6 +2759,21 @@ The line of hints at (x, y), h px high, the words in `ink` -> its width (measure
 int uk_pad_hints (Canvas &cv, int x, int y, int h, const UkPadHint *hints, int n, unsigned ink, bool measure = false);
 ```
 
+THE HINT LINE (pocket and console; the desktop has none): a 30 px line at the window's foot that says the keys the view -- or a mode of it -- has of its own, with the device's glyphs: "[+] move  (A) put  [F5] Check". The app gives its hints (copied: 8 at most; those that do not fit the width are left out from the end) each time they change; `mode` is a mode's name shown first, as a pill ("MOVE", "CROP": the only place a mode is announced). n = 0: no line. -> the height the line takes at the window's foot (30; 0: none, and always 0 on the desktop, where nothing is made): the app's layout leaves it. uk_hint_line_height: what it takes now.
+
+```
+  int foot = uk_hint_line (&root, H, 3);            // in the app's layout: ... root.height - foot ...
+```
+
+hints = 0 with n = UK_HINTS_STANDARD: what every window of tools and a page has -- "[F6] tools  [Alt][+] scroll [CMD] Menu" -- in UIKit's own words (an app with no key of its own but these).
+
+```cpp
+class Root;
+enum { UK_HINTS_STANDARD = -1 };
+int uk_hint_line (Root *root, const UkPadHint *hints, int n, const char *mode = 0);
+int uk_hint_line_height (Root *root);
+```
+
 ## `uikit/paint.h`
 
 uikit/paint.h -- the procedural painter of the desktop's look: no skin bitmap, everything drawn by code from a few theme colours (uikit/theme.h), integer arithmetic only (the apps build with -mgeneral-regs-only).
@@ -3161,6 +3205,12 @@ private:
 };
 ```
 
+A SegmentedControl that switches the window's views (Pins / Code) IS its tabs: Prev / Next (L / R, Ctrl + Page Up / Down) step it, round, as they step a TabStrip (uikit/adapt.h; in pocket and console a left drawer keeps L: R then goes round them). on = false: no longer.
+
+```cpp
+void uk_segmented_nav (SegmentedControl *s, bool on = true);
+```
+
 ## `uikit/sidepanel.h`
 
 uikit/sidepanel.h -- SidePanel: a side panel that says what it is -- a NAVIGATION list at the left (the places of a library, the mailboxes, the modules) or an INSPECTOR at the right (a layers' list, the properties) -- so that each UIKit shows it as its mode wants (docs/POCKETUI-TECH-STUDY.md section 6.8, phase P6; docs/03 "The adaptive widgets"):
@@ -3194,7 +3244,8 @@ MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. P
 enum { UK_SP_LEFT = 0, UK_SP_RIGHT = 1 };				// the side
 enum { UK_SP_NAVIGATION = 0, UK_SP_INSPECTOR = 1 };			// the role
 enum { UK_SP_FULL = 0, UK_SP_RAIL, UK_SP_DRAWER, UK_SP_SLIDEOVER, UK_SP_SHEET, UK_SP_COLUMN, UK_SP_HIDDEN };	// presentation ()
-enum { UK_SPI_HEADING = 1, UK_SPI_FOLDABLE = 2, UK_SPI_DISABLED = 4, UK_SPI_SEPARATOR = 8, UK_SPI_FOLDED = 16 };	// an item's flags
+enum { UK_SPI_HEADING = 1, UK_SPI_FOLDABLE = 2, UK_SPI_DISABLED = 4, UK_SPI_SEPARATOR = 8, UK_SPI_FOLDED = 16,
+       UK_SPI_ACTION = 32 };		// (an action, not a place -- "Add Folder...": a click only, Prev / Next pass it)	// an item's flags
 enum { UK_SP_TOGGLE_ON = -2, UK_SP_TOGGLE_OFF = -3 };		// the icon ids an icon function gets for a toggle
 ```
 
@@ -3261,6 +3312,10 @@ public:
 	void setWidths (int minW, int prefW, int maxW);		// the desktop: a splitter's range; prefW the panel's width
 	// false: never a rail -- in pocket's landscape a navigation panel whose labels matter (a settings list) stays whole
 	void setRail (bool allowed);
+	// Its name when it is a drawer (pocket, console; 12 characters shown at most; copied): the shell's band writes it
+	// beside the button that opens it -- "L Levels" at the left, "Inspector R" at the right --, lit while it is open.
+	// Not named: "Panel" (a navigation panel), "Inspector". A closed drawer shows NO tab until a pointer exists.
+	void setName (const char *name);
 	int  presentation ();				// UK_SP_* now (the desktop: UK_SP_FULL)
 	int  reservedWidth ();				// what the app leaves for it at its side now (a rail: its width; 0: overlaid)
 	void open (bool on);				// a drawer, a slide-over, a sheet opened / closed (the rail: expanded)
@@ -3703,6 +3758,10 @@ public:
 	// list: the widget draws itself for the width it is given -- resizeTo) once the tools of a lower priority have
 	// left. In the "»" panel and on the desktop it has its own width again.
 	void setFlex (Widget *w, int minW, int foldW = 0);
+	// A tool the app takes off the bar for now (a gate this level does not allow), and puts back: the desktop hides
+	// it (w->hidden, as an app did itself); compact, the row is laid out without it and the "»" panel does not have
+	// it -- hiding it there by hand did nothing: the bar's layout shows every tool it places.
+	void setShown (Widget *w, bool shown);
 	void foldInto (ToolBar *first);	// this second row's tools join first's row when compact (this one then hidden)
 	int  rows () const;			// the rows the bar takes now: the desktop 1 + the bars folded into it; else 1
 						// (a bar folded into another: 0 when compact)

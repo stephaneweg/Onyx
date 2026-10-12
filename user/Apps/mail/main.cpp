@@ -407,7 +407,7 @@ public:
 		{
 			const Conv &c = v.convs[i];
 			int g = day_group (c.date);
-			if (g != lastG) { lastG = g; if (y > head () - 30 && y < height) text (canvas, 16, y + 10, GROUPS[g], col_dim (), F_TINY, 1); y += 30; }
+			if (g != lastG) { lastG = g; if (y > head () - 30 && y < height) text (canvas, 16, y + (g_three ? 8 : 10), GROUPS[g], col_dim (), g_three ? F_SMALL : F_TINY, 1); y += 30; }	// (pocket: 11 px bold -- 9 px is under 1 mm there)
 			if (y + ROW_H > head () && y < height) draw_row (i, y, W);
 			hits.add (0, y, W, ROW_H, L_ROW, i);
 			y += ROW_H + 2;
@@ -609,8 +609,27 @@ public:
 // Pocket's three screens laid out: every part takes the window under the bar, ONE is shown. The folders' screen is
 // the SidePanel itself, whole across the window (no rail: its labels are the screen); behind the list it stays "shown"
 // beside the window, out of sight and off, so that L / R (Prev / Next) still step the folders from the list.
+// The hint line at the window's foot: the keys of the screen shown.
+static int three_hints ()
+{
+	static UkPadHint H[6]; int n = 0;
+	switch (three_screen ())
+	{
+	case SC_FOLDERS: H[n++] = { "|", TR ("folder") }; H[n++] = { "A", TR ("open") }; H[n++] = { "[Ctrl+N]", TR ("write") }; break;
+	case SC_LIST: H[n++] = { "|", TR ("message") }; H[n++] = { "A", TR ("open") }; H[n++] = { "B", TR ("back") }; H[n++] = { "LR", TR ("folder") }; H[n++] = { "[abc]", TR ("search") }; break;
+	case SC_MESSAGE:
+		if (g_read->quick->hasFocus) { H[n++] = { "A", TR ("send the reply") }; H[n++] = { "|", TR ("the message") }; H[n++] = { "B", TR ("back") }; }
+		else { H[n++] = { "|", TR ("scroll") }; H[n++] = { "-", TR ("buttons") }; H[n++] = { "A", TR ("use") }; H[n++] = { "B", TR ("back") }; }
+		break;
+	case SC_COMPOSE: H[n++] = { "[Ctrl+Enter]", TR ("send") }; H[n++] = { "[Tab]", TR ("next field") }; H[n++] = { "B", TR ("leave") }; break;
+	case SC_CONTACTS: H[n++] = { "B", TR ("back") }; break;
+	case SC_WELCOME: H[n++] = { "A", TR ("add an account") }; break;
+	}
+	return uk_hint_line (g_root, H, n);
+}
 static void layout_three (int W, int H)
 {
+	H -= three_hints ();					// (the hint line: the screens end above it)
 	int s = three_screen ();
 	if (s == SC_MESSAGE && g_conv < 0) s = g_level = SC_LIST;	// (the message is gone: its list)
 	g_onePane = g_oneConv = false;
@@ -1177,6 +1196,7 @@ public:
 			int s = three_screen ();
 			if (k == 27 && s != SC_FOLDERS && s != SC_WELCOME) { three_back (); return true; }	// Esc, B: one screen back
 			if (k == KEY_ENTER && s == SC_WELCOME) { open_wizard (); return true; }
+			if (k == KEY_ENTER && s == SC_MESSAGE && g_read->quick->hasFocus && g_read->quick->text[0]) { quick_send (); return true; }	// (A in the reply's field sends it)
 			// the keys while a field has them (the search over the list it found): the arrows and Enter are the list's
 			if (s == SC_LIST && !g_list->hasFocus && (k == KEY_DOWN || k == KEY_UP || k == KEY_ENTER)) { g_list->setFocus (); return g_list->onKey (k); }
 		}
@@ -1185,6 +1205,7 @@ public:
 	void onTick () override
 	{
 		g_tick = kapi_get_ticks ();
+		if (g_three) { int was = uk_hint_line_height (this); if (three_hints () != was) layout_parts (); }	// (the screen's keys, at the foot)
 		g_m.tick ();
 		g_compose->tick ();
 		g_contacts->tick ();
@@ -1265,6 +1286,10 @@ int main (void)
 	MailRoot root (1000, 640);
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	{							// (pocket on a small screen: a message's title 20 px, not 24)
+		int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
+		if (uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800 && g_face[F_H1]) g_face[F_H1]->open ("DejaVu Sans", 20);
+	}
 	root.setResizable (true);
 	root.setBg (C_BG);
 	g_tb = new ToolBar (0, 0, 1000, TB_H); root.addChild (g_tb);

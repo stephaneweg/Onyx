@@ -7,6 +7,9 @@
 #include "uikit/paint.h"
 #include "uikit/theme.h"
 #include "uikit/text.h"
+#include "uikit/root.h"
+#include "uikit/lang.h"
+#include "uikit/internal/adapt_int.h"
 
 namespace uikit {
 
@@ -91,6 +94,107 @@ int uk_pad_hints (Canvas &cv, int x, int y, int h, const UkPadHint *hints, int n
 		if (i + 1 < n) x += 14;
 	}
 	return x - x0;
+}
+
+// ---- the hint line (uikit/padhint.h): a widget of UIKit's own at the foot of the app's window ------------------------
+namespace {
+enum { HL_MAX = 8, HL_H = 30, HL_ROOTS = 8 };
+struct HintBar;
+struct { Root *root; HintBar *bar; } s_bars[HL_ROOTS];
+struct HintBar : public Widget
+{
+	char	  glyphs[HL_MAX][24], words[HL_MAX][48], mode[24];
+	UkPadHint h[HL_MAX];
+	int	  n;
+	HintBar () : Widget (0, 0, 16, HL_H), n (0) { mode[0] = 0; anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM; }
+	~HintBar () { for (int i = 0; i < HL_ROOTS; i++) if (s_bars[i].bar == this) { s_bars[i].bar = 0; s_bars[i].root = 0; } }
+	unsigned bgColor () override { return UK_FLAT ? 0x00000000u : C_MENUBAR; }
+	void onDraw () override
+	{
+		canvas.fillRect (0, 0, width, height, bgColor ());
+		canvas.fillRect (0, 0, width, 1, UK_FLAT ? (unsigned) UK_N_LINE : uk_mix (C_MENUBAR, C_TEXT, 60));
+		int x = 14, y = (height - 18) / 2 + 1;
+		if (mode[0])
+		{
+			int w = uk_tw (mode, 2) + 16;
+			uk_rbox (canvas, x, y, w, 18, 5, C_ACCENT, C_ACCENT);
+			uk_text_c (canvas, x, y, w, 18, mode, 0x00FFFFFFu, 2);
+			x += w + 14;
+		}
+		int k = n;					// (what does not fit is left out, from the end)
+		while (k > 1 && x + uk_pad_hints (canvas, 0, 0, 18, h, k, 0, true) > width - 10) k--;
+		if (k > 0) uk_pad_hints (canvas, x, y, 18, h, k, UK_FLAT ? (unsigned) UK_N_TEXT2 : C_TEXT);
+	}
+};
+HintBar *bar_of (Root *r)
+{
+	for (int i = 0; i < HL_ROOTS; i++) if (s_bars[i].root == r) return s_bars[i].bar;
+	return 0;
+}
+void copy (char *d, const char *s, int cap) { int k = 0; for (; s && s[k] && k < cap - 1; k++) d[k] = s[k]; d[k] = 0; }
+bool same (const char *a, const char *b) { int k = 0; for (; a[k] && b && a[k] == b[k]; k++) ; return a[k] == (b ? b[k] : 0); }
+}
+
+int uk_hint_line_height (Root *root)
+{
+	HintBar *b = bar_of (root);
+	return b != 0 && !b->hidden ? HL_H : 0;
+}
+
+int uk_hint_line (Root *root, const UkPadHint *hints, int n, const char *mode)
+{
+	if (root == 0 || !internal::ring_on ()) return 0;	// (the desktop: no line, nothing made)
+	HintBar *b = bar_of (root);
+	UkPadHint std3[3] = { { "[F6]", TR ("tools") }, { "[Alt]+", TR ("scroll") }, { "[CMD]", TR ("Menu") } };
+	if (hints == 0 && n == UK_HINTS_STANDARD) { hints = std3; n = 3; }
+	if (n <= 0 || hints == 0)
+	{
+		if (b != 0 && !b->hidden) { b->hidden = true; root->invalidate (true); }
+		return 0;
+	}
+	if (b == 0)
+	{
+		int slot = -1;
+		for (int i = 0; i < HL_ROOTS && slot < 0; i++) if (s_bars[i].root == 0) slot = i;
+		if (slot < 0) return 0;
+		b = new HintBar ();
+		s_bars[slot].root = root; s_bars[slot].bar = b;
+		root->addChild (b);
+	}
+	if (n > HL_MAX) n = HL_MAX;
+	bool changed = b->hidden || n != b->n || !same (b->mode, mode ? mode : "");
+	for (int i = 0; i < n && !changed; i++) changed = !same (b->glyphs[i], hints[i].glyphs) || !same (b->words[i], hints[i].word);
+	if (changed)
+	{
+		b->n = n; copy (b->mode, mode, sizeof b->mode);
+		for (int i = 0; i < n; i++)
+		{
+			copy (b->glyphs[i], hints[i].glyphs, sizeof b->glyphs[i]); copy (b->words[i], hints[i].word, sizeof b->words[i]);
+			b->h[i].glyphs = b->glyphs[i]; b->h[i].word = b->words[i];
+		}
+		b->hidden = false;
+		b->invalidate (true);
+	}
+	internal::hint_fit (root);
+	return HL_H;
+}
+
+int internal::hint_room (Widget *parent)
+{
+	for (int i = 0; i < HL_ROOTS; i++)
+		if (s_bars[i].root != 0 && (Widget *) s_bars[i].root == parent && s_bars[i].bar != 0 && !s_bars[i].bar->hidden) return HL_H;
+	return 0;
+}
+
+// The line kept at the window's foot, on its whole width (a window resized: Root's turn, uikit/adapt.cpp).
+void internal::hint_fit (Root *root)
+{
+	HintBar *b = bar_of (root);
+	if (b == 0 || b->hidden) return;
+	if (b->left == 0 && b->top == root->height - HL_H && b->width == root->width) return;
+	b->left = 0; b->top = root->height - HL_H;
+	if (b->width != root->width) b->resizeTo (root->width, HL_H);
+	b->invalidate (true); root->invalidate (true);
 }
 
 } // namespace uikit

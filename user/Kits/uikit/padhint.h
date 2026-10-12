@@ -30,6 +30,20 @@ struct UkPadHint { const char *glyphs; const char *word; };
 // The line of hints at (x, y), h px high, the words in `ink` -> its width (measure: nothing drawn).
 int uk_pad_hints (Canvas &cv, int x, int y, int h, const UkPadHint *hints, int n, unsigned ink, bool measure = false);
 
+// THE HINT LINE (pocket and console; the desktop has none): a 30 px line at the window's foot that says the keys the
+// view -- or a mode of it -- has of its own, with the device's glyphs: "[+] move  (A) put  [F5] Check". The app gives
+// its hints (copied: 8 at most; those that do not fit the width are left out from the end) each time they change;
+// `mode` is a mode's name shown first, as a pill ("MOVE", "CROP": the only place a mode is announced). n = 0: no line.
+// -> the height the line takes at the window's foot (30; 0: none, and always 0 on the desktop, where nothing is
+// made): the app's layout leaves it. uk_hint_line_height: what it takes now.
+//   int foot = uk_hint_line (&root, H, 3);            // in the app's layout: ... root.height - foot ...
+// hints = 0 with n = UK_HINTS_STANDARD: what every window of tools and a page has -- "[F6] tools  [Alt][+] scroll
+// [CMD] Menu" -- in UIKit's own words (an app with no key of its own but these).
+class Root;
+enum { UK_HINTS_STANDARD = -1 };
+int uk_hint_line (Root *root, const UkPadHint *hints, int n, const char *mode = 0);
+int uk_hint_line_height (Root *root);
+
 } // namespace uikit
 
 #endif

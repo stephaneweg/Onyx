@@ -164,3 +164,13 @@ no GPIO on this system (update it, or use the simulator)	pas de GPIO sur ce syst
 not possible on this pin, or a value out of range	impossible sur cette broche, ou une valeur hors limites
 failed	échec
 Header	Connecteur
+PI HEADER	CONNECTEUR DU PI
+pin	broche
+level	niveau
+choose	choisir
+close	fermer
+stop	arrêter
+header	connecteur
+run	lancer
+step	pas à pas
+control	réglage

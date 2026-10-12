@@ -114,3 +114,23 @@ The arrows move the pointer. Enter on the switch's pin starts a wire, Enter on t
 Live: Enter on a switch flips it.	En direct : Entrée sur une entrée la bascule.
 %s: the arrows choose its place, Enter puts it (Esc: cancel).	%s : les flèches choisissent sa place, Entrée la pose (Échap : annuler).
 The arrows to an input pin, then Enter lays the wire (Esc: cancel).	Les flèches jusqu'à une borne d'entrée, puis Entrée pose le fil (Échap : annuler).
+level	niveau
+play it	y jouer
+close	fermer
+go on	continuer
+WIRE	FIL
+to an input pin	vers une broche d'entrée
+plug	brancher
+cancel	annuler
+MOVE	DÉPLACER
+move	déplacer
+put down	poser
+PUT	POSER
+place	placer
+put	poser
+STEP	PAS À PAS
+next depth	niveau suivant
+start	début
+live	direct
+point	viser
+press	appuyer

@@ -33,6 +33,7 @@
 #include "uikit/toolbar.h"
 #include "uikit/sidepanel.h"
 #include "uikit/adapt.h"
+#include "uikit/padhint.h"
 #include "uikit/lang.h"
 #include "fontkit/uikitface.h"
 #include "circuit.h"
@@ -84,6 +85,8 @@ static void level_clicked (int p, int l);
 static void do_next (); static void do_prev ();
 static bool g_pk = false;				// pocket on a small screen (under 800 px wide): the levels a drawer
 static SidePanel *g_side = 0;				// ... that drawer (its content: the list)
+// (pocket's dark look: the cards are surfaces of the theme, colour kept for one accent -- the boards keep their own)
+static bool dark () { return g_pk && uk_flat (); }
 // The engine's refusals in words (TR'd where shown)
 static const char *err_word (Err e)
 {
@@ -297,13 +300,15 @@ static int g_palN = 0;					// the palette's gates shown (palette_setup)
 static void layout ()
 {
 	Root &R = *g_root;
-	int W = R.width, H = R.height;
+	const int PAD = g_pk ? 14 : ::PAD;		// (pocket: 14 px round the window, 8 between the blocks)
+	const int GAP = g_pk ? 8 : 6;
+	int W = R.width, H = R.height - uk_hint_line_height (&R);	// (pocket: the hint line at the window's foot)
 	int listW = W < 920 ? 172 : LISTW;
 	bool low = H < 600;
 	int mid = PAD + listW + PAD, rx = W - PAD - RIGHTW, mw = rx - PAD - mid;
 	if (g_pk)					// (the levels: a drawer over the window -- their column is the board's)
 	{
-		g_side->place (0, 0, 230, H);
+		g_side->place (0, 0, 250, H);
 		mid = PAD + g_side->reservedWidth (); mw = rx - PAD - mid;
 	}
 	else { g_list->left = PAD; g_list->top = PAD; g_list->resizeTo (listW, H - 2 * PAD); }
@@ -316,7 +321,7 @@ static void layout ()
 	g_btLesson->left = compact ? rx + (RIGHTW + 6) / 2 : mid + mw - 90; g_btLesson->top = compact ? PAD : PAD + 10;
 	g_btHint->resizeTo (compact ? (RIGHTW - 6) / 2 : 80, 28); g_btLesson->resizeTo (compact ? (RIGHTW - 6) / 2 : 80, 28);
 	((Widget *) g_lbTable)->hidden = compact;
-	int ty = PAD + ch + 6;
+	int ty = PAD + ch + GAP;
 	g_tb->left = mid; g_tb->top = ty; g_tb->resizeTo (mw, TBH);
 	// Delete, Undo, Redo at the toolbar's right; no room after the palette: Undo and Redo away (Ctrl+Z, Ctrl+Y)
 	int palR = 6 + 40 + 11 + 1 + g_palN * 41 + 6;
@@ -325,7 +330,7 @@ static void layout ()
 	((Widget *) g_btRedo)->left = mw - 40; ((Widget *) g_btUndo)->left = mw - 74;
 	((Widget *) g_btDel)->left = undo ? mw - 112 : mw - 40;
 	g_noGate->resizeTo (((Widget *) g_btDel)->left - g_noGate->left - 4 < 290 ? ((Widget *) g_btDel)->left - g_noGate->left - 4 : 290, 30);
-	int by = ty + TBH + 6, bh = H - PAD - MSGH - 8 - by;
+	int by = ty + TBH + GAP, bh = H - PAD - MSGH - 8 - by;
 	g_board->left = mid; g_board->top = by; g_board->resizeTo (mw, bh);
 	g_msg->left = mid; g_msg->top = H - PAD - MSGH; g_msg->resizeTo (mw, MSGH);
 	g_btNext->left = mid + mw - 140; g_btNext->top = H - PAD - MSGH + 10;
@@ -345,12 +350,20 @@ static void layout ()
 	int cy = g_table->top + g_table->height + 10;
 	g_count->left = rx; g_count->top = cy; g_count->resizeTo (RIGHTW, 66);
 	g_lbMode->left = rx; g_lbMode->top = sy - 22; g_lbMode->resizeTo (RIGHTW, 18);
-	((Widget *) g_lbMode)->hidden = cy + 66 > sy - 22;		// (16 rows at the minimum height: no room)
+	((Widget *) g_lbMode)->hidden = g_pk || cy + 66 > sy - 22;	// (16 rows at the minimum height: no room; pocket: the hint line says it)
 	// the cards, centred over the board
 	int lw = mw - 16 < 500 ? mw - 16 : 500, lh = bh - 16 < 330 ? bh - 16 : 330;
 	g_lesson->left = mid + (mw - lw) / 2; g_lesson->top = by + (bh - lh) / 2; g_lesson->resizeTo (lw, lh); g_lesson->place ();
 	int rw = mw - 16 < 420 ? mw - 16 : 420, rh = bh - 16 < 250 ? bh - 16 : 250;
 	g_result->left = mid + (mw - rw) / 2; g_result->top = by + (bh - rh) / 2; g_result->resizeTo (rw, rh); g_result->place ();
+	if (g_pk)					// (pocket: the board is too low for them -- whole, in the window's middle)
+	{
+		lw = W - 2 * PAD < 500 ? W - 2 * PAD : 500; lh = H - 2 * PAD < 330 ? H - 2 * PAD : 330;
+		g_lesson->left = (W - lw) / 2; g_lesson->top = (H - lh) / 2; g_lesson->resizeTo (lw, lh); g_lesson->place ();
+		rw = W - 2 * PAD < 420 ? W - 2 * PAD : 420; rh = H - 2 * PAD < 250 ? H - 2 * PAD : 250;
+		g_result->left = (W - rw) / 2; g_result->top = (H - rh) / 2; g_result->resizeTo (rw, rh); g_result->place ();
+		g_list->showSel ();			// (the drawer: the level played in sight)
+	}
 	g_list->clamp ();
 	R.invalidate (true);
 }
@@ -567,6 +580,27 @@ static void cb_undo (Widget &) { do_undo (); }
 static void cb_redo (Widget &) { do_redo (); }
 static void cb_del (Widget &) { do_delete (); }
 
+// ---- pocket: the hint line at the window's foot -- the keys the view has of its own, by what it is doing -------------------------
+static void hints ()
+{
+	if (!g_pk) return;
+	static UkPadHint H[6]; int n = 0; const char *mode = 0;
+	if (g_side && g_side->isOpen ()) { H[n++] = { "|", TR ("level") }; H[n++] = { "A", TR ("play it") }; H[n++] = { "L", TR ("close") }; }
+	else if (card_shown ()) { H[n++] = { "A", TR ("go on") }; H[n++] = { "B", TR ("close") }; }
+	else if (g_board->drag == Board::D_WIRE) { mode = TR ("WIRE"); H[n++] = { "+", TR ("to an input pin") }; H[n++] = { "A", TR ("plug") }; H[n++] = { "B", TR ("cancel") }; }
+	else if (g_board->drag != Board::D_NONE) { mode = TR ("MOVE"); H[n++] = { "+", TR ("move") }; H[n++] = { "A", TR ("put down") }; H[n++] = { "B", TR ("cancel") }; }
+	else if (g_armed >= 0) { mode = TR ("PUT"); H[n++] = { "+", TR ("place") }; H[n++] = { "A", TR ("put") }; H[n++] = { "B", TR ("cancel") }; }
+	else if (g_step >= 0) { mode = TR ("STEP"); H[n++] = { "[F8]", TR ("next depth") }; H[n++] = { "[F9]", TR ("start") }; H[n++] = { "[F7]", TR ("live") }; }
+	else
+	{
+		H[n++] = { "+", TR ("point") }; H[n++] = { "A", TR ("press") };
+		if (g_palN > 0) { static char k[8]; snprintf (k, sizeof k, g_palN > 1 ? "[1-%d]" : "[%d]", g_palN); H[n++] = { k, TR ("gate") }; }
+		H[n++] = { "[F5]", TR ("Check") }; H[n++] = { "[F8]", TR ("Step") }; H[n++] = { "[F2]", TR ("Hint") };
+	}
+	int was = uk_hint_line_height (g_root);
+	if (uk_hint_line (g_root, H, n, mode) != was) layout ();
+}
+
 // ---- the menus ----------------------------------------------------------------------------------------------------------------
 static void m_quit () { save_board (); kapi_exit (0); }
 static void m_open ()
@@ -622,6 +656,7 @@ public:
 	void onTick () override
 	{
 		if (g_dirty && kapi_get_ticks () - g_dirtyAt >= 100) save_board ();	// (1 s after the last change)
+		hints ();
 	}
 	void onResized () override { ::layout (); }
 	bool onKey (long k) override
@@ -729,9 +764,10 @@ int main (void)
 		root.addChild (g_side);
 	}
 	root.setResizable (true);
-	if (g_pk) root.setMinSize (480, 320);
+	if (g_pk) { root.setMinSize (480, 320); g_small = open_face (12); g_huge = g_big; }	// (pocket's type scale: 12 the labels, 13, 18)
 	else root.setMinSize (800, 440);		// (a pocket's 800 x 480: the compact layout)
 	build_menu ();
+	hints ();
 	layout ();
 	root.fitWorkArea ();
 	if (g_npacks == 0)
