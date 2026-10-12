@@ -185,6 +185,13 @@ place of the list (the existing properties' panel, made for a tall column: on a 
 rows are under *Delete this step*); the view keeps its pointer's furniture (the cube, the bodies' list, *Edit*
 beside a sketch), which the keys do not reach. 3DForge stays untranslated but for its pocket words.
 
+**L / R by the keys AND by a pad (2026-10-12)** (`pocket640.sh lr`, and Mail's section): in Mail, Circuits, Turtle
+Quest, GPIO Lab, Letters, Slides, QBStudio, Paint, the Package Manager, 3DForge and Setup, L then R pressed as
+Ctrl + Page Up / Down and as a pad's buttons give the same screens. None of these apps reads the pad or the keys of
+L / R by itself: all go through UIKit's rule. The one difference found — in a window with no tab and no drawer
+(Letters) the keys reached the app as Page Up / Down and the pad's buttons did nothing — is closed in UIKit: the
+pad's L / R then page too.
+
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
 applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above

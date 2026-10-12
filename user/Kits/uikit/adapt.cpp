@@ -419,6 +419,9 @@ static void pad_turn (Root *r)
 		bool modal = false;
 		for (Widget *m = r->lastChild; m; m = m->prevSib) if (m->modal) modal = true;
 		if ((a == IN_PREV || a == IN_NEXT) && !modal && nav_step (r, a == IN_PREV ? -1 : 1)) { r->invalidate (true); continue; }
+		// (Prev / Next that no tab, no place, no drawer took: on a keyboard they are Ctrl + Page Up / Down and reach the
+		//  program as Page Up / Down -- a page of its text, of its list; a pad's L / R must do the same)
+		if ((a == IN_PREV || a == IN_NEXT) && !modal) key = a == IN_PREV ? KEY_PGUP : KEY_PGDN;
 		if (key != 0 && r->handleKey (key)) continue;
 		if (ring_on () || key == 0) nav_action (r, a);
 	}

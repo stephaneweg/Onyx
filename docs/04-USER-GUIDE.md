@@ -721,7 +721,7 @@ folders, FM Tracker's and the PDF Viewer's panels, the levels of Circuits and Tu
 and close that drawer: **L the left one, R the right one** (the Icon Editor's colours; a window's only panel: either
 key). **The band names a window's drawers beside their buttons** -- `L Levels` after *Menu*, `Colours R` before the
 status icons, lit while the drawer is open; a closed drawer shows nothing on the window's edge (its tab comes back
-when a mouse is plugged in and moved: it is a pointer's target). **In a window that has tabs too, a left drawer keeps
+when a mouse is plugged in and moved: it is a pointer's target). **Where neither a tab nor a drawer takes them, L / R page the view (Page Up / Down), from a keyboard and from a pad alike. In a window that has tabs too, a left drawer keeps
 L and R steps the tabs, round** (GPIO Lab: L its header, R *Pins → Code → Pins*). **The hint line**: where a view has keys of its own, a black line at
 the window's foot says them with the device's buttons — `✚ point  Ⓐ press  [F5] Check` — and changes with what the
 view is doing; a mode is named first, in a blue pill (PUT, MOVE, STEP, SIMULATOR). Mail, Circuits, Turtle Quest,

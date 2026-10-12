@@ -86,7 +86,11 @@ Mail: `Wizard::W / H`, `SettingsBox::W / H` are variables (pocket: 600 x 440, 62
 `NetList::page ()` (the password's page), its keys, the banner's ink. **Q7, 3DForge, built (2026-10-12)**: all in `user/Apps/3dforge/main.cpp` -- `g_pk`, `StepList` (the timeline's
 words, a row a step), `ForgePane` (the two drawers' contents; `values`: the existing `Props` panel in place of the
 list), `pocket_key` (the view's keys), `pocket_card` (a tool, a sketch, Manufacture asked: said once, undone),
-`pocket_hints`, `pocket_layout`. **Next, NOT started**: item 7 of the list (Q8 Turtle Quest's level editor in two
+`pocket_hints`, `pocket_layout`. **L / R by both paths (2026-10-12)**: `pocket640.sh lr` presses L and R by the keys (Ctrl + Page Up / Down) and by a
+simulated pad in every reworked app and compares the screens: the same everywhere. One difference was found and
+closed in UIKit (`pad_turn`): a pad's L / R that no tab, place or drawer takes now reach the program as Page Up /
+Down, as the keys do (Letters pages its text with both). No reworked app reads the pad or InputKit by itself.
+**Next, NOT started**: item 7 of the list (Q8 Turtle Quest's level editor in two
 steps; Q9 the clipboard's sheet on Ctrl + Shift + V, Stickies full screen, the Agenda's line on the Home), item 8 (Q4
 Koton: Song and Mixer under L / R), item 9 (Courier's migration).
 

@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -134,6 +134,14 @@ if want mail; then
 		out pt-mail-640-wizard; out pt-mail-640-wizard-closed
 		differ pt-mail-640-wizard pt-mail-640-wizard-closed "Esc (B) cancels the assistant"
 		busy pt-mail-640-wizard 30 420 620 470 "the assistant's buttons are in the window (600 x 440 in 640 x 450)"
+		# L / R BY BOTH PATHS (the keys: Ctrl + Page Up / Down; a pad's buttons): from a folder's list, R then L -- the same screens
+		CP="mods 1;$W;key 0x106;$W;mods 0;$W"
+		mrun pt-mail-640-lr-key "" "$(K 13)$W;$CN;$W40;dump $OUT/pt-mail-640-lr-key-r.elsm;$CP;$W40;dump $OUT/pt-mail-640-lr-key-l.elsm"
+		mrun pt-mail-640-lr-pad "" "$(K 13)$W;pad 32;$W;pad 0;$W40;dump $OUT/pt-mail-640-lr-pad-r.elsm;pad 16;$W;pad 0;$W40;dump $OUT/pt-mail-640-lr-pad-l.elsm"
+		for f in key-r key-l pad-r pad-l; do out pt-mail-640-lr-$f; done
+		barsame pt-mail-640-lr-key-r pt-mail-640-lr-pad-r "Mail: R by the keys and by the pad -- the same folder"
+		barsame pt-mail-640-lr-key-l pt-mail-640-lr-pad-l "Mail: L by the keys and by the pad -- the same folder"
+		bardiffer pt-mail-640-lr-key-r pt-mail-640-lr-key-l "Mail: L is not R"
 		# in French
 		mrun pt-mail-640-fr fr "dump $OUT/pt-mail-640-1-folders-fr.elsm;$(K 13)$W;dump $OUT/pt-mail-640-2-list-fr.elsm;$(K 13)$W40;dump $OUT/pt-mail-640-3-message-fr.elsm"
 		out pt-mail-640-1-folders-fr; out pt-mail-640-2-list-fr; out pt-mail-640-3-message-fr
@@ -506,6 +514,39 @@ if want 3dforge; then
 		run pocket_3dforge pt-3dforge-640-fr "$W8;${LL}dump $OUT/pt-3dforge-640-steps-fr.elsm" $FG SIM_WRITES=$WR
 		out pt-3dforge-640-steps-fr
 	else echo "pocket640: 3DForge skipped (no $MS/libmanifold.a: sh tools/tests/desktop_sim/shots.sh 3dforge)"; fi
+fi
+
+# ---- L / R BY BOTH PATHS in every reworked app: the keys (Ctrl + Page Up / Down) and a pad's buttons (InputKit's Prev /
+# Next) must do the same thing -- UIKit's one rule. Each app twice: L, then L again and R, by the keys; the same by the
+# pad; the screens compared (the binaries are the sections' above: run them first in this folder; Mail's is in its section)
+if want lr; then
+	echo "pocket640: L / R by the keys and by the pad"
+	KL="mods 1;$W;key $PGUP;$W;mods 0;$W;$W"; KR="mods 1;$W;key $PGDN;$W;mods 0;$W;$W"
+	XL="pad 16;$W;pad 0;$W;$W;$W"; XR="pad 32;$W;pad 0;$W;$W;$W"
+	# lr <app> <how the two pictures are compared: all | bars> [VAR=value ...]
+	lr () {
+		a=$1; how=$2; shift 2
+		[ -x "$OUT/pocket_$a" ] || { echo "  $a: not built in this folder (run its section first)"; return 0; }
+		for p in key pad; do
+			if [ $p = key ]; then L=$KL; R=$KR; else L=$XL; R=$XR; fi
+			WR=$(langdir ""); [ $a = circuits ] && { mkdir -p "$WR/apps/circuits.app"; cp $D/circuits/solving.ini "$WR/apps/circuits.app/progress.ini"; }
+			[ $a = turtle ] && { mkdir -p "$WR/apps/turtle.app"; cp $D/turtle/maze.ini "$WR/apps/turtle.app/progress.ini"; }
+			run pocket_$a lr-$a-$p "$WWW;$WW;$WW;${L};dump $OUT/lr-$a-$p-l.elsm;${L};${R};dump $OUT/lr-$a-$p-r.elsm" $P640 SIM_APPNAME=$a SIM_APP=$a SIM_WRITES=$WR "$@" >/dev/null
+			png lr-$a-$p-l >/dev/null; png lr-$a-$p-r >/dev/null
+		done
+		if [ $how = all ]; then same lr-$a-key-l lr-$a-pad-l "$a: L by the keys and by the pad"; same lr-$a-key-r lr-$a-pad-r "$a: R by the keys and by the pad"
+		else barsame lr-$a-key-l lr-$a-pad-l "$a: L by the keys and by the pad (the bar)"; footsame lr-$a-key-l lr-$a-pad-l "$a: ... (the hint line)"; barsame lr-$a-key-r lr-$a-pad-r "$a: R by the keys and by the pad (the bar)"; footsame lr-$a-key-r lr-$a-pad-r "$a: ... (the hint line)"; fi
+	}
+	lr circuits all
+	lr turtle all
+	lr gpiolab bars "SIM_ARGS=--demo --tab chart"
+	lr letters all SIM_ARGS=SD:/docs/letters-tour.rtf
+	lr slides all SIM_ARGS=SD:/docs/cafe-2026.odp
+	lr qbstudio all SIM_ARGS=SD:/projects/pages
+	lr paint all SIM_ARGS=SD:/docs/pictures/sunny-mountains.jpg
+	lr pkgman all
+	lr 3dforge all SIM_ARGS=SD:/docs/3d/bracket.3df
+	lr setup all
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------
