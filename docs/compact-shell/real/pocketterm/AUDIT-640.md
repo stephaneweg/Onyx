@@ -36,7 +36,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 |---|---|---|---|---|
 | **Mail** | minor: a rail, the list squeezed to 260 px beside a 330 px message; nothing by keys but the list | **three screens** — folders, messages, message — with a "‹" bar, Esc back; writing on the whole screen (`pt-mail-640-1-folders` … `-3-message`, `-compose`); the hint line on each | **driven**: Enter into a folder and a message, Esc back twice, Down ×4 + Enter another folder, R the next folder, Right ×2 the ring on the message's buttons, Down scrolls, Down to the reply's field, typed, Ctrl+N / Esc, Ctrl+R | the accounts' wizard (600 × 470) and *Accounts and settings* (680 × 500) are bigger than the window: **broken**, medium (two dialogs to lay out for 640 × 450); a link in a message's text needs a pointer |
 | **Circuits** | broken: the board 190 px wide between the levels and the table; the palette's gates behind a misplaced "»"; everything by the mouse | the levels in a drawer (L), the board 360 px; **a pointer moved by the arrows** on the board, Enter its button; the hint line (PUT, MOVE, WIRE, STEP); dark cards (`pt-circuits-640*`) | **driven**: L, Up, Enter (a level), the arrows (the pointer), 1 (a gate armed), Enter (put), F8 / F7 (step / live), F5 (Check: the result's card) | — |
-| **Turtle Quest** | broken: the board 170 px wide, cut; the star thresholds cut | the levels in a drawer (L), the program and the board side by side; one row of buttons with the speed; the hint line; dark cards (`pt-turtle-640*`) | **driven**: L, Up, Enter (a level), a letter typed, F5 (run), F8 (step), F9, F2 (the hint) | **the level editor** (Ctrl+E): its panel is taller than 450 px and its tools and board are a pointer's — *designer* |
+| **Turtle Quest** | broken: the board 170 px wide, cut; the star thresholds cut | the levels in a drawer (L), the program and the board side by side; one row of buttons with the speed; the hint line; dark cards (`pt-turtle-640*`) | **driven**: L, Up, Enter (a level), a letter typed, F5 (run), F8 (step), F9, F2 (the hint) | the level editor: **built** (Q8, below) — driven: Ctrl+E, Down, F2, Right, Down, R, A, Shift + Right ×2, L, F2, Esc, F5 |
 | **GPIO Lab** | broken: a 940 × 600 window in a viewport, the right half out of the screen | the header in a drawer (L), the pin's panel and the charts on the width; **R steps Pins / Code**; the status whole; the hint line with SIMULATOR as its pill (`pt-gpiolab-640*`) | **driven**: L, Down, Enter (a pin), Right (its mode), R, R (Code and back), L again | the I2C map shows its first rows only (the chart area is 104 px high): minor, medium |
 
 ### The others
@@ -191,6 +191,14 @@ Ctrl + Page Up / Down and as a pad's buttons give the same screens. None of thes
 L / R by itself: all go through UIKit's rule. The one difference found — in a window with no tab and no drawer
 (Letters) the keys reached the app as Page Up / Down and the pad's buttons did nothing — is closed in UIKit: the
 pad's L / R then page too.
+
+**Q8, Turtle Quest's level editor — built (2026-10-12)**, driven by the keys (`pocket640.sh turtle`:
+`pt-turtle-640-editor-*`): three steps under F2 — the texts (a form), the map alone on the screen with a cell cursor
+(A puts, Shift + D-pad paints a run) over one row of tools stepped by L / R, the program — B back, F5 tries.
+**Differs from the mock-up**: three steps, not two (the solution's program needs its own: it is typed); the row has
+all 12 tools as words (no "Erase": Floor erases), not 7 with pictures; a run is painted with Shift + D-pad, not
+"A held" (a held key cannot be told from its repeats); no "Try it" button in a bar: F5, named in the hint line. In
+the editor the levels' drawer is away, so L is free for the tools — the one place L is not a left drawer.
 
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the

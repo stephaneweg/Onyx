@@ -257,6 +257,29 @@ if want turtle; then
 	out pt-turtle-640-step; out pt-turtle-640-hint
 	footdiffer pt-turtle-640 pt-turtle-640-step "F8: the step mode's name in the hint line"
 	differ pt-turtle-640 pt-turtle-640-hint "F9, F2: the hint in the card"
+	# THE LEVEL EDITOR (Ctrl+E), in steps: the texts (a form; Down: the next field); F2: the map -- Right, Down move the
+	# cell, R the next tool (Floor), Enter puts it, Shift + Right paints a run, L the tool before; F2: the program; Esc:
+	# the texts again; F5 tries the level
+	WR=$(TQ "" maze)
+	CE="key 0x05;$W"; SH="mods 2;$W;"; S0="mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"
+	R12=$(printf 'wait;%.0s' $(seq 1 120))
+	E1="$WWW;$CE;$W;dump $OUT/pt-turtle-640-editor-texts.elsm;$(K $DOWN)dump $OUT/pt-turtle-640-editor-field.elsm;key 0x111;$W;dump $OUT/pt-turtle-640-editor-map.elsm;$(K $RIGHT)$(K $DOWN)dump $OUT/pt-turtle-640-editor-cell.elsm;${RR}dump $OUT/pt-turtle-640-editor-tool.elsm;$(K 13)dump $OUT/pt-turtle-640-editor-put.elsm;${SH}$(K $RIGHT)$(K $RIGHT)${S0}dump $OUT/pt-turtle-640-editor-run.elsm;${LL}dump $OUT/pt-turtle-640-editor-tool-back.elsm"
+	E1="$E1;key 0x111;$W;dump $OUT/pt-turtle-640-editor-program.elsm;$(K 27)dump $OUT/pt-turtle-640-editor-texts-again.elsm;key 0x114;${R12}dump $OUT/pt-turtle-640-editor-try.elsm"
+	run pocket_turtle pt-turtle-640-editor "$E1" $T SIM_WRITES=$WR
+	for f in texts field map cell tool put run tool-back program texts-again try; do out pt-turtle-640-editor-$f; size pt-turtle-640-editor-$f 640x480 "the editor, $f: the whole 640 x 480 screen"; done
+	differ pt-turtle-640 pt-turtle-640-editor-texts "Ctrl+E: the editor, its texts"
+	hintline pt-turtle-640-editor-texts "the editor"
+	differ pt-turtle-640-editor-texts pt-turtle-640-editor-field "Down: the next field"
+	differ pt-turtle-640-editor-field pt-turtle-640-editor-map "F2: the map"
+	footdiffer pt-turtle-640-editor-field pt-turtle-640-editor-map "the map's keys are not the texts'"
+	differ pt-turtle-640-editor-map pt-turtle-640-editor-cell "Right, Down: the cell's cursor"
+	differ pt-turtle-640-editor-cell pt-turtle-640-editor-tool "R: the next tool"
+	differ pt-turtle-640-editor-tool pt-turtle-640-editor-put "A puts the tool's cell"
+	differ pt-turtle-640-editor-put pt-turtle-640-editor-run "Shift + Right, Right: a run painted"
+	differ pt-turtle-640-editor-run pt-turtle-640-editor-tool-back "L: the tool before (no drawer in the editor)"
+	differ pt-turtle-640-editor-tool-back pt-turtle-640-editor-program "F2: the program"
+	footsame pt-turtle-640-editor-texts pt-turtle-640-editor-texts-again "Esc: the texts again"
+	differ pt-turtle-640-editor-texts-again pt-turtle-640-editor-try "F5 tries the level"
 	WR=$(TQ fr star-fr)
 	run pocket_turtle pt-turtle-640-fr "$WWW;dump $OUT/pt-turtle-640-fr.elsm" $T SIM_WRITES=$WR
 	out pt-turtle-640-fr

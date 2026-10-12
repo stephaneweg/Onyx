@@ -6887,8 +6887,15 @@ from pack to pack, **Enter** closes it — and the program and the board share t
 (the editor's); Run, Step, Stop and Reset are F5, F8, F7 and F9 and in the **Menu** (CMD or F10: *Game*), as the
 lesson and the hint — **the hint line** at the foot says them (and **RUNNING** or **STEP** while the program runs or
 is stepped). Run, Step, Stop, Reset and the speed's slider are one row; the program's box shows whole lines; the
-level's card and the message are dark surfaces (the level's number in blue), the board keeps its colours. Known there: the **level editor**'s panel (Ctrl+E) is taller than a 480 px screen and its tools
-and the board are worked with a pointer — on such a device, levels are made on another screen.
+level's card and the message are dark surfaces (the level's number in blue), the board keeps its colours. **The level editor** (Ctrl+E, the Menu) is in **three steps** there, one at a time — the hint line's pill says which
+(*TEXTS 1/3*, *MAP 2/3*, *PROGRAM 3/3*); **F2** goes to the next, **B** (Esc) back to the texts, then to the levels;
+**F5** tries the level from any of them:
+1. **the texts** — the idea taught, the title, what to do, the hint, the words, the stars, the size (W− W+ H− H+)
+   and *Test*, *Save*, *Close*: the D-pad goes from field to field;
+2. **the map**, alone on the screen — the **D-pad** moves a cell cursor, **A** puts the tool's cell (the Turtle tool
+   on the turtle turns it), **Shift + D-pad** paints a run; **L / R** step the row of tools under it (Wall, Floor,
+   Flag, Key, Coin, Door, Paint, Turtle, Water, Gem, Portal 1, Portal 2);
+3. **the program** — the solution, typed.
 
 ![](compact-shell/real/pocketterm/pt-turtle-640.png)
 

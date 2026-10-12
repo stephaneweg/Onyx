@@ -208,6 +208,13 @@ enum { NCONCEPTS = 20 };
 static Widget *g_edLabels[10]; static int g_nedLabels = 0;
 static bool g_editing = false;
 static bool g_showHint = false;
+// POCKET's level editor (g_pk; the designer's answer Q8): in steps, one at a time -- F2 goes round, B (Esc) back to the
+// texts, then to the levels: 0 THE TEXTS (the level's fields, a form), 1 THE MAP (a cell cursor moved by the D-pad, A
+// puts the tool's cell, Shift + D-pad paints a run; one row of tools under it, L / R step it), 2 THE PROGRAM (the
+// solution, typed). F5 tries the level from any of them.
+static int g_edStep = 0;
+static SegmentedControl *g_toolRow = 0;
+static bool ed_pk ();
 
 // The pen's 16 colours (QBasic's, a little brighter on the board)
 static const unsigned PEN[16] = { 0x202020, 0x2F6FD0, 0x2E9E44, 0x1E9FAF, 0xD0342C, 0x9C3FB5, 0x9A6234, 0xA8A8A8,
@@ -439,6 +446,23 @@ class Board : public Widget
 public:
 	int cs = 40, ox = 0, oy = 0;			// a cell's size, the grid's place
 	bool dragging = false;
+	int kc = 1, kr = 1;				// pocket's editor: the cell the keys are on
+	bool onKey (long k) override
+	{
+		if (!ed_pk () || g_edStep != 1 || !g_L || g_mode != P_IDLE) return false;
+		int dc = k == KEY_LEFT ? -1 : k == KEY_RIGHT ? 1 : 0, dr = k == KEY_UP ? -1 : k == KEY_DOWN ? 1 : 0;
+		if (dc || dr)
+		{
+			int c = kc + dc, r = kr + dr;
+			if (c < 0 || r < 0 || c >= g_L->w || r >= g_L->h) return true;
+			kc = c; kr = r;
+			if ((kapi_get_modifiers () & MOD_SHIFT) && g_tool != TOOL_TURTLE && g_tool != TOOL_PAD1 && g_tool != TOOL_PAD2) edit_cell (kc, kr, true);	// (a run painted)
+			invalidate (true);
+			return true;
+		}
+		if (k == KEY_ENTER) { if (kc < g_L->w && kr < g_L->h) edit_cell (kc, kr); invalidate (true); return true; }
+		return false;
+	}
 	Board (int l, int t, int w, int h) : Widget (l, t, w, h) {}
 	void fit ()
 	{
@@ -610,6 +634,14 @@ public:
 			else { pad (canvas, bx, by, cs, q, (1 - t) * 2); tx = e->c; ty = e->d; tk = t * 2 - 1; }
 		}
 		if (edit && g_badC >= 0 && g_badC < g_L->w && g_badR >= 0 && g_badR < g_L->h) ring (canvas, px (g_badC), py (g_badR), cs, 0xD0342C, 0x7A1A14);
+		if (edit && ed_pk () && g_edStep == 1)		// (the keys' cell)
+		{
+			if (kc >= g_L->w) kc = g_L->w - 1;
+			if (kr >= g_L->h) kr = g_L->h - 1;
+			int x = px (kc) - cs / 2, y = py (kr) - cs / 2;	// (px, py: a cell's middle)
+			uk_rline (canvas, x - 1, y - 1, cs + 2, cs + 2, 4, 0x00FFFFFF, 255);
+			uk_rline (canvas, x, y, cs, cs, 3, C_ACCENT, 255); uk_rline (canvas, x + 1, y + 1, cs - 2, cs - 2, 2, C_ACCENT, 255);
+		}
 		if (edit)
 		{
 			for (int r = 0; r < g_L->h; r++) for (int c = 0; c < g_L->w; c++)
@@ -764,6 +796,8 @@ class Card : public Widget
 public:
 	const char *cardText ()
 	{
+		if (g_editing && g_pk) return L2 ("Its texts, its map, its program: F2 goes from one to the next. Try it (F5: it sets the instructions for the stars), then Save in the texts.",
+			"Ses textes, sa carte, son programme : F2 passe de l'un au suivant. Essaie-le (F5 : il fixe les instructions pour les étoiles), puis Enregistre dans les textes.");
 		return g_editing ? L2 ("Draw the level with the tools on the left, write a solution, Test it (it sets the instructions for the stars), then Save.",
 			"Dessine le niveau avec les outils à gauche, écris une solution, Teste-la (elle fixe les instructions pour les étoiles), puis Enregistre.")
 			: g_L->textOf (g_lang);
@@ -1116,8 +1150,10 @@ static void playback_tick ()
 }
 
 // ---- actions ------------------------------------------------------------------------------------------------------------------------
+static void cb_ed_test (Widget &);
 static void do_run ()
 {
+	if (ed_pk () && g_mode == P_IDLE) { cb_ed_test (*g_root); return; }	// (pocket's editor: F5 tries the level)
 	if (g_mode == P_PAUSE) { g_stepping = false; g_mode = P_RUN; g_lastUs = 0; set_running (true); return; }
 	if (g_mode == P_RUN) return;
 	start_run (false);
@@ -1152,7 +1188,9 @@ static void do_next ()
 	else if (g_pack + 1 < g_npacks) show_level (g_pack + 1, 0, false);
 }
 static void do_prev () { if (!g_editing && g_level > 0) show_level (g_pack, g_level - 1, false); }
-static void do_hint () { g_showHint = !g_showHint; layout (); }
+static void ed_step (int s);
+// (pocket's editor: F2 and F5 are the Menu's shortcuts first -- there they are its next step and its Test)
+static void do_hint () { if (ed_pk () && g_mode == P_IDLE) { ed_step ((g_edStep + 1) % 3); return; } g_showHint = !g_showHint; layout (); }
 static void do_lesson () { show_lesson (((Widget *) g_lesson)->hidden); }
 static void cb_run (Widget &) { do_run (); }
 static void cb_step (Widget &) { do_step (); }
@@ -1185,7 +1223,7 @@ static void show_level (int pack, int lv, bool keepCode)
 {
 	if (g_npacks == 0) return;
 	if (!g_editing) save_code ();
-	if (g_editing) { g_editing = false; g_editPanel->hidden = true; ((Widget *) g_list)->hidden = false; ((Widget *) g_packBox)->hidden = false; }
+	if (g_editing) { g_editing = false; g_editPanel->hidden = true; ((Widget *) g_list)->hidden = false; ((Widget *) g_packBox)->hidden = false; if (g_pk && g_side) ((Widget *) g_side)->hidden = false; }
 	if (pack != g_pack) { g_pack = pack; g_packBox->sel = pack; ((Widget *) g_packBox)->invalidate (true); }
 	g_level = lv;
 	g_L = g_packs[pack]->levels[lv];
@@ -1310,6 +1348,7 @@ static void open_editor (bool fresh)
 	g_L = &g_edLevel;
 	g_target.clear ();
 	g_editPanel->hidden = false; ((Widget *) g_list)->hidden = true; ((Widget *) g_packBox)->hidden = true;
+	if (g_pk) { g_edStep = 0; if (g_side->isOpen ()) g_side->open (false); ((Widget *) g_side)->hidden = true; g_board->kc = g_board->kr = 1; }	// (L / R are the tools' row there)
 	g_edTitle->setText (g_edLevel.titleOf (g_lang)); g_edText->setText (g_edLevel.textOf (g_lang)); g_edHint->setText (g_edLevel.hintOf (g_lang));
 	g_edWords->setText (g_edLevel.words);
 	char p[24]; snprintf (p, sizeof p, "%d %d", g_edLevel.par3, g_edLevel.par2); g_edPar->setText (g_edLevel.par3 ? p : "");
@@ -1323,6 +1362,8 @@ static void open_editor (bool fresh)
 	reset_view ();
 	g_words->build ();
 	show_lesson (false);
+	if (g_pk) set_message (M_INFO, L2 ("The texts first; F2: the map, where A puts the tool's cell (L / R: the tool); F2 again: the program. F5 tries the level.", "Les textes d'abord ; F2 : la carte, où A pose la case de l'outil (L / R : l'outil) ; F2 encore : le programme. F5 essaie le niveau."), 0);
+	else
 	set_message (M_INFO, L2 ("Click or drag on the board with a tool. The turtle tool turns the turtle when clicked on it.", "Clique ou glisse sur le plateau avec un outil. L'outil tortue fait tourner la tortue quand on clique dessus."));
 	layout ();
 	g_root->invalidate (true);
@@ -1583,7 +1624,16 @@ static void layout ()
 		if (bw > most) bw = most;
 		edw = W - mid - PAD - bw - PAD;
 	}
+	bool edpk = g_pk && g_editing;
+	if (g_toolRow)					// pocket's editor, the map: the row of tools over the hint line
+	{
+		bool on = edpk && g_edStep == 1;
+		((Widget *) g_toolRow)->hidden = !on;
+		if (on) { ((Widget *) g_toolRow)->left = PAD; ((Widget *) g_toolRow)->top = H - PAD - 32; g_toolRow->resizeTo (W - 2 * PAD, 32); H -= 40; }
+	}
 	int right = mid + edw + (g_pk ? 8 : PAD), rw = W - right - PAD;
+	bool mapStep = edpk && g_edStep == 1;		// (the map alone on the window's width: no program, no card beside it)
+	if (mapStep) { right = PAD; rw = W - 2 * PAD; }
 	// left: the pack and its levels, or the level editor
 	if (!g_pk)					// (pocket's drawer: its pane places them -- LeftPane)
 	{
@@ -1618,6 +1668,14 @@ static void layout ()
 	int edh = H - ey - PAD - countH - 8 - wordsH - 8;
 	if (g_pk && g_mono) { int lh = g_mono->height () + 3; edh = 8 + (edh - 8) / lh * lh; }	// (pocket: whole lines of program, never half of one)
 	g_ed->left = mid; g_ed->top = ey; g_ed->resizeTo (edw, edh);
+	if (g_pk)					// pocket's editor, the texts: the fields in the program's place
+	{
+		bool texts = edpk && g_edStep == 0;
+		g_editPanel->hidden = !texts;
+		Widget *prog[7] = { g_btRun, g_btStep, g_btStop, g_btReset, g_speed, g_ed, g_lbCount };
+		for (Widget *w : prog) w->hidden = texts || mapStep;
+		if (texts) { g_editPanel->left = mid; g_editPanel->top = PAD; g_editPanel->resizeTo (edw, H - 2 * PAD); }
+	}
 	g_words->left = mid; g_words->top = g_ed->top + g_ed->height + 8;
 	g_lbCount->left = mid; g_lbCount->top = H - PAD - countH; g_lbCount->resizeTo (edw, countH);
 	// the right: the card, the board, the message
@@ -1630,6 +1688,8 @@ static void layout ()
 	((Widget *) g_btHint)->hidden = ((Widget *) g_btLesson)->hidden = g_editing;
 	int msgH = 62;
 	int by = PAD + ch + (g_pk ? 8 : PAD);
+	((Widget *) g_card)->hidden = mapStep;
+	if (mapStep) { by = PAD; msgH = 44; }
 	g_board->left = right; g_board->top = by; g_board->resizeTo (rw, H - by - PAD - msgH - (g_pk ? 8 : PAD));
 	g_msg->left = right; g_msg->top = H - PAD - msgH; g_msg->resizeTo (rw, msgH);
 	g_btNext->left = right + rw - 140; g_btNext->top = H - PAD - msgH + 15; g_btNext->resizeTo (126, 32);
@@ -1643,12 +1703,30 @@ static void layout ()
 	R.invalidate (true);
 }
 
+static bool ed_pk () { return g_pk && g_editing; }
+// Pocket's editor: a step shown, the keys given to what it is about
+static void ed_step (int s)
+{
+	g_edStep = s;
+	layout ();
+	if (s == 0) { ((Widget *) g_edTitle)->setFocus (); g_edTitle->onTabFocus (); }
+	else if (s == 1) ((Widget *) g_board)->setFocus ();
+	else g_ed->setFocus ();
+	g_root->invalidate (true);
+}
 // Pocket: the hint line at the window's foot -- the keys the view has of its own, by what it is doing.
 static void hints ()
 {
 	if (!g_pk) return;
 	static UkPadHint H[6]; int n = 0; const char *mode = 0;
-	if (g_side && g_side->isOpen () && !g_editing) { H[n++] = { "|", L2 ("level", "niveau") }; H[n++] = { "A", L2 ("play it", "y jouer") }; H[n++] = { "L", L2 ("close", "fermer") }; }
+	if (g_editing && g_mode == P_IDLE)
+	{
+		mode = g_edStep == 0 ? L2 ("TEXTS 1/3", "TEXTES 1/3") : g_edStep == 1 ? L2 ("MAP 2/3", "CARTE 2/3") : L2 ("PROGRAM 3/3", "PROGRAMME 3/3");
+		if (g_edStep == 0) { H[n++] = { "+", L2 ("field", "champ") }; H[n++] = { "[F2]", L2 ("the map", "la carte") }; H[n++] = { "[F5]", L2 ("try", "essayer") }; H[n++] = { "B", L2 ("the levels", "les niveaux") }; }
+		else if (g_edStep == 1) { H[n++] = { "+", L2 ("cell", "case") }; H[n++] = { "A", L2 ("put", "poser") }; H[n++] = { "[Shift]+", L2 ("a run", "une suite") }; H[n++] = { "LR", L2 ("tool", "outil") }; H[n++] = { "[F2]", L2 ("program", "programme") }; }
+		else { H[n++] = { "[F5]", L2 ("try", "essayer") }; H[n++] = { "[F2]", L2 ("the texts", "les textes") }; H[n++] = { "B", L2 ("the texts", "les textes") }; }
+	}
+	else if (g_side && g_side->isOpen () && !g_editing) { H[n++] = { "|", L2 ("level", "niveau") }; H[n++] = { "A", L2 ("play it", "y jouer") }; H[n++] = { "L", L2 ("close", "fermer") }; }
 	else if (!((Widget *) g_lesson)->hidden) { H[n++] = { "B", L2 ("close the lesson", "fermer la leçon") }; }
 	else if (g_mode == P_RUN) { mode = L2 ("RUNNING", "EN COURS"); H[n++] = { "[F7]", L2 ("stop", "arrêter") }; H[n++] = { "[F9]", L2 ("reset", "remettre") }; }
 	else
@@ -1669,6 +1747,12 @@ public:
 	void onResized () override { ::layout (); }	// (:: -- Root has a layout () of its own)
 	bool onKey (long k) override
 	{
+		if (g_pk && g_editing && g_mode == P_IDLE)	// pocket's editor: its steps
+		{
+			if (k == KEY_F1 + 1) { ed_step ((g_edStep + 1) % 3); return true; }
+			if (k == KEY_F1 + 4) { cb_ed_test (*this); return true; }
+			if (k == 27) { if (g_edStep > 0) ed_step (0); else cb_ed_close (*this); return true; }
+		}
 		switch (k)
 		{
 		case KEY_F1 + 4: do_run (); return true;
@@ -1706,7 +1790,7 @@ public:
 		int w = width - 2 * PAD;
 		if (g_packBox) { g_packBox->left = PAD; g_packBox->top = PAD; g_packBox->resizeTo (w, 28); }
 		if (g_list) { g_list->left = PAD; g_list->top = PAD + 36; g_list->resizeTo (w, height - PAD - 36 - PAD); }
-		if (g_editPanel) { g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (w, height - 2 * PAD); }
+		if (g_editPanel && g_editPanel->parent == this) { g_editPanel->left = PAD; g_editPanel->top = PAD; g_editPanel->resizeTo (w, height - 2 * PAD); }
 	}
 	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); place (); }
 	bool onKey (long k) override { return g_list && !g_editing ? ((Widget *) g_list)->onKey (k) : false; }	// (the drawer's keys: the list's)
@@ -1782,6 +1866,7 @@ int main (void)
 	// the level editor's panel
 	{
 		Widget *p = g_editPanel = new EdPanel (PAD, PAD, LISTW, 600);
+		if (g_pk) leftOf = &root;			// (pocket: a step of the editor, in the window -- not in the levels' drawer)
 		// (the Idea first: its list of 20 opens downward, never clipped, from 600 px high -- the window's minimum)
 		int y = 0;
 		ed_label (p, y, "Idea taught", "Idée enseignée"); y += 18;
@@ -1806,8 +1891,11 @@ int main (void)
 			p->addChild (new Button (x, y, bw, 26, "H-", cb_h_minus)); x += bw + 4; p->addChild (new Button (x, y, LISTW - x, 26, "H+", cb_h_plus));
 		}
 		y += 34;
+		if (!g_pk)					// (pocket: the tools are a row under the map)
+		{
 		ed_label (p, y, "Tool", "Outil"); y += 18;
 		g_tools = new ToolPal (0, y, LISTW, 4 * 34); p->addChild (g_tools); y += 4 * 34 + 6;
+		}
 		{
 			int b0 = 62, b1 = 92;
 			g_edBtn[0] = new Button (0, y, b0, 30, "Test", cb_ed_test); p->addChild (g_edBtn[0]);
@@ -1819,6 +1907,14 @@ int main (void)
 	}
 	if (g_pk)					// (after everything: an open drawer covers the window)
 	{
+		static const char *T12[NTOOLS];
+		static const char *const EN[NTOOLS] = { "Wall", "Floor", "Flag", "Key", "Coin", "Door", "Paint", "Turtle", "Water", "Gem", "Port 1", "Port 2" };
+		static const char *const FR[NTOOLS] = { "Mur", "Sol", "Drap.", "Clé", "Pièce", "Porte", "Peint.", "Tortue", "Eau", "Gemme", "Port 1", "Port 2" };
+		for (int i = 0; i < NTOOLS; i++) T12[i] = g_lang == LANG_FR ? FR[i] : EN[i];
+		g_toolRow = new SegmentedControl (PAD, 400, 600, 32, T12, NTOOLS, 0, [] (Widget &w) { g_tool = ((SegmentedControl &) w).selected; if (g_board) ((Widget *) g_board)->invalidate (true); });
+		((Widget *) g_toolRow)->hidden = true; ((Widget *) g_toolRow)->canFocus = false;
+		uk_segmented_nav (g_toolRow);		// (the editor's map: L / R step the tool; hidden elsewhere: the drawer's L again)
+		root.addChild (g_toolRow);
 		leftPane->place ();
 		g_side = new SidePanel (0, 0, LISTW + 2 * PAD, 600, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_side->setContent (leftPane);

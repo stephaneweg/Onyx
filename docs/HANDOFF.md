@@ -90,7 +90,10 @@ list), `pocket_key` (the view's keys), `pocket_card` (a tool, a sketch, Manufact
 simulated pad in every reworked app and compares the screens: the same everywhere. One difference was found and
 closed in UIKit (`pad_turn`): a pad's L / R that no tab, place or drawer takes now reach the program as Page Up /
 Down, as the keys do (Letters pages its text with both). No reworked app reads the pad or InputKit by itself.
-**Next, NOT started**: item 7 of the list (Q8 Turtle Quest's level editor in two
+**Q8, Turtle Quest's editor, built (2026-10-12)**: `g_edStep` (0 texts, 1 map, 2 program), `ed_step`, `Board::kc /
+kr` and its `onKey`, `g_toolRow` (a SegmentedControl, the window's tabs through `uk_segmented_nav`; the levels'
+SidePanel is hidden while editing so that L reaches it), the panel a child of the Root in pocket, F2 / F5 routed in
+`do_hint` / `do_run` (they are Menu shortcuts first). **Next**: the rest of item 7 (Q8 Turtle Quest's level editor in two
 steps; Q9 the clipboard's sheet on Ctrl + Shift + V, Stickies full screen, the Agenda's line on the Home), item 8 (Q4
 Koton: Song and Mixer under L / R), item 9 (Courier's migration).
 
