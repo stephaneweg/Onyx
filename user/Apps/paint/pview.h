@@ -293,6 +293,7 @@ static void tex_sync ()
 }
 
 // ---- the canvas ----------------------------------------------------------------------------------------
+static bool g_enterPutsText = false;		// pocket (no pointer to click away): Enter puts the text being typed
 class CanvasView : public Widget
 {
 public:
@@ -423,6 +424,7 @@ public:
 		{
 			char u[4]; int n = uk_u8_key (k, u);
 			if (n > 0) text_insert (u, n);
+			else if (k == KEY_ENTER && g_enterPutsText) { text_end (true); invalidate (true); notify (); return true; }	// (pocket: A puts the text)
 			else if (k == KEY_ENTER) text_insert ("\n", 1);
 			else if (k == KEY_BACKSPACE) text_back ();
 			else if (k == KEY_DEL) text_del ();

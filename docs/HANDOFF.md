@@ -70,7 +70,16 @@ branch), `SlideView::nav_key` / `nav_begin_move`, `pocket_insert` (a tool chosen
 the move mode: `g_onAdded`), `drop_change` (a cancelled move forgets its undo step), `Sidebar::pocket_key`, the show
 fed a pad's keys (`g_showKey`, `g_shTurn`), `PANEL_C` / `DESK` variables for the dark look. `uk_lang_init` is called
 in pocket only (Slides is not translated: the desktop must not change). What differs from the mock-up: AUDIT-640.md.
-**Next**: Q6 QBStudio (the same objnav on its Designer), then the list's order.
+**Q6, QBStudio, built (2026-10-12)**: `g_pk` / `g_nav` in designer.h; `Designer::nav_key` (the leaves as objnav's
+rectangles; the MOVE mode's arrows are the app's own -- "at" on a Canvas, the order among siblings elsewhere --, the
+SIZE mode sets width / height; `nav_save` / `nav_restore` keep NO pointer: `form_edited` reads the tree again after
+each edit), `Toolbox::onKey`, `PropGrid::onKey`, main.cpp's `Pane` (the two drawers' contents, `g_leftPart`),
+`relayout`'s pocket branch, `pocket_hints`; `g_seg` is *Form / Code* there. **Q2, Paint, built (2026-10-12)**: all in `user/Apps/paint/main.cpp` -- `g_pk`, `g_pkMode` (PK_VIEW / _CROP / _ROTATE
+/ _TEXT), `pk_start`, `pk_key`, `pocket_layout`, `pocket_tick`; the tasks and the ratios are two SegmentedControls
+(the ratios' is the window's tabs while cropping: `uk_segmented_nav`, so L / R step it by keys and pad alike);
+`focus_view ()` gives the keys to what the task needs (the commands all end with it); `g_enterPutsText` (pview.h).
+The crop's frame is the document's rectangle selection, applied by the existing `cmd_crop`. **Next**: item 5 of the
+list (the applets' least width, the Package Manager, Mail's two dialogs, Setup's leftovers), then Q7 3DForge.
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached

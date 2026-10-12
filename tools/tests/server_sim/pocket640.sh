@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -302,6 +302,109 @@ if want slides; then
 	WR=$(langdir fr)
 	run pocket_slides pt-slides-640-fr "$W8;$(K $DOWN)key 0x6d;$W;dump $OUT/pt-slides-640-move-fr.elsm" $SL SIM_WRITES=$WR
 	out pt-slides-640-move-fr
+fi
+
+# ---- QBStudio (Q6): the form OR the code (F7), L the project and the toolbox, R the properties; a control by the keys --------
+if want qbstudio; then
+	echo "pocket640: QBStudio"
+	ftapp pocket qbstudio uikit_pocket $BAS user/Libs/basic/baskits.cpp
+	K () { echo "key $1;$W;"; }
+	LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"
+	QB="$P640 SIM_APPNAME=qbstudio SIM_APP=qbstudio SIM_ARGS=SD:/projects/pages"
+	W8="$WWW;$WW"
+	# the form alone; the D-pad: a control, the next; M: the move mode (Right: a place later, or 8 px on a Canvas), Enter
+	# keeps; S: the size mode (Right x2: 16 px wider), Esc: as it was
+	WR=$(langdir "")
+	F1="$W8;expect kind fill;expect frame 0;dump $OUT/pt-qbstudio-640-form.elsm;$(K $DOWN)dump $OUT/pt-qbstudio-640-ctl1.elsm;key 0x6d;$W;dump $OUT/pt-qbstudio-640-move.elsm;$(K $RIGHT)dump $OUT/pt-qbstudio-640-moved.elsm;$(K 13)dump $OUT/pt-qbstudio-640-kept.elsm"
+	F1="$F1;key 0x73;$W;$(K $RIGHT)$(K $RIGHT)dump $OUT/pt-qbstudio-640-size.elsm;$(K 27)dump $OUT/pt-qbstudio-640-size-cancelled.elsm;$(K $DOWN)dump $OUT/pt-qbstudio-640-ctl2.elsm"
+	run pocket_qbstudio pt-qbstudio-640 "$F1" $QB SIM_WRITES=$WR
+	for f in form ctl1 ctl2 move moved kept size size-cancelled; do out pt-qbstudio-640-$f; size pt-qbstudio-640-$f 640x480 "QBStudio, $f: the whole 640 x 480 screen"; done
+	hintline pt-qbstudio-640-form "QBStudio"
+	differ pt-qbstudio-640-form pt-qbstudio-640-ctl1 "Down: a control chosen"
+	footdiffer pt-qbstudio-640-ctl1 pt-qbstudio-640-move "M: the move mode, named in the hint line"
+	differ pt-qbstudio-640-move pt-qbstudio-640-moved "the D-pad moves the control (in a Row: a place later)"
+	footsame pt-qbstudio-640-ctl1 pt-qbstudio-640-kept "Enter keeps: the form's keys again"
+	differ pt-qbstudio-640-ctl1 pt-qbstudio-640-kept "the control stays where it was moved"
+	differ pt-qbstudio-640-kept pt-qbstudio-640-size "S, Right, Right: the control wider"
+	same pt-qbstudio-640-kept pt-qbstudio-640-size-cancelled "Esc cancels the size: the control as it was"
+	differ pt-qbstudio-640-size-cancelled pt-qbstudio-640-ctl2 "Down: the next control"
+	# L: the project and the toolbox (the keys are the toolbox's: Down x3, Enter adds that control -- the drawer away, the
+	# control in the move mode; Enter keeps it); R: the properties (Down, Down: a row; R closes)
+	WR=$(langdir "")
+	F2="$W8;$(K $DOWN)${LL}dump $OUT/pt-qbstudio-640-toolbox.elsm;$(K $DOWN)$(K $DOWN)$(K $DOWN)dump $OUT/pt-qbstudio-640-toolbox-row.elsm;$(K 13)dump $OUT/pt-qbstudio-640-added.elsm;$(K 13)dump $OUT/pt-qbstudio-640-added-kept.elsm"
+	F2="$F2;${RR}dump $OUT/pt-qbstudio-640-props.elsm;$(K $DOWN)$(K $DOWN)dump $OUT/pt-qbstudio-640-props-row.elsm;${RR}dump $OUT/pt-qbstudio-640-props-closed.elsm"
+	run pocket_qbstudio pt-qbstudio-640-drawers "$F2" $QB SIM_WRITES=$WR
+	for f in toolbox toolbox-row added added-kept props props-row props-closed; do out pt-qbstudio-640-$f; done
+	differ pt-qbstudio-640-ctl1 pt-qbstudio-640-toolbox "L opens the project and the toolbox"
+	differ pt-qbstudio-640-toolbox pt-qbstudio-640-toolbox-row "Down in the drawer: a tool ringed"
+	differ pt-qbstudio-640-ctl1 pt-qbstudio-640-added "Enter adds the control: the drawer away, the form changed"
+	footdiffer pt-qbstudio-640-ctl1 pt-qbstudio-640-added "the control added is in the move mode"
+	footsame pt-qbstudio-640-ctl1 pt-qbstudio-640-added-kept "Enter keeps it: the form's keys again"
+	differ pt-qbstudio-640-added-kept pt-qbstudio-640-props "R opens the properties"
+	differ pt-qbstudio-640-props pt-qbstudio-640-props-row "Down, Down in the properties: a row ringed"
+	same pt-qbstudio-640-added-kept pt-qbstudio-640-props-closed "R again closes them"
+	# F7: the code (its own bar, its keys), F7: the form again
+	WR=$(langdir "")
+	run pocket_qbstudio pt-qbstudio-640-f7 "$W8;key 0x116;$W8;dump $OUT/pt-qbstudio-640-code.elsm;key 0x116;$W8;dump $OUT/pt-qbstudio-640-form-again.elsm" $QB SIM_WRITES=$WR
+	out pt-qbstudio-640-code; out pt-qbstudio-640-form-again
+	differ pt-qbstudio-640-form pt-qbstudio-640-code "F7: the code"
+	footdiffer pt-qbstudio-640-form pt-qbstudio-640-code "the code's keys are not the form's"
+	same pt-qbstudio-640-form pt-qbstudio-640-form-again "F7 again: the form"
+	WR=$(langdir fr)
+	run pocket_qbstudio pt-qbstudio-640-fr "$W8;$(K $DOWN)dump $OUT/pt-qbstudio-640-form-fr.elsm" $QB SIM_WRITES=$WR
+	out pt-qbstudio-640-form-fr
+fi
+
+# ---- Paint (Q2): in pocket it adjusts a picture -- one row of tasks (Crop, Resize, Rotate, Adjust, Text) under it -------------
+if want paint; then
+	echo "pocket640: Paint"
+	GC="$OUT/gpucomp_au.o"; [ -f "$GC" ] || gcc -O2 -w -ffp-contract=off -Iuser -Iuser/Kits -Iuser/Runtime -Iuser/Include -Iuser/Libs -Ikernel/include -c user/Libs/gpucomp/gpucomp.c -o "$GC"
+	AK=""; [ -f "${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a" ] && AK="${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a"
+	ftapp pocket paint uikit_pocket "$GC" $AK -lm -Wl,--unresolved-symbols=ignore-all
+	K () { echo "key $1;$W;"; }
+	RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"; SH="mods 2;$W;"; S0="mods 0;$W;"
+	PA="$P640 SIM_APPNAME=paint SIM_APP=paint SIM_ARGS=SD:/docs/pictures/sunny-mountains.jpg"
+	W8="$WWW;$WW"
+	# the picture over its row of tasks; A on Crop: a frame (the D-pad moves it, Shift + D-pad sizes it, R the next ratio),
+	# A applies -- the picture is the frame's; Ctrl+Z gives it back
+	WR=$(langdir "")
+	C1="$W8;expect kind fill;expect frame 0;dump $OUT/pt-paint-640-view.elsm;$(K 13)dump $OUT/pt-paint-640-crop.elsm;$(K $RIGHT)$(K $DOWN)dump $OUT/pt-paint-640-crop-moved.elsm;${SH}$(K $LEFT)$(K $LEFT)${S0}dump $OUT/pt-paint-640-crop-sized.elsm;${RR}dump $OUT/pt-paint-640-crop-ratio.elsm;$(K 13)$W8;dump $OUT/pt-paint-640-cropped.elsm;mods 1;$W;key 26;$W;mods 0;$W8;dump $OUT/pt-paint-640-crop-undone.elsm"
+	run pocket_paint pt-paint-640 "$C1" $PA SIM_WRITES=$WR
+	for f in view crop crop-moved crop-sized crop-ratio cropped crop-undone; do out pt-paint-640-$f; size pt-paint-640-$f 640x480 "Paint, $f: the whole 640 x 480 screen"; done
+	hintline pt-paint-640-view "Paint"
+	differ pt-paint-640-view pt-paint-640-crop "A on Crop: the frame"
+	footdiffer pt-paint-640-view pt-paint-640-crop "the crop's keys, CROP in the hint line"
+	differ pt-paint-640-crop pt-paint-640-crop-moved "the D-pad moves the frame"
+	differ pt-paint-640-crop-moved pt-paint-640-crop-sized "Shift + D-pad sizes it"
+	differ pt-paint-640-crop-sized pt-paint-640-crop-ratio "R: the next ratio"
+	differ pt-paint-640-view pt-paint-640-cropped "A applies: the picture cropped"
+	footsame pt-paint-640-view pt-paint-640-cropped "the tasks' keys again"
+	picsame () { if python3 -c "from PIL import Image; import sys; a = Image.open ('$OUT/$1.png').convert ('RGB').crop ((0, 30, 640, 400)); b = Image.open ('$OUT/$2.png').convert ('RGB').crop ((0, 30, 640, 400)); sys.exit (0 if a.tobytes () == b.tobytes () else 1)"; then echo "  $3: ok"; else echo "  $3: FAILED (the pictures of $1.png and $2.png differ)"; FAIL=1; fi; }
+	picsame pt-paint-640-view pt-paint-640-crop-undone "Ctrl+Z: the picture as it was"
+	# Rotate (Right, Right on the row, A): Right turns it, Up flips it, B cancels -- as it was; Crop then B: nothing changed
+	WR=$(langdir "")
+	R1="$W8;$(K $RIGHT)$(K $RIGHT)dump $OUT/pt-paint-640-task-rotate.elsm;$(K 13)$(K $RIGHT)$W8;dump $OUT/pt-paint-640-rotated.elsm;$(K $UP)$W8;dump $OUT/pt-paint-640-flipped.elsm;$(K 27)$W8;dump $OUT/pt-paint-640-rotate-cancelled.elsm"
+	R1="$R1;$(K 13)$(K $LEFT)$(K 13)$W8;dump $OUT/pt-paint-640-rotate-kept.elsm"
+	run pocket_paint pt-paint-640-rot "$R1" $PA SIM_WRITES=$WR
+	for f in task-rotate rotated flipped rotate-cancelled rotate-kept; do out pt-paint-640-$f; done
+	differ pt-paint-640-view pt-paint-640-task-rotate "Right, Right: the Rotate task chosen"
+	differ pt-paint-640-task-rotate pt-paint-640-rotated "A, Right: the picture turned"
+	differ pt-paint-640-rotated pt-paint-640-flipped "Up: flipped"
+	picsame pt-paint-640-task-rotate pt-paint-640-rotate-cancelled "B cancels: the picture as it was"
+	differ pt-paint-640-task-rotate pt-paint-640-rotate-kept "A, Left, A: turned and kept"
+	# Resize and Adjust are dialogs by the keys (Esc leaves each); Text: a box in the middle, typed, A puts it
+	WR=$(langdir "")
+	T1="$W8;$(K $RIGHT)$(K 13)$W;dump $OUT/pt-paint-640-resize.elsm;$(K 27)$(K $RIGHT)$(K $RIGHT)$(K 13)$W;dump $OUT/pt-paint-640-adjust.elsm;$(K 27)$(K $RIGHT)$(K 13)dump $OUT/pt-paint-640-text.elsm;key 0x4f;$W;key 0x6b;$W;dump $OUT/pt-paint-640-text-typed.elsm;$(K 13)$W8;dump $OUT/pt-paint-640-text-put.elsm"
+	run pocket_paint pt-paint-640-dlg "$T1" $PA SIM_WRITES=$WR
+	for f in resize adjust text text-typed text-put; do out pt-paint-640-$f; done
+	differ pt-paint-640-view pt-paint-640-resize "Resize: its dialog"
+	differ pt-paint-640-view pt-paint-640-adjust "Adjust: its dialog"
+	footdiffer pt-paint-640-view pt-paint-640-text "Text: TEXT in the hint line"
+	differ pt-paint-640-text pt-paint-640-text-typed "typing writes on the picture"
+	differ pt-paint-640-view pt-paint-640-text-put "A puts the text: the picture changed"
+	WR=$(langdir fr)
+	run pocket_paint pt-paint-640-fr "$W8;dump $OUT/pt-paint-640-view-fr.elsm" $PA SIM_WRITES=$WR
+	out pt-paint-640-view-fr
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

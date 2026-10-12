@@ -46,7 +46,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Letters** | minor: the status bar wrote *(modified)* over *Page 1 of 2* | **driven**: F6, Right, Right (the ring on the toolbar); the hint line says F6, Alt + D-pad, CMD (`pt-letters-640*`) | **done here**: the page / words move right of the name, the name is cut for what is left (`-after`) | small | no |
 | **Sheet** | minor → **done here**: both toolbars were cut at the window's edge (a hand-made bar) | ok; the chart and the cells' drag handles are a pointer's | **done**: its bars are UIKit's `ToolBar` — "»" and F6 (`-after`). Left: two rows of tools take 68 px (Letters folds them into one: `foldInto`, priorities to choose) | small (done) + medium | no |
 | **Slides** | was **broken** (the slide 180 px wide between the thumbnails and the inspector, light panels) → **fine since Q1 was built** (below): the slide alone, drawers, dark panes | **driven**: L, Down ×2, Enter; R, Right, Down ×2, R; Down ×2 (objects), M, Right ×3, Shift + Down, Enter; S, Right, Down, Esc; Enter, a letter, Esc; F5, Enter ×2, Esc | the thumbnails a navigation SidePanel (a drawer), the inspector an inspector SidePanel (a slide-over), the colours from the theme, the translation due | large | **yes** — Q1 |
-| **Paint** | **broken**: the ribbon is cut after *Shapes* (the colours, the text tools are out of the screen); the status bar's texts overlap; the layers take 250 px | pointer | the ribbon cannot simply overflow: see Q2; the layers an inspector SidePanel | large | **yes** — Q2 |
+| **Paint** | was **broken** (the ribbon cut, the layers 250 px wide) → **fine since Q2 was built** (below): a picture adjusted by a row of tasks | **driven**: A (Crop), Right, Down, Shift + Left ×2, R, A, Ctrl+Z; Right ×2, A (Rotate), Right, Up, B; A, Left, A; Resize / Adjust: A, Esc; Text: A, two letters, A | the ribbon cannot simply overflow: see Q2; the layers an inspector SidePanel | large | **yes** — Q2 |
 | **Notes** | fine | ok | — | — | no |
 | **Stickies**, **Agenda** | not shown: desktop widgets (they opened no window under PocketUI in the simulator) | — | decide whether pocket has them at all | — | **yes** — Q9 |
 | **Text Editor** (tinypad) | fine | ok | — | — | no |
@@ -79,7 +79,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | its applets: **Theme, Mode, Panel, Preload, App Settings** | minor / **broken** for *Panel*: an applet is 700 × 470 at least, the pane is 640 × 406 — the right 60 px (Mode's third card, Panel's workspaces, App Settings' *Delete*) and the bottom 64 px are reached by the pane's scroll bars only | partly: the pane does not follow the focus to what is out of sight | each applet's least width down to 640 (five layouts), and the Control Panel's pane scrolled to the focused control | medium | no |
 | its applets: **Display, Sound, Keyboard & Mouse, Language & Region, Gamepad, Wi-Fi** | fine (what they show fits in the 640 px) | ok | — | — | no |
 | its applet **Printers** | not judged (it drew nothing in the simulator: no printing service there) | — | — | — | — |
-| **QBStudio** | **broken**: the form's surface and the code are 185 px wide between the project / toolbox and the properties; *Check* is under the view's switch | pointer for the form's design; the code is typed | an IDE on 640 × 480: see Q6 | large | **yes** — Q6 |
+| **QBStudio** | was **broken** (the form and the code 185 px wide between three panes) → **fine since Q6 was built** (below) | **driven**: Down (a control), M, Right, Enter; S, Right ×2, Esc; Down; L, Down ×3, Enter (a control added), Enter; R, Down ×2, R; F7, F7 | an IDE on 640 × 480: see Q6 | large | **yes** — Q6 |
 | **Onyx BASIC** (qbasic) | not judged (it needs a program; it opened no window alone) | — | — | — | — |
 | **3DForge** | **broken**: the ribbon's tools are under *Export* and cut after *Move*; the view is 400 px beside a 225 px panel | pointer (the view is turned and the sketches drawn with the mouse) | see Q7 | large | **yes** — Q7 |
 | **Game Library** | minor: with no game, the line naming the file types is cut at the right (with games: fine, checked on this branch) | ok (L / R the systems, the arrows the games) | the line wrapped | small | no |
@@ -133,7 +133,31 @@ slide's centre lines do); *Master and layouts…* shows no "not in pocket" card 
 the same keys); the notes are not shown at all (no full-screen notes). Slides stays untranslated but for its pocket
 words (the hint line, the drawers' names: `lang/fr.txt`).
 
-**Not built**: Q6 QBStudio, Q2 Paint, Q7 3DForge, Q8 Turtle
+**Q6, QBStudio — built (2026-10-12)**, driven by the keys alone (`pocket640.sh qbstudio`: 30 checks;
+`pt-qbstudio-640-*`): the form OR the code (F7; *Form / Code* in the bar), **L** the project and the toolbox in one
+drawer (Left / Right between its two parts; A opens a file, or adds a control after the chosen one, in the move
+mode), **R** the properties and events (Up / Down, A edits); on the form the D-pad steps from control to control
+with Q1's code (`uikit/objnav.h`), M / S the modes, A the control's code, Bksp removes. Verdict: **fine** to retouch
+a form and its code. **Differs from the mock-up**: a form is a tree of layouts, so "move" is a place on the 8 px
+grid only on a Canvas — in a Column, a Row or a Grid the D-pad changes the control's ORDER among its neighbours (the
+hint line still says "8 px"); the D-pad steps over the leaves (a container with children is reached by Esc from one
+of them, then M / S work on it); the app keeps its toolbar (New, Open, Save… Run, Check) with *Form / Code* at its
+right, not the mock-up's bar with the file's name; the problems keep a 40 px strip under the code. QBStudio stays
+untranslated but for its pocket words.
+
+**Q2, Paint — built (2026-10-12)**, driven by the keys alone (`pocket640.sh paint`: 27 checks; `pt-paint-640-*`): in
+pocket Paint adjusts a picture — the picture over one row of tasks (Crop, Resize, Rotate, Adjust, Text), the line
+*Drawing needs a pointer…*, no ribbon, no options, no layers' panel. Crop: a frame moved by the D-pad, sized by
+Shift + D-pad, its ratio by L / R, A applies; Rotate: Left / Right turn, Up / Down flip, B undoes; Resize and Adjust
+are the existing dialogs, by the keys; Text: a box in the middle, typed, A puts it. Verdict: **fine**. **Differs from
+the mock-up**: the tasks are a segmented row (text, no icons) and the ratio's choices take its place while cropping;
+Adjust is the *Brightness / Contrast* dialog (saturation is in the Menu's *Hue / Saturation*), not three sliders
+under the picture; Text has no colour row of its own (the text colour last used) and one size; a picture with layers
+is NOT flattened nor saved under another name — it is shown whole and saved with its layers, which loses nothing;
+no "not in pocket" card (nothing leads to a drawing tool there: one line says it). Paint stays untranslated but for
+its pocket words.
+
+**Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
 applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above
 stand as they were.

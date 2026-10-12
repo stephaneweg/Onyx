@@ -46,9 +46,27 @@ static char g_path[200];			// "" : not saved yet (a picture opened: its path, Sa
 static unsigned g_saved;
 static unsigned *g_clip; static int g_clipW, g_clipH;	// the copied pixels
 
+// POCKET on a small screen (under 800 px wide, no pointer: main decides once): Paint ADJUSTS a picture, it does not
+// paint -- the picture and one row of tasks (Crop, Resize, Rotate, Adjust, Text), by the keys; no ribbon, no brushes,
+// no shapes, no layers' panel (the designer's answer Q2: docs/compact-shell/mockups/pocketterm/apps/ANSWERS.md).
+static bool g_pk = false;
+enum { PK_VIEW, PK_CROP, PK_ROTATE, PK_TEXT };
+static int g_pkMode = PK_VIEW;
+static SegmentedControl *g_tasks = 0, *g_ratio = 0;
+static Label *g_pkNote = 0;
+static Rect g_crop; static int g_rotN = 0;	// the crop's frame (the picture's pixels); the turns and flips done in the Rotate task
+static void pocket_layout ();
 static bool changed_doc () { return D.changes != g_saved; }
 static const char *base_name (const char *p) { const char *b = p; for (const char *q = p; *q; q++) if (*q == '/' || *q == ':') b = q + 1; return b; }
-static void focus_view () { if (g_view) g_view->setFocus (); }
+// (pocket: the keys are the task's -- a text's are the view's; the row of tasks has Left / Right; a frame, a turn: the
+//  window's own, pk_key -- wherever a command gives "the view" its focus back)
+static void focus_view ()
+{
+	if (!g_view) return;
+	if (!g_pk || g_pkMode == PK_TEXT || !g_tasks) { g_view->setFocus (); return; }
+	if (g_pkMode == PK_VIEW) ((Widget *) g_tasks)->setFocus ();
+	else if (Root::winFirst ()) ((Widget *) Root::winFirst ())->setFocus ();
+}
 static void centre (Modal *m) { Root *r = Root::current (); m->left = ((r ? r->width : m->width) - m->width) / 2; m->top = ((r ? r->height : m->height) - m->height) / 2; }
 static void act_close (Widget &w) { Widget *p = w.parent; while (p && !p->modal) p = p->parent; if (p) ((Modal *) p)->close (w.tag); }
 static void ok_cancel (Modal *m, int okTag = 1)
@@ -60,6 +78,7 @@ static void ok_cancel (Modal *m, int okTag = 1)
 static void refresh ()
 {
 	if (!g_view) return;
+	if (g_pk) { g_view->invalidate (true); return; }	// (pocket: the picture alone)
 	g_view->invalidate (true);
 	g_ribbon->invalidate (true);
 	g_opts->invalidate (true);
@@ -1298,13 +1317,156 @@ static void zoom_cmd (int what)
 }
 static void tool_changed () { refresh (); }
 
+// ---- pocket: the tasks ----------------------------------------------------------------------------------------------
+static const int PK_RN[5] = { 0, 1, 4, 16, 16 }, PK_RD[5] = { 0, 1, 3, 10, 9 };	// Free, 1:1, 4:3, 16:10, 16:9
+static void pk_crop_show () { Rect r = g_crop; sel_rect (r); g_view->invalidate (true); }
+// The frame brought to the ratio chosen (its width kept, its height following; inside the picture)
+static void pk_crop_ratio ()
+{
+	int i = g_ratio ? g_ratio->selected : 0;
+	if (i > 0 && i < 5)
+	{
+		int w = g_crop.x1 - g_crop.x0, h = w * PK_RD[i] / PK_RN[i];
+		if (h > D.h) { h = D.h; w = h * PK_RN[i] / PK_RD[i]; }
+		if (h < 1) h = 1;
+		if (w < 1) w = 1;
+		g_crop.x1 = g_crop.x0 + w; g_crop.y1 = g_crop.y0 + h;
+		if (g_crop.x1 > D.w) { g_crop.x0 -= g_crop.x1 - D.w; g_crop.x1 = D.w; }
+		if (g_crop.y1 > D.h) { g_crop.y0 -= g_crop.y1 - D.h; g_crop.y1 = D.h; }
+		if (g_crop.x0 < 0) g_crop.x0 = 0;
+		if (g_crop.y0 < 0) g_crop.y0 = 0;
+	}
+	pk_crop_show ();
+}
+static void pk_mode (int m)
+{
+	g_pkMode = m;
+	((Widget *) g_tasks)->hidden = m == PK_CROP; ((Widget *) g_ratio)->hidden = m != PK_CROP;
+	pocket_layout ();
+	focus_view ();
+}
+static void pk_start (int task)
+{
+	settle ();
+	switch (task)
+	{
+	case 0:						// Crop: a frame over the picture's middle
+		g_crop = mkrect (D.w / 8, D.h / 8, D.w - D.w / 8, D.h - D.h / 8);
+		g_tool = T_SELECT; g_selKind = SK_RECT;
+		g_ratio->select (0);
+		pk_mode (PK_CROP); pk_crop_show ();
+		break;
+	case 1: cmd_resize (); ((Widget *) g_tasks)->setFocus (); break;
+	case 2: g_rotN = 0; pk_mode (PK_ROTATE); break;
+	case 3: run_adjust (AJ_BRIGHT); ((Widget *) g_tasks)->setFocus (); break;
+	case 4:						// Text: a box in the picture's middle, typed at once
+		g_tool = T_TEXT;
+		if (g_tsize < D.h / 14) g_tsize = D.h / 14;	// (readable on the picture fitted to a small screen)
+		text_end (true); text_init ();
+		g_text.on = true; g_text.x = D.w / 4; g_text.y = D.h / 2 - g_tsize / 2; g_text.n = 0; g_text.caret = 0; g_text.s[0] = 0;
+		pk_mode (PK_TEXT); g_view->invalidate (true);
+		break;
+	}
+}
+// A key in a task -> true used
+static bool pk_key (long k)
+{
+	unsigned mods = kapi_get_modifiers ();
+	bool arrow = k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN;
+	int dx = k == KEY_LEFT ? -1 : k == KEY_RIGHT ? 1 : 0, dy = k == KEY_UP ? -1 : k == KEY_DOWN ? 1 : 0;
+	if (mods & (MOD_CTRL | MOD_ALT)) return false;
+	if (g_pkMode == PK_VIEW)
+	{
+		if (k == KEY_ENTER && g_tasks->selected >= 0) { pk_start (g_tasks->selected); return true; }
+		if (k == '+' || k == '=') { g_view->zoomStep (1); g_view->invalidate (true); return true; }
+		if (k == '-') { g_view->zoomStep (-1); g_view->invalidate (true); return true; }
+		if (k == '0') { g_view->zoomFit (); g_view->invalidate (true); return true; }
+		return false;				// (Left / Right: the row of tasks has them)
+	}
+	if (g_pkMode == PK_CROP)
+	{
+		if (k == KEY_ENTER) { pk_crop_show (); pk_mode (PK_VIEW); cmd_crop (); g_tool = T_SELECT; sel_clear (); ((Widget *) g_tasks)->setFocus (); g_view->invalidate (true); return true; }
+		if (k == 27) { sel_clear (); pk_mode (PK_VIEW); g_view->invalidate (true); return true; }
+		if (arrow)
+		{
+			int st = 8 * 100 / (g_view->zoom > 0 ? g_view->zoom : 100); if (st < 1) st = 1;
+			int w = g_crop.x1 - g_crop.x0, h = g_crop.y1 - g_crop.y0;
+			if (mods & MOD_SHIFT)				// the size (its bottom right corner); a ratio chosen: kept
+			{
+				w += dx * st; h += dy * st;
+				int i = g_ratio->selected;
+				if (i > 0 && i < 5) { if (dx) h = w * PK_RD[i] / PK_RN[i]; else w = h * PK_RN[i] / PK_RD[i]; }
+				if (w < 8) w = 8;
+				if (h < 8) h = 8;
+				if (g_crop.x0 + w > D.w) w = D.w - g_crop.x0;
+				if (g_crop.y0 + h > D.h) h = D.h - g_crop.y0;
+				g_crop.x1 = g_crop.x0 + w; g_crop.y1 = g_crop.y0 + h;
+			}
+			else						// the place
+			{
+				int x = g_crop.x0 + dx * st, y = g_crop.y0 + dy * st;
+				if (x < 0) x = 0;
+				if (y < 0) y = 0;
+				if (x + w > D.w) x = D.w - w;
+				if (y + h > D.h) y = D.h - h;
+				g_crop.x0 = x; g_crop.y0 = y; g_crop.x1 = x + w; g_crop.y1 = y + h;
+			}
+			pk_crop_show ();
+			return true;
+		}
+		return true;
+	}
+	if (g_pkMode == PK_ROTATE)
+	{
+		if (k == KEY_LEFT) { cmd_rot_left (); g_rotN++; return true; }
+		if (k == KEY_RIGHT) { cmd_rot_right (); g_rotN++; return true; }
+		if (k == KEY_UP) { cmd_flip_v (); g_rotN++; return true; }
+		if (k == KEY_DOWN) { cmd_flip_h (); g_rotN++; return true; }
+		if (k == KEY_ENTER) { pk_mode (PK_VIEW); return true; }
+		if (k == 27) { while (g_rotN > 0) { undo (); g_rotN--; } sel_clear (); g_view->zoomFit (); pk_mode (PK_VIEW); g_view->invalidate (true); return true; }
+		return true;
+	}
+	return false;
+}
+// The hint line, the picture's place over the row of tasks; a text ended (Esc, Enter in the view): the tasks again
+static void pocket_layout ()
+{
+	Root *r = Root::winFirst (); if (!r || !g_view) return;
+	int hh = uk_hint_line_height (r), W0 = r->width, H0 = r->height - hh;
+	const int ROW = 34, NOTE = 20;
+	((Widget *) g_tasks)->left = 14; ((Widget *) g_tasks)->top = H0 - ROW - 6; g_tasks->resizeTo (W0 - 28, ROW);
+	((Widget *) g_ratio)->left = 14; ((Widget *) g_ratio)->top = H0 - ROW - 6; g_ratio->resizeTo (W0 - 28, ROW);
+	g_pkNote->left = 14; g_pkNote->top = H0 - ROW - 6 - NOTE - 2; g_pkNote->resizeTo (W0 - 28, NOTE);
+	g_view->left = 0; g_view->top = 0; g_view->resizeTo (W0, H0 - ROW - 6 - NOTE - 6);
+	r->invalidate (true);
+}
+static void pocket_tick ()
+{
+	if (!g_pk || !g_view) return;
+	Root *r = Root::winFirst ();
+	if (g_pkMode == PK_TEXT && !g_text.on) { g_tool = T_SELECT; pk_mode (PK_VIEW); }
+	static UkPadHint HN[6]; int n = 0; const char *mode = 0;
+	switch (g_pkMode)
+	{
+	case PK_VIEW: HN[n++] = { "-", TR ("task") }; HN[n++] = { "A", TR ("start") }; HN[n++] = { "[+]", "" }; HN[n++] = { "[-]", TR ("zoom") }; HN[n++] = { "[Ctrl+Z]", TR ("undo") }; HN[n++] = { "[Ctrl+S]", TR ("save") }; break;
+	case PK_CROP: mode = TR ("CROP"); HN[n++] = { "+", TR ("move") }; HN[n++] = { "[Shift]+", TR ("size") }; HN[n++] = { "LR", TR ("ratio") }; HN[n++] = { "A", TR ("apply") }; HN[n++] = { "B", TR ("cancel") }; break;
+	case PK_ROTATE: mode = TR ("ROTATE"); HN[n++] = { "-", TR ("turn 90\xC2\xB0") }; HN[n++] = { "|", TR ("flip") }; HN[n++] = { "A", TR ("done") }; HN[n++] = { "B", TR ("cancel") }; break;
+	case PK_TEXT: mode = TR ("TEXT"); HN[n++] = { "[abc]", TR ("type") }; HN[n++] = { "A", TR ("put") }; HN[n++] = { "B", TR ("cancel") }; break;
+	}
+	int was = uk_hint_line_height (r);
+	if (uk_hint_line (r, HN, n, mode) != was) pocket_layout ();
+}
+
 // ---- the window --------------------------------------------------------------------------------------------------
 class PaintRoot : public Root
 {
 public:
 	PaintRoot () : Root (W, H, "Paint") {}
+	void onTick () override { pocket_tick (); }
+	void onResized () override { if (g_pk) pocket_layout (); }
 	bool onKey (long k) override
 	{
+		if (g_pk) return pk_key (k);		// (pocket: no tool's letter -- the tasks' keys)
 		if (kapi_get_modifiers () & (MOD_CTRL | MOD_ALT)) return false;
 		switch (k)			// (the tools' letters)
 		{
@@ -1354,10 +1516,31 @@ int main (void)
 	g_view = new CanvasView (0, bodyY, W - PANEL_W, bodyH);
 	g_layers = new LayersPanel (W - PANEL_W, bodyY, bodyH);
 	g_status = new StatusBar (0, H - STATUS_H, W, g_view);
+	g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+	if (g_pk)					// pocket: the picture and one row of tasks -- the ribbon, the options, the layers stay out
+	{
+		g_enterPutsText = true;
+		uk_lang_init ();			// (its pocket words in the system's language: lang/fr.txt)
+		static const char *T5[5]; T5[0] = TR ("Crop"); T5[1] = TR ("Resize"); T5[2] = TR ("Rotate"); T5[3] = TR ("Adjust"); T5[4] = TR ("Text");
+		static const char *R5[5]; R5[0] = TR ("Free"); R5[1] = "1:1"; R5[2] = "4:3"; R5[3] = "16:10"; R5[4] = "16:9";
+		g_tasks = new SegmentedControl (14, H - 60, W - 28, 34, T5, 5, 0, 0);
+		g_ratio = new SegmentedControl (14, H - 60, W - 28, 34, R5, 5, 0, [] (Widget &) { if (g_pkMode == PK_CROP) pk_crop_ratio (); });
+		((Widget *) g_ratio)->hidden = true;
+		((Widget *) g_ratio)->canFocus = false;	// (it shows the ratio; L / R step it -- the D-pad is the frame's)
+		uk_segmented_nav (g_ratio);		// (while cropping: L / R step the ratio)
+		g_pkNote = new Label (14, H - 84, W - 28, 20, TR ("Drawing needs a pointer: brushes, shapes and layers are in the desktop mode."), uk_flat () ? (unsigned) UK_N_TEXT3 : C_DIS, root.bg);
+		g_ribbon->hidden = g_opts->hidden = g_layers->hidden = g_status->hidden = true;
+		root.addChild (g_view); root.addChild (g_pkNote); root.addChild (g_tasks); root.addChild (g_ratio);
+		root.addChild (g_ribbon); root.addChild (g_opts); root.addChild (g_layers); root.addChild (g_status);	// (hidden: their callbacks still find them)
+	}
+	else
+	{
 	root.addChild (g_ribbon); root.addChild (g_opts); root.addChild (g_layers); root.addChild (g_status);
 	root.addChild (g_view);			// (last: on top -- a drag ended over another part still reaches it)
+	}
 	g_ribbon->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_opts->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
+	if (!g_pk)
 	g_view->anchor = ANCHOR_FILL;
 	g_layers->anchor = ANCHOR_TOP | ANCHOR_BOTTOM | ANCHOR_RIGHT;
 	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
@@ -1465,6 +1648,7 @@ int main (void)
 	}
 	if (!opened) doc_loaded ();
 	g_view->setFocus ();
+	if (g_pk) { pocket_tick (); pocket_layout (); g_view->zoomFit (); ((Widget *) g_tasks)->setFocus (); }
 	root.run ();
 
 	settle ();
