@@ -1,0 +1,40 @@
+# Koton's words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the two
+# views, the card, the Menu, the hint line): the studio itself is not translated yet.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+Song	Morceau
+Mixer	Mixage
+Untitled song	Morceau sans titre
+%d track	%d piste
+%d tracks	%d pistes
+No track in this song.	Aucune piste dans ce morceau.
+No sound	Pas de son
+Master	Général
+Writing notes needs a pointer	Écrire des notes demande un pointeur
+In pocket, Koton plays a project and mixes it: levels, mute, solo, the tempo, the export to WAV. The piano roll, the sound chains and the generators are drawn and dragged with a mouse.	En mode poche, Koton joue un projet et le mixe : niveaux, muet, solo, le tempo, l'export en WAV. Le piano roll, les chaînes de son et les générateurs se dessinent et se déplacent à la souris.
+Open FM Tracker	Ouvrir FM Tracker
+Back to the song	Retour au morceau
+All of Koton: the desktop mode, with a mouse (Control Panel > Mode).	Tout Koton : le mode bureau, avec une souris (Panneau de configuration > Mode).
+choose	choisir
+OK	OK
+back to the song	retour au morceau
+track	piste
+the bar	la mesure
+play	lecture
+mute	muet
+solo	solo
+level	niveau
+File	Fichier
+Open...	Ouvrir...
+Save	Enregistrer
+Export as WAV...	Exporter en WAV...
+Tempo, key, meter...	Tempo, tonalité, mesure...
+Transport	Transport
+Play / Pause	Lecture / Pause
+Stop	Arrêt
+Back to the start	Retour au début
+Metronome	Métronome
+Compose	Composer
+Edit a block...	Modifier un bloc...
+Sound chain and effects...	Chaîne de son et effets...
+Generators...	Générateurs...
+Compose with AI...	Composer avec l'IA...

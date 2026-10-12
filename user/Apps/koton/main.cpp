@@ -24,6 +24,7 @@
 #include "ui/chrome.h"
 #include "ui/ai_dialog.h"
 #include "ui/chain.h"
+#include "ui/pocket.h"		// the pocket mode on a small screen: it plays and mixes (g_pk)
 
 using namespace kui;
 
@@ -53,6 +54,11 @@ static EditorHost *g_host;
 static StatusBar *g_statusBar;
 static ChainPanel *g_chain;
 static int g_editorH = 360;
+// POCKET on a small screen (640 x 480, no pointer): Koton plays a project and mixes it -- ui/pocket.h's one widget over
+// the window, the desktop's parts made as ever and hidden. Decided once in main; false on the desktop: nothing changes.
+static bool g_pk = false;
+static PocketKoton *g_pocket = 0;
+static void pocket_layout (Root *r);
 
 // the main parts placed for the window's size (the editor's pane keeps its height, within reason)
 static void layoutMain (Widget &root)
@@ -67,6 +73,7 @@ static void layoutMain (Widget &root)
 	g_arrange->left = 0; g_arrange->top = bodyTop; g_arrange->resizeTo (W - Browser::W, bodyH - g_editorH);
 	g_statusBar->left = 0; g_statusBar->top = H - StatusBar::H; g_statusBar->resizeTo (W, StatusBar::H);
 	g_top->placeChildren ();
+	if (g_pk) pocket_layout ((Root *) &root);
 	root.invalidate (true);
 }
 static void onSplit (int dy)
@@ -147,6 +154,7 @@ static void setStatus (const char *fmt, const char *a = "")
 // ---- the views follow the song -------------------------------------------------------------------------------------
 static void refreshAll ()
 {
+	if (g_pocket) g_pocket->invalidate (true);
 	if (g_arrange) g_arrange->invalidate (true);
 	if (g_top) g_top->invalidate (true);
 	if (g_statusBar) g_statusBar->invalidate (true);
@@ -543,6 +551,28 @@ static void pollMidi ()
 	}
 }
 
+// ---- pocket: the view over the window, its hint line, the Menu's "not in pocket" ---------------------------------------
+static void pocket_hints (Root *r)
+{
+	if (!g_pocket) return;
+	static UkPadHint HN[6]; int n = 0;
+	if (g_pocket->card) { HN[n++] = { "-", TR ("choose") }; HN[n++] = { "A", TR ("OK") }; HN[n++] = { "B", TR ("back to the song") }; }
+	else if (g_pocket->view == 0) { HN[n++] = { "|", TR ("track") }; HN[n++] = { "-", TR ("the bar") }; HN[n++] = { "[Space]", TR ("play") }; HN[n++] = { "A", TR ("mute") }; HN[n++] = { "[S]", TR ("solo") }; }
+	else { HN[n++] = { "-", TR ("track") }; HN[n++] = { "|", TR ("level") }; HN[n++] = { "A", TR ("mute") }; HN[n++] = { "[S]", TR ("solo") }; HN[n++] = { "[Space]", TR ("play") }; }
+	int was = uk_hint_line_height (r);
+	if (uk_hint_line (r, HN, n) != was) pocket_layout (r);
+}
+static void pocket_layout (Root *r)
+{
+	if (!g_pocket || !r) return;
+	g_pocket->left = 0; g_pocket->top = 0;
+	g_pocket->resizeTo (r->width, r->height - uk_hint_line_height (r));
+	g_pocket->invalidate (true);
+}
+static void cmdPocketCard () { if (g_pocket) g_pocket->showCard (); }
+static void cmdPocketSong () { if (g_pocket) { g_pocket->view = 0; g_pocket->card = false; g_pocket->setFocus (); g_pocket->invalidate (true); } }
+static void cmdPocketMixer () { if (g_pocket) { g_pocket->view = 1; g_pocket->card = false; g_pocket->setFocus (); g_pocket->invalidate (true); } }
+
 // ---- the window ----------------------------------------------------------------------------------------------------------
 class KotonRoot : public Root
 {
@@ -576,6 +606,7 @@ public:
 		if (g_rebuildEditor) { g_rebuildEditor = false; g_host->rebuild (); lastSel[0] = g_doc.sel.track; lastSel[1] = g_doc.sel.item; chainRebuild = true; }
 		g_host->tick ();
 		g_top->tick ();
+		if (g_pocket) { g_pocket->tick (); pocket_hints (this); }
 		if (g_chain) g_chain->tick ();
 		if (g_plug && g_plug->available ())
 		{
@@ -608,6 +639,7 @@ public:
 	}
 	bool onKey (long k) override
 	{
+		if (g_pocket) { if (!g_pocket->hasFocus) g_pocket->setFocus (); return g_pocket->onKey (k); }	// (pocket: the view's keys, whatever had them)
 		switch (k)
 		{
 		case ' ': cmdPlayStop (); return true;
@@ -650,10 +682,17 @@ int main (void)
 		FtTextFace *big = new FtTextFace;
 		if (big->open ("DejaVu Sans Mono", 26) || big->open ("DejaVu Sans", 26)) g_bigFace = big; else delete big;
 	}
+	{ int SW = 0, SH = 0; kapi_screen_size (&SW, &SH); g_pk = uk_mode () == UK_MODE_POCKET && SW > 0 && SW < 800; }
 	KotonRoot root (sw, sh);
 	root.attach ();
 	uikit::init ();
 	applyTheme ();
+	if (g_pk)					// (its pocket words in the system's language; the card's title's face)
+	{
+		uk_lang_init ();
+		FtTextFace *cf = new FtTextFace;
+		if (cf->open ("DejaVu Sans", 17)) PocketKoton::g_cardFace = cf; else delete cf;
+	}
 	root.setBg (BG);
 
 	// the song, the sound
@@ -713,8 +752,41 @@ int main (void)
 	root.addChild (g_arrange);			// (last: a drag ending over another part still reaches it)
 	g_arrange->setFocus ();
 	g_host->onSplit = onSplit;
+	if (g_pk)					// pocket: the desktop's parts hidden under the one view that plays and mixes
+	{
+		g_top->hidden = true; g_browser->hidden = true; g_host->hidden = true; g_chain->hidden = true;
+		g_statusBar->hidden = true; g_arrange->hidden = true;
+		g_pocket = new PocketKoton (W, H);
+		root.addChild (g_pocket);
+		uk_segmented_nav (g_pocket->seg);	// (L / R: Song, Mixer)
+		g_pocket->setFocus ();
+	}
 
 	static Menu menu;
+	if (g_pk)					// pocket: what plays and mixes; composing answers with the card
+	{
+		menu.menu (TR ("File"));
+		menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), cmdOpen);
+		menu.item (TR ("Save"), "^S", UK_CTRL ('S'), cmdSave);
+		menu.item (TR ("Export as WAV..."), "", 0, cmdExport);
+		menu.menu (TR ("Song"));
+		menu.item (TR ("Song"), "", 0, cmdPocketSong);
+		menu.item (TR ("Mixer"), "", 0, cmdPocketMixer);
+		menu.separator ();
+		menu.item (TR ("Tempo, key, meter..."), "^K", UK_CTRL ('K'), cmdSong);
+		menu.menu (TR ("Transport"));
+		menu.item (TR ("Play / Pause"), "Space", 0, cmdPlayStop);
+		menu.item (TR ("Stop"), "Esc", 0, cmdStop);
+		menu.item (TR ("Back to the start"), "Home", 0, cmdRewind);
+		menu.item (TR ("Metronome"), "", 0, cmdMetronome);
+		menu.menu (TR ("Compose"));
+		menu.item (TR ("Edit a block..."), "", 0, cmdPocketCard);
+		menu.item (TR ("Sound chain and effects..."), "", 0, cmdPocketCard);
+		menu.item (TR ("Generators..."), "", 0, cmdPocketCard);
+		menu.item (TR ("Compose with AI..."), "", 0, cmdPocketCard);
+		menu.publish ();
+	}
+	else {
 	menu.menu ("File");
 	menu.item ("New song", "^N", UK_CTRL ('N'), cmdNew);
 	menu.item ("Open...", "^O", UK_CTRL ('O'), cmdOpen);
@@ -752,6 +824,8 @@ int main (void)
 	menu.menu ("AI");
 	menu.item ("Compose with AI...", "", 0, cmdCompose);
 	menu.publish ();
+	}
+	if (g_pk) { pocket_hints (&root); pocket_layout (&root); }
 
 	root.setResizable (true);
 	root.maximise (true);

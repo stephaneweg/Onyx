@@ -5395,6 +5395,32 @@ track.
 the same notes. **Files**: the plugins' settings are saved in the song (`.kson`: each track's
 `OnyxInstrument` / `OnyxInserts`, a generator block's `GeneratorState`).
 
+**On a small pocket screen (under 800 px wide: the PocketTerm35's 640 × 480) Koton plays a song and mixes it;
+composing is not offered there.** Two views under **L / R** (the two-part switch under the bar says where one is):
+
+- **Song** — the tracks as rows (the name, **M** and **S**, the track's blocks in its colour, the playhead). **Up /
+  Down** choose a track, **Left / Right** move the playhead bar by bar (while it plays too), **A** (Enter) mutes the
+  track, **S** solos it;
+- **Mixer** — a strip a track that sounds (the chord track is silent: it has none) and the **Master**'s: the level,
+  the meters, M and S. **Left / Right** choose a strip, **Up / Down** its level (**Shift**: a finer step), A and S as
+  in the song. A track's level, mute and solo are the song's (saved with it: Ctrl + S); the Master's level lasts
+  until Koton is closed (a song has no master level).
+
+**Space** plays and pauses, **Home** goes back to the start, **B** (Esc) stops; the bar always shows the song's name,
+its tempo and meter, the three transport buttons and the position (bar . beat . sixteenth). The Menu has *Open...*,
+*Save*, *Export as WAV...*, *Tempo, key, meter...* and the transport. Everything that writes music — a block's
+editor, the sound chain and the effects, the generators, *Compose with AI...* — is in the Menu's *Compose* and answers
+with one card: **Writing notes needs a pointer**, with *Open FM Tracker* (the tracker is a keyboard's instrument)
+beside *Back to the song*, and where the rest is: the desktop mode. A hint line says each view's keys. *No sound* in
+the bar: no SoundFont is installed, or another app has the sound output.
+
+| | |
+|---|---|
+| ![](compact-shell/real/pocketterm/pt-koton-640-song-track.png) | ![](compact-shell/real/pocketterm/pt-koton-640-mixer-level.png) |
+
+*Koton on a 640 × 480 pocket screen: the song, the mixer (`tools/tests/server_sim/pocket640.sh koton`; the PC's
+simulator has no sound: "No sound"); `pt-koton-640-card.png`: the card.*
+
 ### GPIO Lab, the 40-pin header (`gpiolab`)
 
 ![GPIO Lab](../screenshots/gpiolab.png)

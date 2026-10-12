@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard koton drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -681,6 +681,76 @@ if want clipboard; then
 	run pocket_menubar pt-clip-640-menu "other 640 450 Text_Editor;othermenu $CMENUS;$W;$W;$W;key $F10;$W;expect bargrab 1;key $UP;key $UP;$W;dump $OUT/pt-clip-640-menu.elsm;key 13;$W;expect bargrab 0" $P640 SIM_APPNAME=menubar SIM_APP=menubar SIM_WRITES=$WR SIM_SERVICES=shell
 	out pt-clip-640-menu
 	if grep -q 'sim: send shell type 106' "$OUT/log.txt"; then echo "  the Menu's Clipboard history asks the shell for the sheet: ok"; else echo "  the Menu's Clipboard history: FAILED (the shell was not asked)"; FAIL=1; fi
+fi
+
+# ---- Koton (Q4): in pocket it plays a project and mixes it -- two views under L / R, Song (the tracks as rows, their
+# blocks, the playhead) and Mixer (a strip a track); composing answers with the "not in pocket" card (a command of the
+# Menu's Compose: sent as the menu bar sends it, `menucmd`). The simulator has no sound: nothing plays there (the bar
+# says "No sound"), the playhead is moved by the keys.
+if want koton; then
+	echo "pocket640: Koton, the song and the mixer"
+	KT=user/Apps/koton; mkdir -p "$OUT/koton"
+	for f in $KT/engine/*.cpp $KT/synth/*.cpp $KT/plug/*.cpp; do [ -f "$OUT/koton/$(basename "$f" .cpp).o" ] || $CXX $INC -I$KT -c "$f" -o "$OUT/koton/$(basename "$f" .cpp).o"; done
+	ftapp pocket koton uikit_pocket -I$KT "$OUT"/koton/*.o
+	K () { echo "key $1;$W;"; }
+	LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"; SH="mods 2;$W;"; S0="mods 0;$W;"
+	KO="$P640 SIM_APPNAME=koton SIM_APP=koton SIM_ARGS=SD:/koton/songs/demo.kson"
+	W8="$WWW;$WW"
+	# the song; Down, Down: the third track; Right x3: the playhead three bars on; A: muted; S: soloed (the others' blocks dim);
+	# S, A: as it was; Home: the playhead at the start
+	WR=$(langdir "")
+	S1="$W8;expect kind fill;expect frame 0;dump $OUT/pt-koton-640-song.elsm;$(K $DOWN)$(K $DOWN)dump $OUT/pt-koton-640-song-track.elsm;$(K $RIGHT)$(K $RIGHT)$(K $RIGHT)dump $OUT/pt-koton-640-song-bar.elsm"
+	S1="$S1;$(K 13)dump $OUT/pt-koton-640-song-mute.elsm;$(K s)dump $OUT/pt-koton-640-song-solo.elsm;$(K s)$(K 13)dump $OUT/pt-koton-640-song-back.elsm;$(K 0x104)dump $OUT/pt-koton-640-song-home.elsm"
+	# R: the mixer; Right: the second strip; Up x3: its level; Shift + Down: a fine step; A: muted; S: soloed; L: the song again
+	S1="$S1;${RR}dump $OUT/pt-koton-640-mixer.elsm;$(K $RIGHT)dump $OUT/pt-koton-640-mixer-strip.elsm;$(K $UP)$(K $UP)$(K $UP)dump $OUT/pt-koton-640-mixer-level.elsm;${SH}$(K $DOWN)${S0}dump $OUT/pt-koton-640-mixer-fine.elsm"
+	S1="$S1;$(K 13)$(K s)dump $OUT/pt-koton-640-mixer-ms.elsm;${LL}dump $OUT/pt-koton-640-song-again.elsm"
+	run pocket_koton pt-koton-640 "$S1" $KO SIM_WRITES=$WR
+	for f in song song-track song-bar song-mute song-solo song-back song-home mixer mixer-strip mixer-level mixer-fine mixer-ms song-again; do out pt-koton-640-$f; size pt-koton-640-$f 640x480 "Koton, $f: the whole 640 x 480 screen"; done
+	hintline pt-koton-640-song "Koton, the song"; hintline pt-koton-640-mixer "Koton, the mixer"
+	busy pt-koton-640-song 150 140 630 440 "the song: the tracks' blocks are drawn"
+	flatcol () { n=$(python3 -c "from PIL import Image; im = Image.open ('$OUT/$1.png').convert ('RGB').crop (($2, $3, $2 + 1, $4)); print (len (im.getcolors (100000)))"); if [ "$n" = 1 ]; then echo "  $5: ok"; else echo "  $5: FAILED (something is drawn across x = $2 of $1)"; FAIL=1; fi; }
+	flatcol pt-koton-640-song 637 70 440 "the song: nothing cut at the right edge"
+	flatcol pt-koton-640-mixer 637 70 440 "the mixer: nothing cut at the right edge"
+	differ pt-koton-640-song pt-koton-640-song-track "Down, Down: another track chosen"
+	differ pt-koton-640-song-track pt-koton-640-song-bar "Right x 3: the playhead three bars on"
+	differ pt-koton-640-song-bar pt-koton-640-song-mute "A: the track muted"
+	differ pt-koton-640-song-mute pt-koton-640-song-solo "S: the track soloed"
+	same pt-koton-640-song-bar pt-koton-640-song-back "S, A again: as it was"
+	same pt-koton-640-song-track pt-koton-640-song-home "Home: the playhead at the start again"
+	differ pt-koton-640-song-home pt-koton-640-mixer "R: the mixer"
+	footdiffer pt-koton-640-song pt-koton-640-mixer "the mixer's keys are not the song's"
+	differ pt-koton-640-mixer pt-koton-640-mixer-strip "Right: the next strip"
+	differ pt-koton-640-mixer-strip pt-koton-640-mixer-level "Up x 3: the level raised"
+	differ pt-koton-640-mixer-level pt-koton-640-mixer-fine "Shift + Down: a fine step down"
+	differ pt-koton-640-mixer-fine pt-koton-640-mixer-ms "A, S: muted and soloed"
+	differ pt-koton-640-mixer-ms pt-koton-640-song-again "L: the song again"
+	barsame pt-koton-640-song pt-koton-640-song-again "the song's bar and tabs again"
+	# the card: Compose > Edit a block... (the Menu's command 10); Left: Open FM Tracker has the ring; Right, A (or B): back
+	# to the song; again, Left, A: FM Tracker asked for; the Mixer's command (4) from the Menu
+	WR=$(langdir "")
+	S2="$W8;dump $OUT/pt-koton-640-c0.elsm;menucmd 10;$W;dump $OUT/pt-koton-640-card.elsm;$(K $LEFT)dump $OUT/pt-koton-640-card-fm.elsm;$(K $RIGHT)$(K 13)dump $OUT/pt-koton-640-card-back.elsm"
+	S2="$S2;menucmd 12;$W;$(K 27)dump $OUT/pt-koton-640-card-esc.elsm;menucmd 11;$W;$(K $LEFT)$(K 13)dump $OUT/pt-koton-640-card-open.elsm;menucmd 4;$W;dump $OUT/pt-koton-640-menu-mixer.elsm"
+	run pocket_koton pt-koton-640-card-run "$S2" $KO SIM_WRITES=$WR
+	for f in c0 card card-fm card-back card-esc card-open menu-mixer; do out pt-koton-640-$f; done
+	differ pt-koton-640-c0 pt-koton-640-card "Compose > Edit a block: the card"
+	footdiffer pt-koton-640-c0 pt-koton-640-card "the card's keys are not the song's"
+	differ pt-koton-640-card pt-koton-640-card-fm "Left: Open FM Tracker has the ring"
+	same pt-koton-640-c0 pt-koton-640-card-back "Right, A: back to the song"
+	same pt-koton-640-c0 pt-koton-640-card-esc "the card again (Generators...), B: back to the song"
+	same pt-koton-640-c0 pt-koton-640-card-open "the card again, Left, A: the card away"
+	if grep -q "sim: launch fmtracker\|sim: raise_app fmtracker" "$OUT/log.txt"; then echo "  Open FM Tracker: the app asked for: ok"; else echo "  Open FM Tracker: FAILED (not asked for)"; FAIL=1; fi
+	differ pt-koton-640-c0 pt-koton-640-menu-mixer "the Menu's Mixer: the mixer"
+	# L / R by a pad as by the keys; in French
+	WR=$(langdir ""); printf '[default]\na = 1\nb = 2\nx = 3\ny = 4\nl = 5\nr = 6\nselect = 7\nstart = 8\nhome = 9\ndpad = hat\n' > "$WR/etc/gamepad.ini"
+	run pocket_koton pt-koton-640-pad "$W8;pad 32;$W;pad 0;$W;$W;$W;dump $OUT/pt-koton-640-pad-r.elsm;pad 16;$W;pad 0;$W;$W;$W;dump $OUT/pt-koton-640-pad-l.elsm;pad 0x4000;$W;pad 0;$W;$W;pad 0x4000;$W;pad 0;$W;$W;dump $OUT/pt-koton-640-pad-down.elsm" $KO SIM_WRITES=$WR
+	for f in pad-r pad-l pad-down; do out pt-koton-640-$f; done
+	same pt-koton-640-mixer pt-koton-640-pad-r "a pad's R: the mixer, as Ctrl + Page Down"
+	same pt-koton-640-song pt-koton-640-pad-l "a pad's L: the song, as Ctrl + Page Up"
+	same pt-koton-640-song-track pt-koton-640-pad-down "a pad's Down, Down: the third track, as the keys"
+	WR=$(langdir fr)
+	run pocket_koton pt-koton-640-fr "$W8;dump $OUT/pt-koton-640-song-fr.elsm;menucmd 10;$W;dump $OUT/pt-koton-640-card-fr.elsm" $KO SIM_WRITES=$WR
+	out pt-koton-640-song-fr; out pt-koton-640-card-fr
+	differ pt-koton-640-song pt-koton-640-song-fr "the song in French"
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

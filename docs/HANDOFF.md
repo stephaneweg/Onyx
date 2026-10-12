@@ -105,8 +105,11 @@ menu bar's column has *Clipboard history* (`CX_CLIP`, SystemKit's `SHELL_MSG_CLI
 entry). The test: `pocket640.sh clipboard` (clipd as a thread: `tools/tests/server_sim/clipsheet_demo.cpp`,
 `SIM_IPC=1 SIM_SLEEP=1`); `server_sim` learnt `expect typed`, `menucmd N` (a menu command sent to the app in front)
 and gives a simulated pad to the program the POLICY says has the keys (it asked the window manager only: a pad never
-reached the shell's overlay over an app). **NEXT, NOT started**: item 8 (Q4
-Koton: Song and Mixer under L / R, a "not in pocket" card); item 9 (Courier's migration); item 10 (the Control
+reached the shell's overlay over an app). **Q4, Koton, built (2026-10-12)**: `g_pk` / `g_pocket` in `user/Apps/koton/main.cpp`,
+the view in `ui/pocket.h` (`PocketKoton`: `drawSong`, `drawMixer`, `drawCard`, its `SegmentedControl` the window's
+tabs through `uk_segmented_nav`), the desktop's widgets made and `hidden`, a pocket Menu (its *Compose* items call
+`cmdPocketCard`), `KotonRoot::onKey` hands every key to the view there. Not proved on the PC: playing (no sound in
+the simulator). **NEXT, NOT started**: item 9 (Courier's migration); item 10 (the Control
 Panel's applets DRIVEN by the keys -- the simulator must run an applet under the Control Panel for that --, Theme's
 preview, Slides' inspector rows of several buttons, 3DForge's Operation list, the lesson / result cards still light,
 Setup's Region and rows).

@@ -64,7 +64,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Image Viewer** | fine | ok | — | — | no |
 | **Icon Editor** | fine (the colours: R opens their panel — new) | pointer (pixels are drawn with the mouse) | the keys' pointer on its grid (`UkKeyPointer`, as Circuits' board) | small | no |
 | **FM Tracker** | fine | ok (a tracker is a keyboard's) | — | — | no |
-| **Koton** (the music studio) | **broken**: the transport is under *Compose with AI…*, the arrangement is a strip, the editor's text is one word a line | pointer | a studio on 640 × 480 is a new layout, not a fold | large | **yes** — Q4 |
+| **Koton** (the music studio) | was **broken** (the transport under *Compose with AI…*, the arrangement a strip, the editor's text one word a line) → **fine since Q4 was built** (below): it plays and mixes | **driven**: Down ×2, Right ×3, A, S, S, A, Home; R, Right, Up ×3, Shift + Down, A, S, L; the card: Left, Right, A, B | a studio on 640 × 480 is a new layout, not a fold | large | **yes** — Q4 |
 | **IRC** | fine | ok | — | — | no |
 | **Telegram** | fine (its look is its own; the contact's column is wide: 150 px) | ok | the contact's column away under 720 px (it already goes under 640 of pane) | small | no |
 | **Courier** | **broken**: *Import* is under the environment's list; the collections take 250 px, the welcome page is cut on both sides | partly | P7's unfinished migration: its rail and collections a navigation SidePanel, the translation due | large | no (the pattern exists) |
@@ -222,6 +222,25 @@ app's. **Limits**: an app with no *Paste* on Ctrl + V (the Terminal has none) is
 the entry is still made the clipboard's current one. On the home nothing is typed. In the simulator the proof is the key the
 shell types (Ctrl + V, to the program in front) and clipd's cursor (the chosen entry); a real app pasting under the
 real shell was not run (the simulator runs one program beside the server).
+
+**Q4, Koton — built (2026-10-12, later)**, driven by the keys alone and by a pad (`pocket640.sh koton`: 50 checks;
+`pt-koton-640-*.png`): in pocket Koton **plays a project and mixes it** — one widget over the window
+(`user/Apps/koton/ui/pocket.h`; the desktop's parts are made as ever and hidden, so every command works as it is),
+two views under **L / R**: **Song** (rows of 48 px: name, M, S, the blocks, the playhead; Up / Down the track,
+Left / Right the playhead bar by bar, A mute, S solo) and **Mixer** (a strip a sounding track and the Master's; Left /
+Right the strip, Up / Down the level, Shift fine); Space plays, Home rewinds, B stops; the transport is in the bar.
+Everything else is the Menu's *Compose* and answers with the **"not in pocket" card** (*Open FM Tracker*, *Back to
+the song*, the desktop mode named). Verdict: **fine** for what the designer kept. **Differs from the mock-up**: the
+song's name in the bar is the file's; a column of the ruler is four bars at a fixed scale (36 bars a page: the page
+follows the playhead) — a long song is paged, not squeezed; six rows and seven strips show, the others by moving the
+choice (a thin mark says where one is); the chord track has a row in the song (it is the harmony) and no strip in
+the mixer (it is silent); the **Master's level is not saved** (the song's format has none: it lasts the session);
+***Compose with AI...* leads to the card too** — its dialog is 640 × 520, taller than the window, and what it makes
+is a new song to edit (the designer kept it in the Menu: a medium piece of work, its form to lay out for 450 px);
+*New song*, the tracks' menu, undo and the loop are not in the pocket Menu (nothing to undo but a level). **Not
+proved in the simulator**: playing — the PC's stand-in kernel has no sound output, so the play button never lights
+and the meters stay empty there ("No sound" in the bar); the keys reach the same `cmdPlayStop` / `cmdStop` /
+`cmdRewind` as the desktop's. Koton stays untranslated but for its pocket words (`lang/fr.txt`: 37).
 
 **The Control Panel's applets DRIVEN BY THE KEYS (2026-10-12)** (`pocket640.sh applets`): the simulator now hands a
 program run as an applet its keys the way the Control Panel does on Onyx — as `AP_KEY` messages in its mailbox
