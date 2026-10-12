@@ -1,0 +1,27 @@
+# 3DForge's words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the steps'
+# drawer, Display, the hint line, the card): the rest of 3DForge is not translated yet.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+No step in this part.	Aucune étape dans cette pièce.
+New steps: in the desktop mode.	Nouvelles étapes : en mode bureau.
+Not in pocket	Pas en mode poche
+A new step needs a pointer.\n\nHere a part is viewed and its steps' values changed: L opens the steps, a value is typed and Enter rebuilds the part.\n\nSketching, new shapes and Manufacture are in the desktop mode, with a mouse.	Une nouvelle étape demande un pointeur.\n\nIci, on regarde une pièce et on change les valeurs de ses étapes : L ouvre les étapes, on tape une valeur et Entrée reconstruit la pièce.\n\nLes esquisses, les nouvelles formes et la fabrication sont en mode bureau, avec une souris.
+step	étape
+its values	ses valeurs
+type	taper
+rebuild	reconstruire
+close	fermer
+switch	option
+change	changer
+turn	tourner
+slide	glisser
+zoom	zoom
+views	vues
+export	exporter
+VIEW AND VALUES	VUE ET VALEURS
+Edges	Arêtes
+Grid	Grille
+See through	Transparence
+Steps	Étapes
+Display	Affichage
+value	valeur
+steps	étapes

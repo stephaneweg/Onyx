@@ -81,7 +81,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | its applet **Printers** | not judged (it drew nothing in the simulator: no printing service there) | — | — | — | — |
 | **QBStudio** | was **broken** (the form and the code 185 px wide between three panes) → **fine since Q6 was built** (below) | **driven**: Down (a control), M, Right, Enter; S, Right ×2, Esc; Down; L, Down ×3, Enter (a control added), Enter; R, Down ×2, R; F7, F7 | an IDE on 640 × 480: see Q6 | large | **yes** — Q6 |
 | **Onyx BASIC** (qbasic) | not judged (it needs a program; it opened no window alone) | — | — | — | — |
-| **3DForge** | **broken**: the ribbon's tools are under *Export* and cut after *Move*; the view is 400 px beside a 225 px panel | pointer (the view is turned and the sketches drawn with the mouse) | see Q7 | large | **yes** — Q7 |
+| **3DForge** | was **broken** (the ribbon cut, the view 400 px beside a 225 px panel) → **fine since Q7 was built** (below): view and values | **driven**: Right ×2, Up, Shift + Left, +, 1, 0; L, Down ×2, Up, A, a digit, A, B, L; R, Down, Space, R | see Q7 | large | **yes** — Q7 |
 | **Game Library** | minor: with no game, the line naming the file types is cut at the right (with games: fine, checked on this branch) | ok (L / R the systems, the arrows the games) | the line wrapped | small | no |
 | **Lisa** | minor: a fixed window bigger than the screen (a viewport: the first lines and the right edge out of sight) | ok | resizable in pocket | small | no |
 | **Life**, **Mandelbrot**, **Eyes**, **Shut Down** | fine | ok | — | — | no |
@@ -173,6 +173,17 @@ its pocket words.
   network alone, its field, the password shown), B back; "You are online" readable on the dark card — driven (Down,
   A, four letters, B, Down, A, eight letters, A: connecting). **Still differs from the mock-up**: the rows are 42 px
   (not 46), *Rescan* and *Other network* stay around the list, *Skip* stays in the foot, Region keeps two columns.
+
+**Q7, 3DForge — built (2026-10-12)**, driven by the keys alone (`pocket640.sh 3dforge`: 21 checks;
+`pt-3dforge-640-*`): the view alone, the D-pad always turns it (Shift + D-pad slides, + / − zoom, 1 2 3 0 the
+views); **L** the steps (Up / Down a step, A its values — typed, A rebuilds, B the list again); **R** Display
+(Edges, Grid, See through); the pill *VIEW AND VALUES*; a tool asked from the Menu answers with the "not in pocket"
+card. Verdict: **fine** for what the designer kept. **Differs from the mock-up**: sliding is Shift + D-pad, not
+Alt + D-pad (Alt + Up / Down is UIKit's wheel everywhere: here the zoom); the pill is the hint line's, not the
+bar's; no bar and no F6 (Export is Ctrl + E and in the Menu); the step's values take the drawer's whole height in
+place of the list (the existing properties' panel, made for a tall column: on a box its *Operation* list's last
+rows are under *Delete this step*); the view keeps its pointer's furniture (the cube, the bodies' list, *Edit*
+beside a sketch), which the keys do not reach. 3DForge stays untranslated but for its pocket words.
 
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the

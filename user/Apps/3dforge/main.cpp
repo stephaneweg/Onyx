@@ -38,6 +38,12 @@ using namespace forge;
 static int W = 1006, H = 701;
 static Ribbon *g_ribbon; static Timeline *g_time; static Props *g_props; static StatusBar *g_status;
 static bool g_rebuild = true;
+// POCKET on a small screen (under 800 px wide, no pointer: main decides once): VIEW A PART AND CHANGE ITS VALUES -- no
+// sketching, no new step (the designer's answer Q7). The view alone, the D-pad always turns it; L: the steps (a
+// drawer: a step chosen lights up on the part, its values are typed under the list, Enter rebuilds); R: Display.
+static bool g_pk = false;
+static SidePanel *g_sideL = 0, *g_sideR = 0;
+class StepList; static StepList *g_steps = 0;
 static const char *DOCS = "SD:/docs/3d", *CAM_INI = "SD:/apps/3dforge.app/cam.ini", *PRINT_INI = "SD:/apps/3dforge.app/print.ini", *FDM_INI = "SD:/apps/3dforge.app/filament.ini", *PRINTERS_INI = "SD:/apps/3dforge.app/printers.ini";
 
 static const char *base_name (const char *p) { const char *b = p; for (const char *q = p; *q; q++) if (*q == '/' || *q == ':') b = q + 1; return b; }
@@ -574,12 +580,180 @@ static void cmd (int id)
 }
 } // namespace forge
 
+// ---- pocket ----------------------------------------------------------------------------------------------------------
+// The steps, a row each (the timeline's own words): Up / Down choose one -- it is the selection: it lights up on the
+// part, its values come under the list --, Enter (A) goes into its values (typed; Enter rebuilds, Esc gives up).
+class StepList : public Widget
+{
+public:
+	int top = 0; enum { RH = 44 };
+	StepList () : Widget (0, 0, 100, 100) { canFocus = true; }
+	unsigned bgColor () override { return C_BG; }
+	int count () const { return (int) A.doc.feats.size (); }
+	void show (int i) { if (i * RH < top) top = i * RH; if (i * RH + RH > top + height) top = i * RH + RH - height; if (top < 0) top = 0; }
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		if (!count ()) { uk_text_c (canvas, 0, 0, width, 40, TR ("No step in this part."), C_DIS); return; }
+		for (int i = 0; i < count (); i++)
+		{
+			int y = i * RH - top; if (y + RH < 0 || y > height) continue;
+			bool sel = i == A.selFeat;
+			if (sel) uk_rbox (canvas, 4, y + 2, width - 8, RH - 4, 6, hasFocus ? C_ACCENT : uk_mix (C_BG, C_ACCENT, 90), hasFocus ? C_ACCENT : uk_mix (C_BG, C_ACCENT, 90));
+			char t[200], name[64]; g_time->text (i, t, sizeof t);
+			const char *sep = strstr (t, "  \xC2\xB7  "); int n = sep ? (int) (sep - t) : (int) strlen (t); if (n > 63) n = 63;
+			memcpy (name, t, n); name[n] = 0;
+			char f[200];
+			uk_text_fit (name, width - 24, f, sizeof f, 2); uk_text_l (canvas, 12, y + 3, 20, f, sel && hasFocus ? 0x00FFFFFFu : C_TEXT, 2);
+			uk_text_fit (sep ? sep + 6 : "", width - 24, f, sizeof f); uk_text_l (canvas, 12, y + 21, 18, f, sel && hasFocus ? 0x00E2ECFAu : C_DIS);
+		}
+	}
+	void pick (int i)
+	{
+		if (i < 0 || i >= count ()) return;
+		A.selFeat = i; A.selBody = -1; A.selCanvas = -1;
+		show (i); ui (R_ALL); invalidate (true);
+	}
+	bool onKey (long k) override
+	{
+		if (k == KEY_UP) { pick (A.selFeat < 0 ? 0 : A.selFeat - 1); return true; }
+		if (k == KEY_DOWN) { pick (A.selFeat < 0 ? 0 : A.selFeat + 1); return true; }
+		return false;					// (Enter: the pane's -- the step's values)
+	}
+};
+// The drawers' contents: the steps over their values (L); the display's switches (R).
+class ForgePane : public Widget
+{
+public:
+	bool leftPane; Checkbox *cb[3];
+	bool values = false;				// the left pane shows the chosen step's values (A on a step; B: the list again)
+	ForgePane (bool l) : Widget (0, 0, 236, 300), leftPane (l) { cb[0] = cb[1] = cb[2] = 0; }
+	unsigned bgColor () override { return C_BG; }
+	void onDraw () override
+	{
+		canvas.clear (C_BG);
+		if (leftPane) { char f[200]; uk_text_fit (TR ("New steps: in the desktop mode."), width - 16, f, sizeof f); uk_text_l (canvas, 10, height - 22, 18, f, C_DIS); }
+	}
+	void place ()
+	{
+		if (leftPane)
+		{
+			if (!g_steps || !g_props) return;
+			// ONE of the two on the pane's height: the steps, or the chosen one's values (their panel was made for a tall column)
+			((Widget *) g_steps)->hidden = values; ((Widget *) g_props)->hidden = !values;
+			g_steps->left = 0; g_steps->top = 0; g_steps->resizeTo (width, height - 26);
+			((Widget *) g_props)->left = (width - 216) / 2; ((Widget *) g_props)->top = 0; g_props->resizeTo (216, height - 26);
+			invalidate (true);
+		}
+		else for (int i = 0; i < 3; i++) if (cb[i]) { cb[i]->left = 14; cb[i]->top = 14 + i * 40; }
+	}
+	void resizeTo (int w, int h) override { Widget::resizeTo (w, h); place (); }
+	bool onKey (long k) override			// (the drawer's keys, while nothing in it has them: the list's, the first switch's)
+	{
+		if (leftPane)
+		{
+			if (!g_steps) return false;
+			if (values)
+			{
+				if (k != 27) return false;
+				values = false; place (); g_steps->setFocus (); return true;	// (B: the steps again)
+			}
+			if (k == KEY_ENTER && A.selFeat >= 0)		// A on a step: its values, the first field
+			{
+				values = true; place ();
+				for (Widget *c = g_props->firstChild; c; c = c->nextSib) if (c->isField () && !c->hidden) { c->setFocus (); c->onTabFocus (); break; }
+				return true;
+			}
+			if (g_steps->hasFocus) return false;		// (its own keys were not these)
+			g_steps->setFocus (); return g_steps->onKey (k);
+		}
+		if (cb[0] && (k == KEY_UP || k == KEY_DOWN || k == KEY_ENTER || k == ' ')) { cb[0]->setFocus (); return k == KEY_UP || k == KEY_DOWN; }
+		return false;
+	}
+};
+static ForgePane *g_paneL = 0, *g_paneR = 0;
+static void pocket_layout (Root *r)
+{
+	if (!g_pk || !g_view || !g_sideL) return;
+	int hh = uk_hint_line_height (r), RW = r->width, RH = r->height - hh;
+	g_view->left = 0; g_view->top = 0; g_view->resizeTo (RW, RH);
+	g_sideL->place (0, 0, 250, RH); g_sideR->place (RW - 220, 0, 220, RH);
+	g_paneL->place (); g_paneR->place ();
+	r->invalidate (true);
+}
+// "Not in pocket", said once, calmly: why, what can be done here, where the rest is.
+static void pocket_card ()
+{
+	uk_messagebox (TR ("Not in pocket"), TR ("A new step needs a pointer.\n\nHere a part is viewed and its steps' values changed: L opens the steps, a value is typed and Enter rebuilds the part.\n\nSketching, new shapes and Manufacture are in the desktop mode, with a mouse."), MB_OK);
+}
+static void pocket_hints (Root *r)
+{
+	if (!g_pk || !g_sideL) return;
+	static UkPadHint HN[8]; int n = 0;
+	if (g_sideL->isOpen () && g_paneL->values) { HN[n++] = { "|", TR ("value") }; HN[n++] = { "[0-9]", TR ("type") }; HN[n++] = { "A", TR ("rebuild") }; HN[n++] = { "B", TR ("steps") }; }
+	else if (g_sideL->isOpen ()) { HN[n++] = { "|", TR ("step") }; HN[n++] = { "A", TR ("its values") }; HN[n++] = { "L", TR ("close") }; }
+	else if (g_sideR->isOpen ()) { HN[n++] = { "|", TR ("switch") }; HN[n++] = { "A", TR ("change") }; HN[n++] = { "R", TR ("close") }; }
+	else { HN[n++] = { "+", TR ("turn") }; HN[n++] = { "[Shift]+", TR ("slide") }; HN[n++] = { "[+]", "" }; HN[n++] = { "[-]", TR ("zoom") }; HN[n++] = { "[1 2 3 0]", TR ("views") }; HN[n++] = { "[Ctrl+E]", TR ("export") }; }
+	int was = uk_hint_line_height (r);
+	if (uk_hint_line (r, HN, n, TR ("VIEW AND VALUES")) != was) pocket_layout (r);
+}
+// The view's keys in pocket: the D-pad ALWAYS turns it (there is no second mode) -> true used
+static bool pocket_key (long k)
+{
+	unsigned m = kapi_get_modifiers ();
+	bool arrow = k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN;
+	if (m & (MOD_CTRL | MOD_ALT)) return false;
+	if (arrow && (m & MOD_SHIFT))				// slide
+	{
+		double d = 24 / A.cam.scale;
+		if (k == KEY_LEFT) A.cam.t = A.cam.t + A.cam.r * d; else if (k == KEY_RIGHT) A.cam.t = A.cam.t - A.cam.r * d;
+		else if (k == KEY_UP) A.cam.t = A.cam.t - A.cam.u * d; else A.cam.t = A.cam.t + A.cam.u * d;
+		g_view->invalidate (true); return true;
+	}
+	if (arrow)
+	{
+		if (k == KEY_LEFT) A.cam.az -= 15; else if (k == KEY_RIGHT) A.cam.az += 15; else if (k == KEY_UP) A.cam.el += 10; else A.cam.el -= 10;
+		if (A.cam.el > 90) A.cam.el = 90;
+		if (A.cam.el < -90) A.cam.el = -90;
+		A.cam.set (); g_view->invalidate (true); return true;
+	}
+	if (k == '+' || k == '=' || k == '-')
+	{
+		A.cam.scale *= k == '-' ? 1 / 1.15 : 1.15;
+		if (A.cam.scale < 0.05) A.cam.scale = 0.05;
+		if (A.cam.scale > 400) A.cam.scale = 400;
+		g_view->invalidate (true); return true;
+	}
+	if (k == '1') { g_view->lookAlong (-90, 0); return true; }
+	if (k == '2') { g_view->lookAlong (-90, 90); return true; }
+	if (k == '3') { g_view->lookAlong (0, 0); return true; }
+	if (k == '0') { g_view->home (); g_view->invalidate (true); return true; }
+	return false;
+}
+
 class ForgeRoot : public Root
 {
 public:
 	ForgeRoot () : Root (W, H, "3DForge") {}
+	void onResized () override { pocket_layout (this); }
 	void onTick () override
 	{
+		if (g_pk)
+		{
+			pocket_hints (this);
+			static bool carded = false;
+			bool other = A.tool != T_SELECT || A.camMode || A.sketching;	// (a tool, a sketch, Manufacture asked from the Menu: not here)
+			if (other && !carded)
+			{
+				carded = true;			// (said once for it, whatever leaving it does)
+				if (A.camMode) cmd (CMD_MODE_DESIGN);
+				if (A.sketching) cancel ();
+				tool_set (T_SELECT); ui (R_ALL);
+				pocket_card ();
+			}
+			else if (!other) carded = false;
+			static int lastSel = -2; if (g_steps && lastSel != A.selFeat) { lastSel = A.selFeat; g_steps->invalidate (true); }
+		}
 		// (Manufacture: the moves made again once the values have stopped changing for a moment)
 		if (A.camMode && A.gen == 0 && A.camSim && A.simPlay && kapi_get_ticks () - A.simT >= 3)		// (the cut played)
 		{
@@ -629,6 +803,7 @@ public:
 	}
 	bool onKey (long k) override
 	{
+		if (g_pk && !(g_sideL && g_sideL->isOpen ()) && !(g_sideR && g_sideR->isOpen ()) && pocket_key (k)) return true;
 		if (kapi_get_modifiers () & (MOD_CTRL | MOD_ALT)) return false;
 		if (k == 27) { cancel (); return true; }
 		if (k == KEY_ENTER) { confirm (); return true; }
@@ -654,6 +829,8 @@ int main (void)
 	int sw = 0, sh = 0; kapi_screen_size (&sw, &sh);
 	if (sw > 0) W = sw - 18 < 820 ? 820 : sw - 18 > 1240 ? 1240 : sw - 18;
 	if (sh > 0) H = sh - 67 < 560 ? 560 : sh - 67 > 820 ? 820 : sh - 67;
+	g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
+	if (g_pk) { W = sw; H = sh - 30; uk_lang_init (); }	// (the screen's window; its pocket words in the system's language)
 	ForgeRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.attach ();
@@ -667,6 +844,23 @@ int main (void)
 	g_props = new Props (W - 224, top, 216, bh);
 	g_status = new StatusBar (H - StatusBar::H, W);
 	g_view = new View (8, top, W - 8 - 232, vh);
+	if (g_pk)					// pocket: the view alone; the steps with their values, and the display, in drawers
+	{
+		g_ribbon->hidden = g_time->hidden = g_status->hidden = true;
+		root.addChild (g_ribbon); root.addChild (g_time); root.addChild (g_status); root.addChild (g_view);	// (hidden: their callbacks still find them)
+		g_paneL = new ForgePane (true); g_paneR = new ForgePane (false);
+		g_steps = new StepList; g_paneL->addChild (g_steps); g_paneL->addChild (g_props);
+		g_paneR->cb[0] = new Checkbox (14, 14, 190, 28, TR ("Edges"), A.showEdges, [] (Widget &w) { A.showEdges = ((Checkbox &) w).checked; ui (R_ALL); }, C_BG);
+		g_paneR->cb[1] = new Checkbox (14, 54, 190, 28, TR ("Grid"), A.showGrid, [] (Widget &w) { A.showGrid = ((Checkbox &) w).checked; ui (R_ALL); }, C_BG);
+		g_paneR->cb[2] = new Checkbox (14, 94, 190, 28, TR ("See through"), A.seeThrough, [] (Widget &w) { A.seeThrough = ((Checkbox &) w).checked; ui (R_ALL); }, C_BG);
+		for (int i = 0; i < 3; i++) g_paneR->addChild (g_paneR->cb[i]);
+		g_sideL = new SidePanel (0, 0, 250, H, UK_SP_LEFT, UK_SP_NAVIGATION); g_sideL->setContent (g_paneL); g_sideL->setName (TR ("Steps"));
+		g_sideR = new SidePanel (W - 220, 0, 220, H, UK_SP_RIGHT, UK_SP_INSPECTOR); g_sideR->setContent (g_paneR); g_sideR->setName (TR ("Display"));
+		root.addChild (g_sideL); root.addChild (g_sideR);
+		root.setResizable (true); root.setMinSize (480, 320);
+	}
+	else
+	{
 	root.addChild (g_ribbon); root.addChild (g_time); root.addChild (g_props); root.addChild (g_status); root.addChild (g_view);
 	g_ribbon->anchor = ANCHOR_LEFT | ANCHOR_TOP | ANCHOR_RIGHT;
 	g_time->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
@@ -674,6 +868,7 @@ int main (void)
 	g_status->anchor = ANCHOR_LEFT | ANCHOR_RIGHT | ANCHOR_BOTTOM;
 	g_view->anchor = ANCHOR_FILL;
 	root.setResizable (true); root.setMinSize (820, 560);
+	}
 
 	static Menu menu;
 	menu.menu ("File");
@@ -752,6 +947,8 @@ int main (void)
 	job_reset (); tool_set (T_SELECT);
 	char args[200]; int n = kapi_get_args (args, sizeof args);
 	if (n > 0 && args[0] && !load_path (args)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
+	if (g_pk) { pocket_hints (&root); pocket_layout (&root); g_view->fit (); g_view->setFocus (); }
+	else
 	root.fitWorkArea ();
 	root.run ();
 	return 0;

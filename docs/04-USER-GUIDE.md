@@ -3206,6 +3206,29 @@ type; sharp or smooth) or its **canvas** made bigger or smaller (anchored top le
 
 ### 3DForge, the small parametric CAD (`3dforge`)
 
+**On a small pocket screen (under 800 px wide: the PocketTerm35's 640 × 480) 3DForge shows a part and lets its
+values be changed; nothing is sketched, no step is added there.** The view takes the screen (no ribbon, no
+timeline); the hint line's pill says the mode, *VIEW AND VALUES*. By the keys alone:
+
+| Where | Key | Does |
+|---|---|---|
+| The view | **D-pad** | turns it, always (15° a press; Up / Down 10°) |
+| | **Shift + D-pad** | slides it (Alt + Up / Down is the wheel there: the zoom) |
+| | **+** / **−** | zoom |
+| | **1**, **2**, **3**, **0** | from the front, the top, the right; home |
+| | **Ctrl + E**, **Ctrl + S** | export (STL…), save; the Menu has the rest |
+| **Steps** (**L**) | **Up / Down** | a step: it becomes the selection (lit on the part) |
+| | **A** (Enter) | its values, on the drawer's height: Up / Down a field, a value typed, **A** rebuilds the part; **B** the steps again |
+| **Display** (**R**) | **Up / Down**, **A** or Space | *Edges*, *Grid*, *See through* |
+
+A command of the Menu that needs a pointer (a shape, Sketch, Extrude, Fillet, Chamfer, Move, Manufacture) answers
+with one card -- *A new step needs a pointer* -- and the part stays as it is.
+
+![](compact-shell/real/pocketterm/pt-3dforge-640-view.png)
+
+*3DForge on a 640 × 480 pocket screen (`tools/tests/server_sim/pocket640.sh 3dforge`); `pt-3dforge-640-steps.png`,
+`-values`, `-display` beside it.*
+
 ![3DForge](../screenshots/3dforge.png)
 *3DForge: the sample bracket. The tools, the view with the bodies' panel and the orientation cube, the timeline
 under it, the selection at the right.*

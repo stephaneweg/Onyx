@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -460,6 +460,52 @@ if want pkgman; then
 		differ pt-pkgman-640-installed pt-pkgman-640-row "Down, Down: the keys in the list"
 		bardiffer pt-pkgman-640-installed pt-pkgman-640-back "L: the tab before"
 	else echo "pocket640: the Package Manager skipped (no $MS/libmb.a)"; fi
+fi
+
+# ---- 3DForge (Q7): view a part and change its steps' values -- the D-pad always turns the view, L the steps, R Display -----
+if want 3dforge; then
+	MS=${MEDIA_SHOTS:-/tmp/onyx_shots}
+	if [ -f "$MS/libmanifold.a" ]; then
+		echo "pocket640: 3DForge"
+		MF=third_party/manifold-3.5.4; CL=third_party/clipper2-46f6391/CPP/Clipper2Lib
+		ftapp pocket 3dforge uikit_pocket -DMANIFOLD_PAR=-1 -DMANIFOLD_CROSS_SECTION -DMANIFOLD_NO_IOSTREAM -DMANIFOLD_NO_FILESYSTEM -DCLIPPER2_NO_IOSTREAM -I$MF/include -I$CL/include -Iuser/Apps/3dforge "$MS/libmanifold.a"
+		K () { echo "key $1;$W;"; }
+		LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"; SH="mods 2;$W;"; S0="mods 0;$W;"
+		FG="$P640 SIM_APPNAME=3dforge SIM_APP=3dforge SIM_ARGS=SD:/docs/3d/bracket.3df"
+		W8="$WWW;$WW"
+		# the part; Right, Right, Up: the view turned; Shift + Left: slid; +: nearer; 1: from the front; 0: home again
+		WR=$(langdir "")
+		V1="$W8;expect kind fill;expect frame 0;dump $OUT/pt-3dforge-640-view.elsm;$(K $RIGHT)$(K $RIGHT)$(K $UP)$W;dump $OUT/pt-3dforge-640-turned.elsm;${SH}$(K $LEFT)${S0}dump $OUT/pt-3dforge-640-slid.elsm;key 0x2b;$W;dump $OUT/pt-3dforge-640-zoomed.elsm;key 0x31;$W;dump $OUT/pt-3dforge-640-front.elsm;key 0x30;$W;dump $OUT/pt-3dforge-640-home.elsm"
+		run pocket_3dforge pt-3dforge-640 "$V1" $FG SIM_WRITES=$WR
+		for f in view turned slid zoomed front home; do out pt-3dforge-640-$f; size pt-3dforge-640-$f 640x480 "3DForge, $f: the whole 640 x 480 screen"; done
+		hintline pt-3dforge-640-view "3DForge"
+		differ pt-3dforge-640-view pt-3dforge-640-turned "the D-pad turns the view"
+		differ pt-3dforge-640-turned pt-3dforge-640-slid "Shift + D-pad slides it"
+		differ pt-3dforge-640-slid pt-3dforge-640-zoomed "+ zooms"
+		differ pt-3dforge-640-zoomed pt-3dforge-640-front "1: from the front"
+		same pt-3dforge-640-view pt-3dforge-640-home "0: home again, the picture of the start"
+		# L: the steps; Down: a step (it lights up on the part), Down: the next; A: into its values; a digit typed and Enter: the
+		# part rebuilt; L closes -- the part is another; R: Display, Down, Space: a switch
+		WR=$(langdir "")
+		S1="$W8;${LL}dump $OUT/pt-3dforge-640-steps.elsm;$(K $DOWN)dump $OUT/pt-3dforge-640-step1.elsm;$(K $DOWN)dump $OUT/pt-3dforge-640-step2.elsm;$(K $UP)$(K 13)dump $OUT/pt-3dforge-640-values.elsm;key 0x35;$W;$(K 13)$W8;dump $OUT/pt-3dforge-640-rebuilt.elsm;$(K 27)dump $OUT/pt-3dforge-640-steps-again.elsm;${LL}dump $OUT/pt-3dforge-640-closed.elsm"
+		S1="$S1;${RR}dump $OUT/pt-3dforge-640-display.elsm;$(K $DOWN)$(K 32)dump $OUT/pt-3dforge-640-display-off.elsm;${RR}dump $OUT/pt-3dforge-640-display-closed.elsm"
+		run pocket_3dforge pt-3dforge-640-steps-run "$S1" $FG SIM_WRITES=$WR
+		for f in steps step1 step2 values rebuilt steps-again closed display display-off display-closed; do out pt-3dforge-640-$f; done
+		differ pt-3dforge-640-rebuilt pt-3dforge-640-steps-again "B in the values: the steps' list again"
+		differ pt-3dforge-640-view pt-3dforge-640-steps "L opens the steps"
+		footdiffer pt-3dforge-640-view pt-3dforge-640-steps "the steps' keys are not the view's"
+		differ pt-3dforge-640-steps pt-3dforge-640-step1 "Down: a step chosen"
+		differ pt-3dforge-640-step1 pt-3dforge-640-step2 "Down: the next step"
+		differ pt-3dforge-640-step1 pt-3dforge-640-values "A: into the step's values (a field has the keys)"
+		differ pt-3dforge-640-values pt-3dforge-640-rebuilt "a digit typed, Enter: the value kept"
+		differ pt-3dforge-640-view pt-3dforge-640-closed "L closes the steps: the part was rebuilt, another picture"
+		differ pt-3dforge-640-closed pt-3dforge-640-display "R opens Display"
+		differ pt-3dforge-640-display pt-3dforge-640-display-off "Down, Space: a switch changed"
+		differ pt-3dforge-640-closed pt-3dforge-640-display-closed "R closes it: the view drawn with the switch changed"
+		WR=$(langdir fr)
+		run pocket_3dforge pt-3dforge-640-fr "$W8;${LL}dump $OUT/pt-3dforge-640-steps-fr.elsm" $FG SIM_WRITES=$WR
+		out pt-3dforge-640-steps-fr
+	else echo "pocket640: 3DForge skipped (no $MS/libmanifold.a: sh tools/tests/desktop_sim/shots.sh 3dforge)"; fi
 fi
 
 # ---- Setup, the first start (Q5): one page a step, A the next, B back, no Display step -------------------------------

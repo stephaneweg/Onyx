@@ -83,8 +83,12 @@ The crop's frame is the document's rectangle selection, applied by the existing 
 Package Manager call `uk_fit_pane` (pkgman: its Root is the screen's size there, `uk_segmented_nav` on its tabs);
 Mail: `Wizard::W / H`, `SettingsBox::W / H` are variables (pocket: 600 x 440, 624 x 440), Esc closes both in
 `g_three`, Contacts and Accounts are items of the SidePanel there (its foot: the status line alone); Setup:
-`NetList::page ()` (the password's page), its keys, the banner's ink. **Next**: Q7 3DForge, then Q8 / Q9, Q4 Koton,
-Courier.
+`NetList::page ()` (the password's page), its keys, the banner's ink. **Q7, 3DForge, built (2026-10-12)**: all in `user/Apps/3dforge/main.cpp` -- `g_pk`, `StepList` (the timeline's
+words, a row a step), `ForgePane` (the two drawers' contents; `values`: the existing `Props` panel in place of the
+list), `pocket_key` (the view's keys), `pocket_card` (a tool, a sketch, Manufacture asked: said once, undone),
+`pocket_hints`, `pocket_layout`. **Next, NOT started**: item 7 of the list (Q8 Turtle Quest's level editor in two
+steps; Q9 the clipboard's sheet on Ctrl + Shift + V, Stickies full screen, the Agenda's line on the Home), item 8 (Q4
+Koton: Song and Mixer under L / R), item 9 (Courier's migration).
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached
