@@ -394,9 +394,9 @@ static void refresh ()
 	g_nav->set (g_view != V_DESIGN, pos, p > 0, p >= 0 && p < g_nord - 1, info, file, modified (), g_view == V_FORM && g_form->dirty ());
 	g_bUndo->setDisabled (!g_nundo);
 	g_bRedo->setDisabled (!g_nredo);
-	g_bNewRec->setDisabled (!g_doc.nf);
-	g_bDupRec->setDisabled (g_cur < 0 || g_view == V_DESIGN);
-	g_bDelRec->setDisabled (g_cur < 0 || g_view == V_DESIGN);
+	if (g_bNewRec) g_bNewRec->setDisabled (!g_doc.nf);
+	if (g_bDupRec) g_bDupRec->setDisabled (g_cur < 0 || g_view == V_DESIGN);
+	if (g_bDelRec) g_bDelRec->setDisabled (g_cur < 0 || g_view == V_DESIGN);
 	g_switch->set (g_view);
 }
 
@@ -850,10 +850,18 @@ int main (void)
 	g_switch->tip = "The view: Form (F5), List (F6), Design (F7)";
 	tb->add (g_switch, 0);
 	tb->sep ();
+	// (pocket and console on a screen under 700 px: the search box would cover the view's switch and the three record
+	//  tools -- those are left out there (the Record menu and the navigator's "+" have them), the box a little narrower)
+	bool narrow = false;
+	{ int SW = 0, SH = 0; kapi_screen_size (&SW, &SH); narrow = uk_mode () != UK_MODE_DESKTOP && SW > 0 && SW < 700; }
+	if (narrow) g_bNewRec = g_bDupRec = g_bDelRec = 0;
+	else
+	{
 	g_bNewRec = tool (tb, IC_REC_NEW, "New record (Ctrl+R)", cmd_new_record, 0);
 	g_bDupRec = tool (tb, IC_REC_DUP, "Duplicate the record (Ctrl+D)", cmd_dup_record);
 	g_bDelRec = tool (tb, IC_REC_DEL, "Delete the record...", cmd_del_record);
-	g_searchBox = new SearchBox (220);
+	}
+	g_searchBox = new SearchBox (narrow ? 190 : 220);
 	g_searchBox->left = W - 10 - g_searchBox->width; g_searchBox->top = (TB_H - g_searchBox->height) / 2;
 	g_searchBox->anchor = ANCHOR_RIGHT | ANCHOR_TOP;
 	g_searchBox->onChange = on_search; g_searchBox->onEnter = on_search_done;

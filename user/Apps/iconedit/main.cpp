@@ -171,6 +171,11 @@ public:
 			for (int y = 0; y <= g_h; y++) c.fillRect (ox, oy + y * cell, g_w * cell, 1, (y % 8) ? 0x00A0A8B0 : 0x00707880);
 		}
 		if (g_hx >= 0) c.frameRect (ox + g_hx * cell - 1, oy + g_hy * cell - 1, cell + 2, cell + 2, 0x00FFE040);
+		if (g_hx >= 0 && uk_keys_drive ())			// (the keys' pixel: seen at a glance -- a dark and a light line round the yellow one)
+		{
+			c.frameRect (ox + g_hx * cell - 2, oy + g_hy * cell - 2, cell + 4, cell + 4, 0x00101010);
+			c.frameRect (ox + g_hx * cell - 3, oy + g_hy * cell - 3, cell + 6, cell + 6, 0x00FFFFFF);
+		}
 		c.frameRect (ox - 1, oy - 1, g_w * cell + 2, g_h * cell + 2, uk_tone (C_FACE, 60));
 	}
 	bool toImg (int mx, int my, int &x, int &y)
@@ -235,6 +240,62 @@ public:
 			refresh ();
 		}
 		return in;
+	}
+	// WITHOUT A POINTER (pocket and console: uk_keys_drive): the pixel the keys are on is the hovered one (its yellow
+	// frame). The arrows move it (Shift: four at a time); Enter (A) is the button on it -- the pen, the eraser, the
+	// fill and the picker act at once; a shape (line, rectangle, box, ellipse) starts there, the arrows stretch it
+	// (shown as it will be), Enter again keeps it, Esc gives it up. Shift + the arrows draw a run with the pen or the
+	// eraser. "," and "." step the first colour through the palette. Everything goes through onMouse: one code.
+	bool keyDrag = false;				// a shape started by Enter, being stretched by the arrows
+	void at (int x, int y, int bl) { onMouse (ox + x * cell + cell / 2, oy + y * cell + cell / 2, bl, 0, 0, 0); }
+	bool onKey (long k) override
+	{
+		if (!uk_keys_drive ()) return false;
+		unsigned m = kapi_get_modifiers ();
+		if (m & (MOD_CTRL | MOD_ALT)) return false;
+		bool arrow = k == KEY_LEFT || k == KEY_RIGHT || k == KEY_UP || k == KEY_DOWN;
+		if (g_hx < 0 || g_hx >= g_w || g_hy < 0 || g_hy >= g_h)		// (the first key: the middle)
+		{
+			if (!arrow && k != KEY_ENTER) return false;
+			at (g_w / 2, g_h / 2, 0);
+			if (arrow) return true;
+		}
+		int x = g_hx, y = g_hy;
+		if (arrow)
+		{
+			int n = (m & MOD_SHIFT) && !keyDrag && g_tool != T_PEN && g_tool != T_ERASE ? 4 : 1;
+			bool run = (m & MOD_SHIFT) && !keyDrag && (g_tool == T_PEN || g_tool == T_ERASE);
+			int nx = x + (k == KEY_LEFT ? -n : k == KEY_RIGHT ? n : 0), ny = y + (k == KEY_UP ? -n : k == KEY_DOWN ? n : 0);
+			nx = nx < 0 ? 0 : nx >= g_w ? g_w - 1 : nx; ny = ny < 0 ? 0 : ny >= g_h ? g_h - 1 : ny;
+			if (run) { at (x, y, 1); at (nx, ny, 1); at (nx, ny, 0); }	// (the button held from the pixel to the next)
+			else at (nx, ny, keyDrag ? 1 : 0);
+			return true;
+		}
+		if (k == KEY_ENTER)
+		{
+			if (keyDrag) { keyDrag = false; at (x, y, 0); return true; }	// (the shape kept)
+			at (x, y, 1);
+			if (down && (g_tool == T_LINE || g_tool == T_RECT || g_tool == T_BOX || g_tool == T_ELLIPSE)) keyDrag = true;
+			else at (x, y, 0);
+			return true;
+		}
+		if (k == 27 && keyDrag)					// (the shape given up: nothing drawn, its undo step taken back)
+		{
+			keyDrag = false; down = false; showOver = false;
+			if (g_nundo > 0) g_nundo--;
+			refresh ();
+			return true;
+		}
+		if (k == ',' || k == '.')
+		{
+			int i = NPAL;						// (the transparent one: after the last)
+			for (int j = 0; j < NPAL; j++) if (PALETTE[j] == g_col[0]) i = j;
+			i = (i + (k == ',' ? NPAL : 1)) % (NPAL + 1);
+			g_col[0] = i == NPAL ? TRANSP : PALETTE[i];
+			refresh ();
+			return true;
+		}
+		return false;
 	}
 };
 
@@ -465,7 +526,7 @@ static SidePanel *g_sp; static Root *g_rootp; static Label *g_statusL;
 static void lay_out (void)
 {
 	if (!g_sp || !g_rootp) return;
-	int cw = g_rootp->width, ch = g_rootp->height, fh = uk_fh ();
+	int cw = g_rootp->width, ch = g_rootp->height - uk_hint_line_height (g_rootp), fh = uk_fh ();	// (above the hint line)
 	g_sp->place (cw - SIDE_W, 0, SIDE_W, ch - fh - 14);
 	int rw = g_sp->reservedWidth ();
 	g_grid->resizeTo (cw - TOOL_W - rw - (rw ? 0 : 6) > 8 ? cw - TOOL_W - rw - (rw ? 0 : 6) : 8, ch - fh - 16 > 8 ? ch - fh - 16 : 8);
@@ -529,8 +590,8 @@ int main (void)
 	g_prev = new Preview (sx - 4, 8 + g_pal->height + fh + 10, SIDE_W - 4, 2 * MAXS + 20);
 	sp_->addChild (g_prev);
 	int hy = pocket ? g_prev->top + g_prev->height + 4 + fh * 5 + 20 : H;	// (the hints: at the window's foot; pocket: under the previews)
-	sp_->addChild (new Label (sx, hy - fh * 5 - 20, SIDE_W - 10, fh + 2, TR ("Left: 1st colour"), C_DIS, C_BG));
-	sp_->addChild (new Label (sx, hy - fh * 4 - 18, SIDE_W - 10, fh + 2, TR ("Right: 2nd colour"), C_DIS, C_BG));
+	sp_->addChild (new Label (sx, hy - fh * 5 - 20, SIDE_W - 10, fh + 2, uk_keys_drive () ? TR (", and .: the colour") : TR ("Left: 1st colour"), C_DIS, C_BG));
+	sp_->addChild (new Label (sx, hy - fh * 4 - 18, SIDE_W - 10, fh + 2, uk_keys_drive () ? "" : TR ("Right: 2nd colour"), C_DIS, C_BG));
 	sp_->addChild (new Label (sx, hy - fh * 3 - 16, SIDE_W - 10, fh + 2, TR ("X: swap them"), C_DIS, C_BG));
 	g_status = new Label (6, H - fh - 8, W - 12, fh + 2, "", C_TEXT, C_BG);
 	root.addChild (g_status);
@@ -585,6 +646,13 @@ int main (void)
 	else g_saved = hash_img ();
 	refresh ();
 	g_grid->setFocus ();
+	if (g_sp && uk_keys_drive ())			// (pocket and console: the grid's keys, said at the window's foot)
+	{
+		static UkPadHint HN[5];
+		HN[0] = { "+", TR ("pixel") }; HN[1] = { "A", TR ("draw") }; HN[2] = { "[, .]", TR ("colour") }; HN[3] = { "[X]", TR ("swap") }; HN[4] = { "R", TR ("colours") };
+		uk_hint_line (&root, HN, 5);
+		lay_out ();
+	}
 	root.run ();
 	return 0;
 }

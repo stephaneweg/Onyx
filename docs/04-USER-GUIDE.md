@@ -830,6 +830,30 @@ service as the desktop's Clipboard widget (`clipd`); what an app pastes is what 
 
 *The clipboard's history over the Text Editor, 640 x 480.*
 
+**The other apps by the keys, pocket and console** (no pointer; the desktop is as it was):
+
+- **a list** (volumes, files...): past its first or last row, Up / Down are no longer the list's — the focus ring goes
+  on to the control above or below it (in **Disks**: Down past the last volume reaches *File system*, Left from there
+  *Open*, *Eject*, *Mount*; A on a volume opens it);
+- **Clock**, **Task Manager**: **L / R** step their tabs (World, Alarms, Timer, Stopwatch; Processes, Memory...);
+- **Icon Editor**: the arrows move a pixel's frame over the grid (Shift: four at a time), **A** draws there with the
+  tool — a line, rectangle, box or ellipse starts at A, the arrows stretch it, A keeps it, B gives it up —, Shift +
+  the arrows draw a run with the pen or the eraser, **,** and **.** step the first colour through the palette, the
+  tools' letters (P, L, R, B, O, F, K, E) choose a tool, X swaps the colours, R opens the colours;
+- **PDF Viewer**: **L** opens *Pages / Contents / Find* — Left / Right step the three, Up / Down go to the page
+  before / after, to the entry before / after of the contents (A opens or folds one), to the result before / after;
+- **Graphing Calculator**: **B** (Esc) in a function's field gives the keys to the graph — the arrows move it, + and −
+  zoom —, B again or Tab: the first field;
+- **Notes**: Tab in the note gives the keys to the list (Up / Down, A the note again); **Calendar**: the event's box
+  fits the window (its *Save* and *Cancel* were under the screen's edge); **Cardfile**: on a screen under 700 px the
+  bar has the view's switch and the search whole (the three record tools are in the Record menu and the "+" of the
+  navigator), its title and the field's label are readable in the dark look; the File Viewer says *Enter runs it*.
+- **The shared boxes** — the file chooser (Open, Save As), a message box, the colour chooser, Letters' font box — fit
+  640 × 450 and are driven by the arrows, Tab, A and B.
+
+Still a pointer's on such a screen: the Media Player's library and transport (only its search field takes the
+keys), the Calendar's week (an existing event) and its drawer's month and calendars, Cardfile's Design view.
+
 **The on-screen keyboard** (pocket only): **Super+K**, or quick settings' **Show keyboard**, brings a keyboard up
 from the screen's bottom edge; the app in front is laid out again in the room left above it, and what you click
 is typed into it as a real keyboard's keys. Letters (QWERTY; **AZERTY** when the system's language is French),

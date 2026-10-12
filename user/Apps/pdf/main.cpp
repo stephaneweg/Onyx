@@ -76,6 +76,7 @@ static void recent_note (Tab &t);
 static void search_start (Tab &t, const char *needle);
 static void goto_hit (Tab &t, int k);
 static void show_page (Tab &t, int pg, float y = -1, bool top = true);
+static void find_next (int dir);
 
 // ---- the bitmaps: the pages drawn (the worker's), kept while there is room ------------------------------------------
 struct Bmp { int docId, page, skey, rot, cx, cy, cw, ch; bool thumb; unsigned *px; unsigned use; };
@@ -550,9 +551,52 @@ class PdfSidePanel : public Widget
 {
 public:
 	HitList hits; int hot; Textbox *findBox; int listTop, listH, contentH;
+	int kol = -1;				// the contents' entry the keys are on (pocket and console), -1: the current page's
 	PdfSidePanel (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), listTop (0), listH (0), contentH (0)
 	{
 		findBox = new Textbox (10, 52, w - 20, 28, "", find_box_changed); findBox->maxLen = 190; addChild (findBox);
+		canFocus = uk_keys_drive ();		// (no pointer: the drawer's keys are this panel's -- onKey)
+	}
+	// WITHOUT A POINTER (pocket and console): Left / Right step Pages, Contents, Find; Up / Down go to the page before /
+	// after (Pages), to the entry before / after and its page (Contents; Enter opens or folds an entry that has
+	// others under it), to the result before / after (Find: from its box, Esc first).
+	bool onKey (long k) override
+	{
+		if (!uk_keys_drive ()) return false;
+		Tab &t = tab (); Doc *D = t.doc;
+		if (!D || (kapi_get_modifiers () & (MOD_CTRL | MOD_ALT))) return false;
+		if (k == KEY_LEFT || k == KEY_RIGHT)
+		{
+			t.side = (t.side + (k == KEY_LEFT ? 2 : 1)) % 3; kol = -1;
+			if (t.side == S_FIND) { findBox->hidden = false; findBox->setFocus (); } else setFocus ();
+			refresh_all (); return true;
+		}
+		if (k != KEY_UP && k != KEY_DOWN && k != KEY_ENTER) return false;
+		int d = k == KEY_UP ? -1 : 1;
+		if (t.side == S_PAGES)
+		{
+			int p = t.cur + d;
+			if (k != KEY_ENTER && p >= 0 && p < D->npages) { show_page (t, p); follow (); refresh_all (); }
+			return true;
+		}
+		if (t.side == S_CONTENTS)
+		{
+			if (!D->nol) return true;
+			int i = kol >= 0 && kol < D->nol && ol_visible (D, kol) ? kol : ol_current (t, D);
+			if (k == KEY_ENTER) { if (i >= 0 && D->ol[i].kids) { D->ol[i].open = !D->ol[i].open; kol = i; invalidate (true); } return true; }
+			int n = i;
+			for (n += d; n >= 0 && n < D->nol && !ol_visible (D, n); n += d) ;
+			if (i < 0) { for (n = 0; n < D->nol && !ol_visible (D, n); n++) ; }
+			if (n < 0 || n >= D->nol) return true;
+			kol = n;
+			int row = 0; for (int j = 0; j < n; j++) if (ol_visible (D, j)) row++;		// (its row kept in the list's sight)
+			int y = 4 + row * 26, lh = height - 44;
+			if (y < t.olScroll) t.olScroll = y - 4; else if (y + 26 > t.olScroll + lh) t.olScroll = y + 30 - lh;
+			if (D->ol[n].page >= 0) show_page (t, D->ol[n].page, D->ol[n].y);
+			refresh_all (); return true;
+		}
+		if (k != KEY_ENTER) find_next (d);
+		return true;
 	}
 	unsigned bgColor () override { return col_side (); }
 	int &scroll () { Tab &t = tab (); return t.side == S_PAGES ? t.thumbScroll : t.side == S_CONTENTS ? t.olScroll : t.findScroll; }
@@ -645,6 +689,7 @@ public:
 				int ind = 24 + o.depth * 14;		// (the title's x; its arrow before it)
 				bool on = i == cur;
 				if (on) uk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, C_ACCENT, C_ACCENT);
+				if (i == kol && hasFocus && uk_keys_drive ()) uk_rline (canvas, ind - 6, y - 1, width - ind - 2, 28, 6, uk_flat () ? (unsigned) UK_N_ACCENT_HI : C_ACCENT, 255);	// (the keys' entry)
 				else if (hits.n == hot) uk_rbox (canvas, ind - 4, y + 1, width - ind - 6, 24, 5, uk_mix (col_side (), C_ACCENT, 40), uk_mix (col_side (), C_ACCENT, 40));
 				unsigned ink = on ? C_SEL_TEXT : C_TEXT;
 				if (o.kids)

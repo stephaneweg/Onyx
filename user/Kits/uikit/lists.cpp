@@ -116,8 +116,10 @@ bool ListBox::onKey (long k)
 	int R = rows ();
 	switch (k)
 	{
-	case KEY_UP:   pick (sel <= 0 ? 0 : sel - 1, true); return true;
-	case KEY_DOWN: pick (sel < 0 ? 0 : (sel + 1 < count ? sel + 1 : sel), true); return true;
+	// (pocket and console, no pointer: past the list's first or last row the arrow is not the list's -- the focus ring
+	//  goes on to the control above or below it; a list was a trap for the keys when its buttons stood under it)
+	case KEY_UP:   if (uk_keys_drive () && sel <= 0) return false; pick (sel <= 0 ? 0 : sel - 1, true); return true;
+	case KEY_DOWN: if (uk_keys_drive () && sel >= 0 && sel + 1 >= count) return false; pick (sel < 0 ? 0 : (sel + 1 < count ? sel + 1 : sel), true); return true;
 	case KEY_PGUP: pick (sel - R < 0 ? 0 : sel - R, true); return true;
 	case KEY_PGDN: pick (sel + R >= count ? count - 1 : sel + R, true); return true;
 	case KEY_HOME: pick (0, true); return true;

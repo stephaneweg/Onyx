@@ -120,7 +120,10 @@ public:
 	int nopts;
 	Widget *markRow; bool rowsUp = false;
 
-	EventDialog (const Event &src, bool isNew_) : Modal (600, 560), e (src), isNew (isNew_)
+	// (pocket and console, a window shorter than the box -- 640 x 450: the box is the window's height, its notes take what
+	//  is left; on the desktop it is 600 x 560 as ever)
+	static int boxH () { Root *r = Root::current (); return uk_mode () != UK_MODE_DESKTOP && r && r->height - 8 < 560 ? (r->height - 8 > 400 ? r->height - 8 : 400) : 560; }
+	EventDialog (const Event &src, bool isNew_) : Modal (600, boxH ()), e (src), isNew (isNew_)
 	{
 		centre (this);
 		int x = 20, lw = 84, y = titleH () + 14, W2 = width - 40;

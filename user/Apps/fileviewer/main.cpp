@@ -1546,7 +1546,7 @@ public:
 		y += g_fh + 2;
 		if (g_pvKind != PV_APP) { char sz[24]; fmt_size (sz, e->size); canvas.text (tx, y, sz, C_DIMTXT); y += g_fh + 2; }
 		if (g_pvKind == PV_APP || g_pvKind == PV_PROGRAM)
-			{ canvas.text (tx, y, TR ("Double-click to run"), C_DIMTXT); y += g_fh + 2; }
+			{ canvas.text (tx, y, uk_keys_drive () ? TR ("Enter runs it") : TR ("Double-click to run"), C_DIMTXT); y += g_fh + 2; }
 		if (g_pvKind == PV_IMAGE && g_pvImg)
 		{
 			char d[24]; int p = 0; int v[2] = { g_pvW, g_pvH };

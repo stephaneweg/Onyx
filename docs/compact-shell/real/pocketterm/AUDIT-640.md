@@ -267,6 +267,68 @@ is inside).
 | **Setup's 42 px network rows** (46 in the mock-up) | **kept at 42**: tried at 46 — with four networks the *You are online* banner then ends under the foot on a 450 px window (rule: never cut). 46 px would need the page's two lines of help to go |
 | **Slides, QBStudio, Paint, 3DForge (and Koton) translated for their pocket words only** | **not started — not small**: counted in their sources, about 410 (Slides), 230 (QBStudio), 290 (Paint), 430 (3DForge) and 550 (Koton) distinct words and sentences to wrap in `TR` and to write in French, a good part of them in tables (`TRN`) and in formatted lines; about a day an app with `tools/lang/check.py` and a look at every screen in French (`SHOTS_LANG=fr`). Their English desktop pictures would not change (`TR` gives the English back) — to prove per app |
 
+**Courier — NOT migrated; exactly what it needs** (read in its code, `user/Apps/courier/`, 7 200 lines; nothing of
+it was changed). Courier is built on **its own widgets** (`widgets.h`: `Btn`, `TabBar`, `RadioRow`, `Choice`,
+`KVTable`, `DocTabs`; `rail.h`'s `Sidebar`): of them only the two text fields (`LineEdit`, `CodeEdit`) take the
+focus — every button, tab, list and table is hit-tested by a pointer. So folding the panels is the small half:
+
+1. **`g_pk`** (pocket and a screen under 800 px), the window the screen's; `uk_lang_init` there.
+2. **The left side** (`Sidebar`: the 78 px rail and the collections / environments / history tree, 250 px with its
+   filter) as the content of a **navigation SidePanel**: a drawer under **L**, named in the band. Its tree is drawn
+   and hit-tested by hand: it needs a row cursor (`onKey`: Up / Down, Left / Right fold and unfold, A opens the
+   request, typing filters). The rail's three modes: the drawer's places (so L / R step them while it is open).
+3. **The request OR the response** — `ui.vsplit` cannot show both in 420 px: a two-part switch *Request / Response*
+   as the window's tabs (`uk_segmented_nav`: **R** steps them); *Send* shows the response.
+4. **The open tabs' strip** (`DocTabs`) away in pocket: the open requests as a place of the drawer. Its keys today,
+   Ctrl + Page Up / Down, ARE L and R: in pocket they must be UIKit's (the drawer, the tabs), so *Next / Previous
+   Tab* leave the Menu's shortcuts there.
+5. **Every own widget by the keys** — the large half: `Btn` (takes the focus, a ring, Enter / Space), `TabBar` and
+   `RadioRow` (Left / Right; the request's six sections, the response's five), `Choice` (Enter opens its list, Up /
+   Down, Enter), **`KVTable`** (a cell cursor: the arrows, Enter edits the cell, Space its tick, Del removes the row —
+   params, headers, form, tests, captures, variables, cookies all use it: about a day by itself), `ResultsView`.
+   UIKit's focus by geometry then moves among them as among its own controls.
+6. **The request's bar on 640 px**: the name, *Save* and *</>* on one row; the method, the URL and *Send* on the
+   next (they fit: 116 + 96 px of buttons leave about 380 px of URL); the sections' six tabs take about 520 px (they fit).
+7. **The dialogs**: *Save* 520 × 470, *Code* 760 × 520, *Import* 700 × 480, *Cookies* 720 × 460 are larger than the
+   640 × 420 window — each to lay out for it (sizes as variables, as Mail's two); their buttons are `Btn` (item 5).
+8. **The welcome page** (cut on both sides at 640): its two columns one under the other.
+9. **The look and the words**: its panes take the theme (few fixed colours: 7 to check in the dark look); the hint
+   line a view; the translation due — about 300 distinct words and sentences, none wrapped today.
+10. **Its scenario**: a section of `pocket640.sh` with a small local HTTP server (as Mail's `fakemail.py`,
+    `SIM_REALNET=1`): L, a request opened, Send, R the response, a header added in the table by the keys, saved.
+
+Size: **large — three to four days**, item 5 half of it. Until then its verdict stays **broken** at 640 × 480.
+
+**THE PASS BY THE KEYS ALONE (2026-10-12, a second session)** — the audit's missing half, for the apps the table
+judged from a picture: each one's main path driven by keys only in the simulator, a picture a step, looked at
+(`pocket640.sh keys`: 25 scenarios, 78 checks; `KEYS_APPS="a b"` for some; the pictures `keys-<app>-<n>.png` in the
+output folder, twelve of them here as `pt-keys-*.png`).
+
+| App | By the keys | Fixed here | Left, and its size |
+|---|---|---|---|
+| **Notes** | **ok**: typing, Ctrl + N, Tab to the list, Up / Down, A back to the note, F6 the toolbar | — | — |
+| **Text Editor** | **ok** (typing; everything else is the Menu's) | — | — |
+| **File Viewer** | **ok**: Down, A into a folder, Bksp out, Right into the next column | *Double-click to run* reads *Enter runs it* | — |
+| **PDF Viewer** | **ok** now | its drawer (Pages / Contents / Find) was a pointer's: Left / Right its three parts, Up / Down the pages, the contents' entries, the results | "+" alone does not zoom (Ctrl + "+" does): as on the desktop |
+| **Media Player** | **pointer**: only the search field takes the keys (Down, typing, A searches); the library's cards and rows, the rail, the transport are hit-tested by hand | — | a cursor over the library's grid and lists, the rail as L / R places, the transport's keys said: **medium, a day** |
+| **Image Viewer** | **not driven with a picture** — the PC's build of the simulator has no ImageKit (it stops on a picture); without one: Ctrl + O opens the file chooser, B closes it | — | to drive on the device |
+| **Icon Editor** | **ok** now | the grid was a pointer's: a pixel's frame by the arrows, A the tool, shapes stretched by the arrows, runs with Shift, the colour by `,` `.`; a hint line | the palette's 33 swatches are stepped, not chosen in the grid: fine for an icon |
+| **FM Tracker** | **ok**: the pattern's cursor, Tab the next channel, Space | — | its pattern list and transport buttons are the Menu's |
+| **IRC** | **ok** off line (Tab between the server and the message, typing, A connects / sends, F6 the bar) | — | on line (rooms, users) not driven: no network in the scenario |
+| **Telegram** | **ok** in a conversation (typing, A sends) | — | the contacts' window not driven (the demo opens a conversation) |
+| **Disks** | **ok** now | the volumes' list was a TRAP for the keys (its buttons under it were never reached): UIKit lets Up / Down leave a list past its ends in pocket and console | the ring goes list → *File system* → Left *Open* (geometry): indirect but whole |
+| **Task Manager** | **ok** now | its four tabs were not L / R's (`uk_segmented_nav`) | — |
+| **Calendar** | **partly** | the *New event* box was 600 × 560: its *Save* and *Cancel* were under the screen — it takes the window's height there | an existing event is chosen with a pointer (the week's blocks), the drawer's month and calendars too: a cursor over the week and the drawer's rows by the keys, **medium, a day** |
+| **Archiver** | **ok**: Down, A into a folder, Bksp out; the tools are the Menu's (its big bar is not ringed by F6) | — | its bar as UIKit's ToolBar: small-medium |
+| **Cardfile** | **ok** for the form and the list (the fields, F5 / F6 / F7 the views, Ctrl + F) | its title and focused label were dark blue on the dark surface; the search box covered *Design* and the record tools at 640 px | the Design view is cut at the right there (its field's properties): a design is a desktop's work — a "not in pocket" line, small; the translation due |
+| **Ledger** | **ok**: the rail, R its places, the tables' rows | — | a customer's name cut in *Invoices overdue* (small) |
+| **Lisa** | **ok** (typing, A sends) | — | its fixed window in a viewport (the first line out of sight): resizable in pocket, small |
+| **Clock** | **ok** now | its four tabs were not L / R's — nothing moved without Ctrl + Tab | "L: lap · R: reset" are LETTER keys, said as such: confusing beside a pad's L / R — words to change, small |
+| **Calculator** | **ok** (digits and operators typed, A) | — | — |
+| **Graphing Calculator** | **ok** now | the graph could not get the keys from the fields: B gives them to it (arrows, + −); its hint said *Drag / Wheel* | — |
+| **The file chooser** (Open, Save As) | **ok**: 560 × 420 in the window; the arrows in the files, A into a folder, a name typed, Tab to its buttons, B | — | — |
+| **A message box**, **the colour chooser**, **Letters' font box** | **ok**: whole in the window; Left / Right or Tab their buttons, the sliders and lists by the arrows, B | — | a message box shows no ring on its default button until a key moves it (A is the default all the same) |
+
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
 applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above

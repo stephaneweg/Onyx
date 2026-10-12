@@ -114,8 +114,16 @@ the simulator). **The leftovers (2026-10-12)**: Theme's preview whole in a small
 `subs_of` / `sub_of` in sidebar.h), 3DForge's operation a Dropdown in pocket (`g_propsCompact`, `Props::setOp`), the
 lesson / result cards dark (`dark ()` in Circuits' views.h and Turtle Quest's `Lesson`), Setup's keyboard picture
 left out when it has no room; **not done**: Setup's Region page as three pickers, the full translations
-(AUDIT-640.md has the table and the sizes). **NEXT, NOT started**: item 9 (Courier's migration); the pass by the keys
-alone over the apps judged from a picture, and the shared dialogs at 640 x 450.
+(AUDIT-640.md has the table and the sizes). **The pass by the keys alone, done (2026-10-12)**: `pocket640.sh keys` (25
+scenarios: `kd <app> <waits> "<script, @n a picture>"`, `kdiff` / `ksame`; the shared dialogs as `dlg-*`). Fixed from
+it: **UIKit's `ListBox` lets Up / Down leave it past its ends where the keys drive** (`lists.cpp`; `uk_keys_drive ()`:
+pocket and console -- the desktop's lists are as they were), Clock's and the Task Manager's tabs (`uk_segmented_nav`
+under `uk_keys_drive`), the Icon Editor's `Grid::onKey` (through its own `onMouse`), the PDF Viewer's
+`PdfSidePanel::onKey`, the Graphing Calculator's `GcRoot::onKey`, the Calendar's `EventDialog::boxH`, Cardfile's bar
+and inks. The table of what is left is in AUDIT-640.md. **NEXT, NOT started**: Courier's migration (AUDIT-640.md says
+exactly what it needs: three to four days); the Media Player's library and the Calendar's week by the keys (a day
+each); Setup's Region page as three pickers; the full translations of Slides, QBStudio, Paint, 3DForge, Koton;
+*Compose with AI* in Koton's pocket Menu; all of it on the Pi and the device (nothing of this branch ran there).
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached

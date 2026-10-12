@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard koton drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard koton keys drawers audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -867,6 +867,97 @@ pb () {
 	*) ftapp pocket $a uikit_pocket $AK -lm $U ;;
 	esac
 }
+# ---- THE PASS BY THE KEYS ALONE over the apps the audit judged from a picture (AUDIT-640.md, "the audit's missing half"):
+# each app's main path driven by keys only, a picture a step (keys-<app>-<n>.png; SHOTS_PNG: pt-keys-<app>-<n>.png), the
+# steps that must change the screen checked. KEYS_APPS="a b": those apps only.
+if want keys; then
+	echo "pocket640: the pass by the keys alone"
+	K () { echo "key $1;$W;"; }
+	LL="mods 1;$W;key $PGUP;$W;mods 0;$W;"; RR="mods 1;$W;key $PGDN;$W;mods 0;$W;"
+	CT () { echo "mods 1;$W;key $1;$W;mods 0;$W;"; }			# Ctrl + a key (its control code, or a letter)
+	TAB="key 0x09;$W;"
+	# kd <app> <waits> "<script: @0 .. @9 a picture each>" [VAR=value ...]
+	kd () {
+		a=$1; n=$2; sc=$3; shift 3
+		if ! pb $a >>"$OUT/log.txt" 2>&1 || [ ! -x "$OUT/pocket_$a" ]; then echo "  $a: NOT BUILT for the PC (see $OUT/log.txt)"; return 0; fi
+		WR=$(langdir ""); ws=$(printf 'wait;%.0s' $(seq 1 $n))
+		kn=${KN:-$a}; KN=
+		rm -f "$OUT"/keys-$kn-?.elsm "$OUT"/keys-$kn-?.png
+		sc=$(echo "$sc" | sed "s|@\([0-9]\)|dump $OUT/keys-$kn-\1.elsm|g")
+		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=$a SIM_APP=$a SIM_WRITES=$WR "$@" SIM="${ws}${sc};exit" timeout 180 "$OUT/pocket_$a" >>"$OUT/log.txt" 2>&1 || true
+		for e in "$OUT"/keys-$kn-?.elsm; do
+			[ -f "$e" ] || continue
+			p=${e%.elsm}.png; python3 $D/shot.py "$e" "$p" >/dev/null 2>&1
+			if [ -n "$SHOTS_PNG" ]; then mkdir -p "$SHOTS_PNG"; cp "$p" "$SHOTS_PNG/pt-$(basename "$p")"; fi
+		done
+	}
+	# kdiff / ksame <app> <n> <m> <what>: two of its pictures differ / are the same
+	kin () { case " $KLIST " in *" $1 "*) return 0 ;; esac; return 1; }
+	kdiff () { kin $1 || return 0; if [ ! -f "$OUT/keys-$1-$2.png" ] || [ ! -f "$OUT/keys-$1-$3.png" ]; then echo "  $1: $4: FAILED (no picture)"; FAIL=1; else differ keys-$1-$2 keys-$1-$3 "$1: $4"; fi; }
+	ksame () { kin $1 || return 0; if [ ! -f "$OUT/keys-$1-$2.png" ] || [ ! -f "$OUT/keys-$1-$3.png" ]; then echo "  $1: $4: FAILED (no picture)"; FAIL=1; else same keys-$1-$2 keys-$1-$3 "$1: $4"; fi; }
+	PDFDOC=$(find sdcard/manuals -name "*.pdf" | sort | head -1)
+	rm -rf "$OUT/arc"; mkdir -p "$OUT/arc"; python3 $D/arc_sample.py "$OUT/arc/Projet-Onyx.zip" >/dev/null 2>&1 || true
+	KLIST=${KEYS_APPS:-"notes tinypad fileviewer pdf media imageview iconedit fmtracker irc telegram disks taskman calendar archiver cardfile ledger lisa clock tinycalc graphcalc dlg-open dlg-save dlg-message dlg-colour dlg-font"}
+	for a in $KLIST; do
+		case $a in
+		notes) kd $a 80 "@0;key x;$W;$(CT 0x0e)key y;$W;@1;${TAB}@2;$(K $DOWN)@3;$(K 13)key z;$W;@4;$(K $F6)$(K $RIGHT)@5" ;;
+		tinypad) kd $a 40 "@0;key a;key b;$W;@1;$(K $F6)@2;$(K $RIGHT)$(K 13)@3;$(K 27)@4;$(CT 0x06)@5" SIM_ARGS=SD:/notes.txt ;;
+		fileviewer) kd $a 60 "@0;$(K $DOWN)$(K $DOWN)@1;$(K 13)@2;$(K 0x7f)@3;$(K $RIGHT)@4;$(K $F6)@5" SIM_ARGS=SD:/apps ;;
+		pdf) kd $a 200 "@0;$(K $PGDN)@1;${LL}@2;$(K $DOWN)$(K $DOWN)@3;$(K $RIGHT)@4;$(K $DOWN)$(K $DOWN)@5" SIM_SLEEP=1 SIM_ARGS=SD:/${PDFDOC#sdcard/} ;;
+		media) kd $a 220 "@0;$(K $DOWN)@1;$(K 13)@2;$(K 0x20)@3;$(K $RIGHT)@4;${TAB}@5" SIM_SLEEP=1 ;;
+		imageview) kd $a 80 "@0;$(CT 0x0f)$W;@1;$(K 27)@2" ;;	# (no picture: the PC's build has no ImageKit -- its file chooser, then)
+		iconedit) kd $a 60 "@0;$(K $RIGHT)$(K $DOWN)@1;key 0x2e;$W;key 0x2e;$W;$(K 13)@2;mods 2;$W;$(K $RIGHT)$(K $RIGHT)mods 0;$W;@3;key l;$W;$(K $DOWN)$(K 13)$(K $RIGHT)$(K $RIGHT)$(K $DOWN)@4;$(K 13)@5" SIM_ARGS=SD:/apps/invaders.app/icon.bmp ;;
+		fmtracker) kd $a 60 "@0;$(K $DOWN)@1;$(K $RIGHT)@2;key z;$W;@3;$(K 0x20)@4;${TAB}@5" SIM_ARGS=SD:/music/fms/AIRWOLF.FMS ;;
+		irc) kd $a 80 "@0;$(K $DOWN)@1;${TAB}@2;key h;key i;$W;@3;$(K 13)@4;$(K $F6)@5" ;;
+		telegram) kd $a 80 "@0;$(K $DOWN)@1;$(K 13)@2;key h;key i;$W;@3;$(K 13)@4;$(K 27)@5" SIM_STAT=1 SIM_ARGS=--demo SIM_SERVICES=notify ;;
+		disks) kd $a 80 "@0;$(K $DOWN)$(K $DOWN)@1;$(K $DOWN)$(K $DOWN)$(K $DOWN)@2;$(K $DOWN)@3;$(K $RIGHT)@4;$(K $DOWN)@5" SIM_USB=2 SIM_VOLS=SD1 ;;
+		taskman) kd $a 80 "@0;$(K $DOWN)$(K $DOWN)@1;${RR}@2;${RR}@3;${LL}@4;${LL}@5" ;;
+		calendar) kd $a 60 "@0;$(CT 0x0e)@1;key L;key u;key n;key c;key h;$W;${TAB}@2;$(K 27)@3;${LL}@4;$(K $DOWN)$(K 13)@5" SIM_DATE=20260930 SIM_TIME=1042 ;;
+		archiver) kd $a 60 "@0;$(K $DOWN)$(K $DOWN)@1;$(K 13)@2;$(K 0x7f)@3;$(K $F6)@4;$(K $RIGHT)$(K 13)@5" SIM_RAM=$OUT/arc SIM_ARGS=RAM:/Projet-Onyx.zip ;;
+		cardfile) kd $a 60 "@0;$(K $DOWN)@1;$(K $F6)@2;$(K 0x116)@3;$(K 0x114)@4;$(CT 0x06)@5" SIM_ARGS=SD:/docs/contacts.card ;;
+		ledger) kd $a 80 "@0;$(K $DOWN)@1;$(K $RIGHT)@2;$(K 13)@3;${RR}@4;$(K $DOWN)@5" SIM_ARGS=SD:/docs/demo-company.ledger ;;
+		lisa) kd $a 80 "@0;key h;key e;key l;key l;key o;$W;@1;$(K 13)$WW;@2;$(K $UP)@3;${TAB}@4;$(K $F6)@5" ;;
+		clock) kd $a 60 "@0;${RR}@1;${RR}@2;$(K 0x20)@3;${RR}@4;${LL}@5" SIM_DATE=20260930 SIM_TIME=1042 ;;
+		tinycalc) kd $a 80 "@0;key 1;key 2;key 0x2b;key 3;$W;@1;$(K 13)@2;$(K $RIGHT)@3;$(K $DOWN)@4;$(K 13)@5" ;;
+		# THE SHARED DIALOGS every app opens, at 640 x 450: the file chooser (Open, Save As), a message box, the colour
+		# chooser, Letters' font box
+		dlg-open) KN=$a kd tinypad 40 "$(CT 0x0f)$W;@0;$(K $DOWN)$(K $DOWN)@1;$(K 13)$W;@2;$(K $DOWN)@3;${TAB}@4;$(K 27)@5" SIM_ARGS=SD:/notes.txt ;;
+		dlg-save) KN=$a kd tinypad 40 "menucmd 3;$W;$W;@0;key a;key b;$W;@1;${TAB}@2;${TAB}@3;$(K $DOWN)@4;$(K 27)@5" SIM_ARGS=SD:/notes.txt ;;
+		dlg-message) KN=$a kd tinypad 40 "key a;$W;$(CT 0x0e)$W;@0;$(K $RIGHT)@1;$(K $RIGHT)@2;$(K $LEFT)@3;$(K 27)@4;$(CT 0x0e)$W;$(K $RIGHT)$(K 13)@5" SIM_ARGS=SD:/notes.txt ;;
+		dlg-colour) KN=$a kd iconedit 60 "menucmd 12;$W;$W;@0;$(K $RIGHT)@1;$(K $DOWN)@2;${TAB}@3;$(K 13)@4;$(K 27)@5" SIM_ARGS=SD:/apps/invaders.app/icon.bmp ;;
+		dlg-font) KN=$a kd letters 80 "$(CT 0x04)$W;$W;@0;$(K $DOWN)@1;${TAB}@2;$(K $DOWN)@3;$(K $RIGHT)@4;$(K 27)@5" SIM_ARGS=SD:/docs/letters-tour.rtf ;;
+		graphcalc) kd $a 80 "@0;$(K 27)@1;$(K $RIGHT)@2;key 0x2b;$W;@3;${TAB}@4;key x;$W;@5" ;;
+		esac
+	done
+	# what each key must have done (the pictures were looked at: AUDIT-640.md has the verdicts)
+	kdiff notes 0 1 "typing, Ctrl + N: a second note"; kdiff notes 1 2 "Tab: the list has the keys"; kdiff notes 2 3 "Down: the other note"; kdiff notes 4 5 "F6, Right: the ring on the toolbar"
+	kdiff tinypad 0 1 "typing"
+	kdiff fileviewer 0 1 "Down x 2: another folder"; kdiff fileviewer 1 2 "Enter: into it"; kdiff fileviewer 2 3 "Bksp: out of it"
+	kdiff pdf 0 1 "Page Down scrolls"; kdiff pdf 1 2 "L: the drawer"; kdiff pdf 2 3 "Down x 2 in Pages: the third page"; kdiff pdf 3 4 "Right: Contents"; kdiff pdf 4 5 "Down x 2: another entry and its page"
+	kdiff media 0 1 "Down: the search field has the keys"
+	kdiff imageview 0 1 "Ctrl + O: the file chooser"; ksame imageview 0 2 "Esc: closed"
+	kdiff iconedit 0 1 "the arrows: a pixel has the keys"; kdiff iconedit 1 2 ". . and A: a pixel drawn in another colour"; kdiff iconedit 2 3 "Shift + Right x 2: a run"; kdiff iconedit 3 4 "L, A, the arrows: a line stretched"; kdiff iconedit 4 5 "A: the line kept"
+	kdiff fmtracker 0 1 "Down: the next row"; kdiff fmtracker 1 2 "Right: the next column"
+	kdiff irc 1 2 "Tab: the server's field"; kdiff irc 2 3 "typing in it"
+	kdiff telegram 2 3 "typing a message"; kdiff telegram 3 4 "Enter: sent"
+	kdiff disks 0 1 "Down x 2: a volume"; kdiff disks 1 2 "Down x 3: the last volume"; kdiff disks 2 3 "Down past the list's end: the focus goes on (the list was a trap)"
+	kdiff taskman 0 1 "Down x 2: a task"; kdiff taskman 1 2 "R: the next tab"; kdiff taskman 2 3 "R: the next"; kdiff taskman 3 4 "L: back"
+	kdiff calendar 0 1 "Ctrl + N: the new event's box"; kdiff calendar 1 2 "a title typed, Tab"; ksame calendar 0 3 "Esc: closed, nothing kept"; kdiff calendar 3 4 "L: the drawer"
+	python3 -c "from PIL import Image; import sys; im = Image.open ('$OUT/keys-calendar-1.png').convert ('RGB'); sys.exit (0 if len (im.crop ((420, 430, 610, 462)).getcolors (4096)) > 2 else 1)" 2>/dev/null && echo "  calendar: the event box's Cancel and Save are on the screen: ok" || { kin calendar && { echo "  calendar: the event box's buttons: FAILED (not on the screen)"; FAIL=1; } || true; }
+	kdiff archiver 0 1 "Down x 2: an entry"; kdiff archiver 1 2 "Enter: into the folder"; kdiff archiver 2 3 "Bksp: out of it"
+	kdiff cardfile 0 1 "Down: the next field"; kdiff cardfile 1 2 "F6: the list"; kdiff cardfile 2 3 "F7: the design"; kdiff cardfile 3 4 "F5: the form"; kdiff cardfile 4 5 "Ctrl + F: the search"
+	kdiff ledger 0 1 "Down: the rail has the keys"; kdiff ledger 3 4 "R: the next place"; kdiff ledger 4 5 "Down: the next row"
+	kdiff lisa 0 1 "typing"
+	kdiff clock 0 1 "R: Alarms"; kdiff clock 1 2 "R: Timer"; kdiff clock 2 3 "Space: the timer starts"; kdiff clock 3 4 "R: Stopwatch"; kdiff clock 4 5 "L: back"
+	kdiff tinycalc 0 1 "1 2 + 3 typed"; kdiff tinycalc 1 2 "Enter: 15"
+	kdiff graphcalc 0 1 "Esc: the graph has the keys"; kdiff graphcalc 1 2 "Right: the graph moved"; kdiff graphcalc 2 3 "+: nearer"; kdiff graphcalc 3 4 "Tab: a field again"
+	kdiff dlg-open 0 1 "the file chooser: Down x 2"; kdiff dlg-open 1 2 "Enter: into the folder"; kdiff dlg-open 3 4 "Tab: its buttons"; kdiff dlg-open 4 5 "Esc: closed"
+	kdiff dlg-save 0 1 "Save As: a name typed"; kdiff dlg-save 1 2 "Tab: Save"; kdiff dlg-save 2 3 "Tab: Cancel"
+	kdiff dlg-message 0 1 "a message box: Right, a button ringed"; kdiff dlg-message 1 2 "Right: the next"; kdiff dlg-message 3 4 "Esc: closed"
+	kdiff dlg-colour 0 1 "the colour chooser: Right, a slider"; kdiff dlg-colour 1 2 "Down: the next slider"; kdiff dlg-colour 3 4 "Enter: closed"
+	kdiff dlg-font 0 1 "Letters' font box: Down, another size"; kdiff dlg-font 1 2 "Tab"; kdiff dlg-font 2 3 "Down"
+fi
+
 if want audit; then
 	echo "pocket640: the audit (every app at 640 x 480 pocket)"
 	A=${AUDIT_PNG:-$OUT/audit}; mkdir -p "$A"

@@ -377,6 +377,7 @@ int main (void)
 	for (int i = 0; i < TABS; i++) tabs[i] = TR (TABNAME[i]);
 	g_tabs = new SegmentedControl ((w - 440) / 2, 10, 440, 28, tabs, TABS, 0, tabs_changed);
 	root.addChild (g_tabs);
+	if (uk_keys_drive ()) uk_segmented_nav (g_tabs);	// (pocket and console: L / R -- Ctrl + Page Up / Down, a pad's -- step the four tabs)
 	for (int i = 0; i < TABS; i++) { g_page[i] = new Page (w, h); g_page[i]->hidden = true; root.addChild (g_page[i]); }
 	world_build (g_page[TAB_WORLD]);
 	alarms_build (g_page[TAB_ALARMS]);

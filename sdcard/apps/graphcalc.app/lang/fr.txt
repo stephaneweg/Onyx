@@ -15,3 +15,4 @@ View	Affichage
 Zoom In	Zoom avant
 Zoom Out	Zoom arrière
 e.g. sin(x)  x^2-2  2x+1	ex. sin(x)  x^2-2  2x+1
+Arrows: move   + -: zoom	Flèches : déplacer   + - : zoom

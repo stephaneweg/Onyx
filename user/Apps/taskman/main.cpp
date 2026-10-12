@@ -550,6 +550,7 @@ int main (void)
 	g_netOk = kapi_net_stats (0, &g_net) == 0; g_netPrev = g_net; g_netPrevUs = g_cpu.now_us;
 	g_tabs->setEnabled (2, g_cpuOk); g_tabs->setEnabled (3, g_netOk);
 	root.addChild (g_tabs);
+	if (uk_keys_drive ()) uk_segmented_nav (g_tabs);	// (pocket and console: L / R -- Ctrl + Page Up / Down, a pad's -- step the tabs)
 
 	g_grid = new DataGrid (10, TOP + 8, W - 20, H - TOP - FOOT - 8);
 	g_grid->anchor = ANCHOR_FILL;

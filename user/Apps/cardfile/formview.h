@@ -266,7 +266,7 @@ public:
 		unsigned band = uk_mix (card, C_ACCENT, 46);
 		uk_rbox (canvas, x + 1, y + 1, w - 2, HEAD_H - 16, 9, uk_mix (card, C_ACCENT, 70), band, 255, UK_TL | UK_TR);
 		canvas.fillRect (x + 1, y + HEAD_H - 16, w - 2, 1, uk_mix (card, C_ACCENT, 110));
-		unsigned tink = uk_ink_on (band) == uk_ink_on (card) ? uk_tone (C_ACCENT, 60) : uk_ink_on (band);
+		unsigned tink = uk_ink_on (band) == uk_ink_on (card) ? (uk_flat () ? (unsigned) UK_N_ACCENT_HI : uk_tone (C_ACCENT, 60)) : uk_ink_on (band);	// (the flat dark look: a darkened accent cannot be read)
 		if (uk_bright (tink) > 150 && uk_bright (band) > 140) tink = ink;
 		char badge[40] = "";
 		int pos = cur_pos ();
@@ -295,7 +295,7 @@ public:
 				int lw = uk_text_w (l), ly = m_y[k] - scrollY;
 				bool f = m_ed[k]->hasFocus;
 				Canvas lc; lc.adopt (canvas.px + x + PAD, imax (1, m_labW + 4), canvas.h, canvas.stride);
-				uk_text_l (lc, imax (0, m_labW - lw), ly, ED_H, l, f ? uk_tone (C_ACCENT, 70) : ink, f ? 2 : 0);
+				uk_text_l (lc, imax (0, m_labW - lw), ly, ED_H, l, f ? (uk_flat () ? (unsigned) UK_N_ACCENT_HI : uk_tone (C_ACCENT, 70)) : ink, f ? 2 : 0);
 			}
 		}
 		else

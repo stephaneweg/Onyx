@@ -261,6 +261,15 @@ class GcRoot : public Root
 {
 public:
 	GcRoot () : Root (W, H, TR ("Graphing Calculator")) {}
+	// (pocket and console, no pointer: Esc from a function's field gives the keys to the graph -- the arrows move it,
+	//  + and - zoom; Esc again, or Tab: the first field)
+	bool onKey (long k) override
+	{
+		if (!uk_keys_drive () || (k != 27 && k != KEY_TAB)) return false;
+		if (((Widget *) g_plot)->hasFocus) g_f[0].tb->setFocus (); else if (k == 27) ((Widget *) g_plot)->setFocus (); else return false;
+		invalidate (true);
+		return true;
+	}
 	void onResized () override;
 	void onTick () override
 	{
@@ -358,7 +367,7 @@ int main (void)
 		g_readout[i] = new Label (10, by + 42 + i * (fh + 6), PANEL - 16, fh + 2, "", ink, C_BG);
 		root.addChild (g_readout[i]);
 	}
-	root.addChild (g_tips[0] = new Label (10, H - 3 * (fh + 4) - 6, PANEL - 16, fh + 2, TR ("Drag: move   Wheel: zoom"), C_DIS, C_BG));
+	root.addChild (g_tips[0] = new Label (10, H - 3 * (fh + 4) - 6, PANEL - 16, fh + 2, uk_keys_drive () ? TR ("Arrows: move   + -: zoom") : TR ("Drag: move   Wheel: zoom"), C_DIS, C_BG));
 	root.addChild (g_tips[1] = new Label (10, H - 2 * (fh + 4) - 6, PANEL - 16, fh + 2, TR ("e.g. sin(x)  x^2-2  2x+1"), C_DIS, C_BG));
 	root.addChild (g_tips[2] = new Label (10, H - (fh + 4) - 6, PANEL - 16, fh + 2, "sqrt ln log exp abs pi e", C_DIS, C_BG));
 	g_plot = new Plot (PANEL, 4, W - PANEL - 4, H - 8);
