@@ -628,6 +628,7 @@ extern "C" int sim_server_step (const char *st)
 		return 1;
 	}
 	if (!strcmp (cmd, "wheel")) { sscanf (st, "%*s %d %d %d", &a, &b, &c); Pointer (a, b, s_nButtons, c); return 1; }
+	if (!strcmp (cmd, "key") && getenv ("SIM_APPLET")) return 0;	// (an applet: its keys are its host's AP_KEY messages -- fakekapi.cpp)
 	if (!strcmp (cmd, "key"))
 	{
 		sscanf (st, "%*s %255s", arg);

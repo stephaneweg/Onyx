@@ -76,7 +76,7 @@ translation due — CLAUDE.md asks for it when an app is worked on), large (seve
 | **Screenshot** | fine | ok | — | — | no |
 | **Setup** (the first start) | **broken**: a fixed 800 × 600 window in a viewport: the right 160 px and the bottom 150 px are out of the screen — and it is the first thing a new card shows | ok inside what shows | its pages for 640 × 450: see Q5 | large | **yes** — Q5 |
 | **Control Panel** | fine (one thing at a time: the list, then an applet under "‹ Control Panel") | ok | — | — | no |
-| its applets: **Theme, Mode, Panel, Preload, App Settings** | were minor / **broken** (700 × 470 in a 640 × 406 pane) → **fine** (below: the medium fixes): each fits the pane | not driven in the simulator (an applet's keys come from the Control Panel's process); nothing is out of sight any more | each applet's least width down to 640 (five layouts), and the Control Panel's pane scrolled to the focused control | medium | no |
+| its applets: **Theme, Mode, Panel, Preload, App Settings** | were minor / **broken** (700 × 470 in a 640 × 406 pane) → **fine** (below: the medium fixes): each fits the pane | **driven** (the simulator sends an applet its host's keys): Down, Down, Right… in each; Mode: a card reached, Space chooses it | each applet's least width down to 640 (five layouts), and the Control Panel's pane scrolled to the focused control | medium | no |
 | its applets: **Display, Sound, Keyboard & Mouse, Language & Region, Gamepad, Wi-Fi** | fine (what they show fits in the 640 px) | ok | — | — | no |
 | its applet **Printers** | not judged (it drew nothing in the simulator: no printing service there) | — | — | — | — |
 | **QBStudio** | was **broken** (the form and the code 185 px wide between three panes) → **fine since Q6 was built** (below) | **driven**: Down (a control), M, Right, Enter; S, Right ×2, Esc; Down; L, Down ×3, Enter (a control added), Enter; R, Down ×2, R; F7, F7 | an IDE on 640 × 480: see Q6 | large | **yes** — Q6 |
@@ -207,6 +207,18 @@ Notes on the note: `pt-stickies-640*.png`; "A writes in a note" is done by Notes
 **NOT built: the clipboard's history as a sheet** (Ctrl + Shift + V over the app in front, *Edit ▸ Clipboard
 history* in every Menu): it needs a key caught by PocketUI for every app, the sheet in the shell, and the paste sent
 to the app under it — the shell, `clipd` and the server together.
+
+**The Control Panel's applets DRIVEN BY THE KEYS (2026-10-12)** (`pocket640.sh applets`): the simulator now hands a
+program run as an applet its keys the way the Control Panel does on Onyx — as `AP_KEY` messages in its mailbox
+(`fakekapi.cpp`; `server_sim.cpp` lets an applet's `key` steps through) —, so the applet's real path is exercised
+(`uk_pump` → `Root::keyEvent` → the focus ring). Driven and compared before / after the keys, each in its 640 × 410
+pane: **Display, Sound, Wi-Fi, Language & Region, Mode, Theme**, then Preload, App Settings, Panel
+(`pt-applet-<name>-640-keys.png`): the keys reach every one, the focus moves. **Found and fixed: in Mode the three
+cards took no focus** — a mode could not be chosen without a pointer; in pocket and console the arrows now reach a
+card and Enter / Space chooses it. What the simulator still does not run is the Control Panel's own forwarding (it
+sends `AP_KEY` for every key while an applet is open: read in its code, `main.cpp` line "kapi_mailbox_send (g_pid,
+AP_KEY…)"), and Sound's group boxes are 60 px wider than the pane (their frames' right edge is cut; every control
+is inside).
 
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the

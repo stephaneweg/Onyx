@@ -55,6 +55,14 @@ public:
 	ModeCard (int x, int y, int m) : Widget (x, y, CARD_W, CARD_H), mode (m), pic (0), pw (0), ph (0)
 	{
 		pic = ui::icon_load (PIC[m], &pw, &ph);
+		canFocus = uk_keys_drive ();		// (pocket, console -- no pointer: the arrows reach a card, Enter / Space chooses it)
+	}
+	bool onKey (long k) override
+	{
+		if (!uk_keys_drive () || (k != KEY_ENTER && k != ' ') || g_proc != 0) return false;
+		g_sel = mode;
+		for (int i = 0; i < 3; i++) g_cards[i]->invalidate (true);
+		return true;
 	}
 	void onDraw () override
 	{

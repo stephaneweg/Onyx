@@ -94,7 +94,9 @@ Down, as the keys do (Letters pages its text with both). No reworked app reads t
 kr` and its `onKey`, `g_toolRow` (a SegmentedControl, the window's tabs through `uk_segmented_nav`; the levels'
 SidePanel is hidden while editing so that L reaches it), the panel a child of the Root in pocket, F2 / F5 routed in
 `do_hint` / `do_run` (they are Menu shortcuts first). **Q9 in part (2026-10-12)**: the Home's Today line from 440 px of height and by the keys (`g_todayFocus`,
-pocketshell's home.h); Stickies' `PocketStickies` (its `main` branches on `uk_mode ()`). **NEXT, NOT started**: the clipboard's history as a sheet (Q9: Ctrl + Shift + V over the app in front -- a key
+pocketshell's home.h); Stickies' `PocketStickies` (its `main` branches on `uk_mode ()`). **The applets by the keys (2026-10-12)**: `fakekapi.cpp` queues a `key` step as an `AP_KEY` mailbox message when
+the program runs as an applet (`SIM_APPLET`; `server_sim.cpp` lets it through): `pocket640.sh applets` drives nine
+applets. Mode's cards take the focus where the keys drive (`ModeCard::onKey`). **NEXT, NOT started**: the clipboard's history as a sheet (Q9: Ctrl + Shift + V over the app in front -- a key
 PocketUI must catch for every app, the sheet in the pocket shell, the paste sent to the app under it); item 8 (Q4
 Koton: Song and Mixer under L / R, a "not in pocket" card); item 9 (Courier's migration); item 10 (the Control
 Panel's applets DRIVEN by the keys -- the simulator must run an applet under the Control Panel for that --, Theme's

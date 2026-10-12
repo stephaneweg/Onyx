@@ -2217,7 +2217,9 @@ narrower than 600 px shows the same list on the desktop); in **console** the lin
 **L1 / R1** (Ctrl+Page Up / Down) step through the applets. (The applets keep their own layouts for now: in a small
 pane they scroll.) **On a pocket screen under 800 px wide** (640 × 480) an applet gets the pane as it is and the five
 made for 700 × 470 -- **Theme, Mode, Preload, App Settings, Panel** -- fit their layout to it: nothing is out at the
-right, nothing scrolls sideways (in Theme the preview's right edge alone is cut).
+right, nothing scrolls sideways (in Theme the preview's right edge alone is cut). In every applet the arrows move
+the focus and Enter / Space use what it is on; in **Mode** they reach the three cards (Enter or Space chooses the
+interface, then *Apply*).
 
 | Applet | What it sets |
 |---|---|

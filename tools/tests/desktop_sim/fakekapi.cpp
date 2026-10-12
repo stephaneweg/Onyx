@@ -706,6 +706,7 @@ static int held_fold (int k)				// (kwin.cpp KeyHeldAny's folding)
 	if (k == '\n' || k == '\r') k = KEY_ENTER;
 	return k;
 }
+static int g_apKey[64][2], g_apKeyN;			// (SIM_APPLET: the keys the host sends the applet, AP_KEY)
 static void step (void)
 {
 	if (g_step >= g_script.size ()) { fprintf (stderr, "sim: end of the script\n"); exit (0); }
@@ -742,7 +743,14 @@ static void step (void)
 		if (g_btn) click (GUI_EVENT_CANVAS_MOTION, a, b);
 	}
 	else if (!strcmp (cmd, "wheel")) { sscanf (st.c_str (), "%*s %d %d %d", &a, &b, &c); ptrev (GUI_EVENT_PTR_WHEEL, a, b, 0, 0, c); }
-	else if (!strcmp (cmd, "key")) { sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0]; if (g_key) g_key (snd, GUI_EVENT_KEY, k); }
+	else if (!strcmp (cmd, "key"))
+	{
+		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
+		// (an applet -- SIM_APPLET -- has no window of its own: its keys come from its host, the Control Panel, as AP_KEY
+		//  messages { int key; unsigned mods; } in its mailbox: queued here, handed out by kapi_mailbox_recv below)
+		if (getenv ("SIM_APPLET")) { if (g_apKeyN < 64) { g_apKey[g_apKeyN][0] = (int) k; g_apKey[g_apKeyN][1] = (int) g_mods; g_apKeyN++; } }
+		else if (g_key) g_key (snd, GUI_EVENT_KEY, k);
+	}
 	else if (!strcmp (cmd, "hold") || !strcmp (cmd, "release"))
 	{
 		sscanf (st.c_str (), "%*s %255s", arg); long k = arg[1] ? strtol (arg, 0, 0) : arg[0];
@@ -1638,6 +1646,16 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 		int wh[2] = { g_surfW, g_surfH };
 		unsigned n = cap < sizeof wh ? cap : (unsigned) sizeof wh;
 		memcpy (buf, wh, n);
+		return (int) n;
+	}
+	if (g_apKeyN > 0)					// (an applet's key from its host: AP_KEY = 51, applet_proto.h)
+	{
+		int m[2] = { g_apKey[0][0], g_apKey[0][1] };
+		for (int i = 1; i < g_apKeyN; i++) { g_apKey[i - 1][0] = g_apKey[i][0]; g_apKey[i - 1][1] = g_apKey[i][1]; }
+		g_apKeyN--;
+		if (from) *from = 99; if (type) *type = 51;	// (99: the host's pid in "--applet 1 99")
+		unsigned n = cap < sizeof m ? cap : (unsigned) sizeof m;
+		memcpy (buf, m, n);
 		return (int) n;
 	}
 	// SIM_MBOX: canned messages, "type:pid:payload" a line ("\n" between them, "\t" a tab), one a call

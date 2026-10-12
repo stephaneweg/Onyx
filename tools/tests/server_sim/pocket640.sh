@@ -458,21 +458,36 @@ fi
 if want applets; then
 	echo "pocket640: the Control Panel's applets in a 640 px pane"
 	ftapp pocket control uikit_pocket >>"$OUT/log.txt" 2>&1
-	for a in theme modeconf preloadconf config dockconf; do
-		ftapp pocket $a uikit_pocket -lm -Wl,--unresolved-symbols=ignore-all >>"$OUT/log.txt" 2>&1 || { echo "  $a: NOT BUILT (see $OUT/log.txt)"; FAIL=1; continue; }
+	# apk <applet> <fitted: 1 a layout made for 700 x 470, 0 one that already fits> <keys...>: the applet in the pane the
+	# Control Panel gives it, as it comes; then DRIVEN BY THE KEYS as on the device -- the Control Panel sends an applet its
+	# keys as AP_KEY messages, and so does the simulator's "key" for a program run as an applet (fakekapi.cpp)
+	apk () {
+		a=$1; fitted=$2; keys=$3
+		ftapp pocket $a uikit_pocket -lm -Wl,--unresolved-symbols=ignore-all >>"$OUT/log.txt" 2>&1 || { echo "  $a: NOT BUILT (see $OUT/log.txt)"; FAIL=1; return 0; }
 		WR=$(langdir "")
 		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=control SIM_APP=control SIM_ARGS=$a SIM_WRITES=$WR SIM="$WWW;exit" "$OUT/pocket_control" > "$OUT/cp-$a.txt" 2>&1 || true
 		pane=$(sed -n 's/^sim: surface_create //p' "$OUT/cp-$a.txt" | tail -1)
 		case "$pane" in 640x*) echo "  $a: the pane is the window's width ($pane): ok" ;; *) echo "  $a: FAILED (the pane asked is '$pane', not 640 wide)"; FAIL=1 ;; esac
-		# the applet in that pane (its keys come from the Control Panel's own process on Onyx: the simulator runs an applet
-		# alone and cannot type in it -- what is checked is that its right part, out of the pane before, is drawn in it)
-		env SIM_OVERLAY=$D/sd SIM_APPLET=1 SIM_SURFSIZE=$pane $P640 SIM_APPNAME=$a SIM_APP=$a SIM_WRITES=$WR SIM="$W;$W;dump $OUT/pt-applet-$a-0.elsm;exit" timeout 120 "$OUT/pocket_$a" >>"$OUT/log.txt" 2>&1 || true
+		env SIM_OVERLAY=$D/sd SIM_APPLET=1 SIM_SURFSIZE=$pane $P640 SIM_APPNAME=$a SIM_APP=$a SIM_WRITES=$WR SIM="$W;$W;dump $OUT/pt-applet-$a-0.elsm;$keys;$W;$W;dump $OUT/pt-applet-$a-1.elsm;exit" timeout 120 "$OUT/pocket_$a" >>"$OUT/log.txt" 2>&1 || true
 		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=control SIM_APP=control SIM_ARGS=$a SIM_MAIL=40:7 SIM_SURFACE="$OUT/pt-applet-$a-0.elsm" SIM_WRITES=$WR SIM="$WWW;$WW;dump $OUT/pt-applet-$a-640.elsm;exit" timeout 120 "$OUT/pocket_control" >>"$OUT/log.txt" 2>&1 || true
-		for f in pt-applet-$a-0 pt-applet-$a-640; do python3 $D/shot.py "$OUT/$f.elsm" "$OUT/$f.png" >/dev/null 2>&1 || { echo "  $a: FAILED (no picture $f)"; FAIL=1; }; done
-		[ -n "$SHOTS_PNG" ] && { mkdir -p "$SHOTS_PNG"; cp "$OUT/pt-applet-$a-640.png" "$SHOTS_PNG/"; }
+		env SIM_OVERLAY=$D/sd $P640 SIM_APPNAME=control SIM_APP=control SIM_ARGS=$a SIM_MAIL=40:7 SIM_SURFACE="$OUT/pt-applet-$a-1.elsm" SIM_WRITES=$WR SIM="$WWW;$WW;dump $OUT/pt-applet-$a-640-keys.elsm;exit" timeout 120 "$OUT/pocket_control" >>"$OUT/log.txt" 2>&1 || true
+		for f in pt-applet-$a-640 pt-applet-$a-640-keys; do python3 $D/shot.py "$OUT/$f.elsm" "$OUT/$f.png" >/dev/null 2>&1 || { echo "  $a: FAILED (no picture $f)"; FAIL=1; }; done
+		[ -n "$SHOTS_PNG" ] && { mkdir -p "$SHOTS_PNG"; cp "$OUT/pt-applet-$a-640.png" "$OUT/pt-applet-$a-640-keys.png" "$SHOTS_PNG/"; }
 		size pt-applet-$a-640 640x480 "$a in the Control Panel: the whole 640 x 480 screen"
-		busy pt-applet-$a-640 560 80 636 470 "$a: its right part is in the pane"
-	done
+		[ $fitted = 1 ] && busy pt-applet-$a-640 560 80 636 470 "$a: its right part is in the pane"
+		differ pt-applet-$a-640 pt-applet-$a-640-keys "$a: the keys reach it (the focus moved, a value changed)"
+	}
+	KD="key $DOWN;$W;key $DOWN;$W"; KR="key $RIGHT;$W"
+	# what sets the device up first: Display, Sound, Wi-Fi, Language & Region, Mode, Theme -- then the other fitted ones
+	apk displayconf 0 "$KD"
+	apk soundconf 0 "$KD;$KR;$KR"
+	apk wpaconf 0 "$KD"
+	apk langconf 0 "$KD;$KR"
+	apk modeconf 1 "key $DOWN;$W;$KR;$KR;key 32"	# (a card reached, the next one, Space: that mode chosen -- its frame)
+	apk theme 1 "$KD;$KR"
+	apk preloadconf 1 "$KD;$KR;$KD"
+	apk config 1 "$KD;$KD"
+	apk dockconf 1 "$KD;$KR"
 fi
 
 # ---- the Package Manager: its window is the screen's (it was a fixed 700 x 470 in a viewport), its tabs under L / R -----------
@@ -569,6 +584,7 @@ if want lr; then
 	lr paint all SIM_ARGS=SD:/docs/pictures/sunny-mountains.jpg
 	lr pkgman all
 	lr 3dforge all SIM_ARGS=SD:/docs/3d/bracket.3df
+	[ -x "$OUT/pocket_setup" ] || ftapp pocket setup uikit_pocket	# (its section comes after this one)
 	lr setup all
 fi
 
