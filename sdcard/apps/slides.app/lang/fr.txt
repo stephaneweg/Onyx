@@ -17,3 +17,4 @@ edit	modifier
 present	présenter
 Slides	Diapos
 Inspector	Inspecteur
+its buttons	ses boutons

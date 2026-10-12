@@ -1428,7 +1428,7 @@ static void pocket_hints ()
 	if (!g_pk || !g_view) return;
 	static UkPadHint HN[8]; int n = 0; const char *mode = 0;
 	if (g_sideL->isOpen ()) { HN[n++] = { "|", TR ("slide") }; HN[n++] = { "A", TR ("open") }; HN[n++] = { "[Ctrl+M]", TR ("new") }; HN[n++] = { "[Bksp]", TR ("delete") }; HN[n++] = { "L", TR ("close") }; }
-	else if (g_sideR->isOpen ()) { HN[n++] = { "|", TR ("field") }; HN[n++] = { "-", TR ("tab") }; HN[n++] = { "A", TR ("change") }; HN[n++] = { "[0-9]", TR ("value") }; HN[n++] = { "R", TR ("close") }; }
+	else if (g_sideR->isOpen ()) { HN[n++] = { "|", TR ("field") }; HN[n++] = { "-", g_sidebar && g_sidebar->on_several () ? TR ("its buttons") : TR ("tab") }; HN[n++] = { "A", TR ("change") }; HN[n++] = { "[0-9]", TR ("value") }; HN[n++] = { "R", TR ("close") }; }
 	else if (g_viewMode == VIEW_SORTER) { HN[n++] = { "+", TR ("slide") }; HN[n++] = { "A", TR ("open") }; HN[n++] = { "[Bksp]", TR ("delete") }; }
 	else if (g_edit) { mode = TR ("TEXT"); HN[n++] = { "B", TR ("done") }; HN[n++] = { "[F6]", TR ("tools") }; }
 	else

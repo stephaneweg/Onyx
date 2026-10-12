@@ -1714,6 +1714,7 @@ int main (void)
 	Textbox *tryit = new Textbox (rx, y + 196, rw, 30, g_demo ? "O\xC3\xB9 est la gare ? H\xC3\xA9l\xC3\xA8ne \xC3\xA0 9h" : ""); p->addChild (tryit);
 	g_kbv = new KeyboardView (rx, y + 238, rw, g_pk ? pageH - (y + 238) - 6 : 84); p->addChild (g_kbv);
 	g_kbv->set (g_keyb);
+	if (g_pk && ((Widget *) g_kbv)->height < 84) ((Widget *) g_kbv)->hidden = true;	// (no room for the keys' picture whole: the field to try it is kept)
 	// 2: Wi-Fi
 	p = g_pages[2] = new Page (TR ("Connect to Wi-Fi"), TR ("Pick your network and type its password. You can skip this and connect later from the Wi-Fi icon in the menu bar."));
 	y = p->bodyY;

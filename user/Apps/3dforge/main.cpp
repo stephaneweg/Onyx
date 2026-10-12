@@ -830,7 +830,7 @@ int main (void)
 	if (sw > 0) W = sw - 18 < 820 ? 820 : sw - 18 > 1240 ? 1240 : sw - 18;
 	if (sh > 0) H = sh - 67 < 560 ? 560 : sh - 67 > 820 ? 820 : sh - 67;
 	g_pk = uk_mode () == UK_MODE_POCKET && sw > 0 && sw < 800;
-	if (g_pk) { W = sw; H = sh - 30; uk_lang_init (); }	// (the screen's window; its pocket words in the system's language)
+	if (g_pk) { W = sw; H = sh - 30; uk_lang_init (); g_propsCompact = true; }	// (the screen's window; its pocket words in the system's language)
 	ForgeRoot root;
 	if (root.canvas.px == 0) return 1;
 	root.attach ();

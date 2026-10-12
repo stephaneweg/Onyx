@@ -173,6 +173,7 @@ class Sidebar : public Widget
 public:
 	Vec<SRow> rows;
 	int m_top, m_total, m_hot, m_edit; char m_buf[24];
+	int m_sub = 0;				// pocket: in a row of several things (buttons, the themes, the effects), the one the keys are on
 	Sidebar (int l, int t, int w, int h) : Widget (l, t, w, h), m_top (0), m_total (0), m_hot (-1), m_edit (-1) { canFocus = true; m_buf[0] = 0; }
 	unsigned bgColor () override { return PANEL_C; }
 
@@ -435,7 +436,8 @@ public:
 		if (y + r.h < 40 || y > height) return;
 		bool hot = i == m_hot;
 		unsigned ink = C_TEXT, dim = uk_mix (PANEL_C, C_TEXT, 150);
-		if (g_pk && hot && r.type != R_SECTION && r.type != R_INFO) uk_rline (canvas, r.x - 4, y, r.w + 8, r.h, 5, C_ACCENT, 255);	// (the keys' row)
+		bool several = r.type == R_BUTTONS || r.type == R_THEMES || r.type == R_EFFECTS;	// (the ring is on ONE of its things: below)
+		if (g_pk && hot && !several && r.type != R_SECTION && r.type != R_INFO) uk_rline (canvas, r.x - 4, y, r.w + 8, r.h, 5, C_ACCENT, 255);	// (the keys' row)
 		int lx = r.x, cx = r.x, cw = r.w;
 		if (r.label[0] && r.type != R_SECTION && r.type != R_CHECK && r.type != R_BUTTON && r.type != R_INFO)
 		{
@@ -493,6 +495,7 @@ public:
 				if (r.btnOn[b]) uk_rbox (canvas, bx, y + 1, 30, r.h - 2, 4, uk_mix (PANEL_C, C_ACCENT, 70), uk_mix (PANEL_C, C_ACCENT, 70));
 				else uk_raised (canvas, bx, y + 1, 30, r.h - 2, 4, uk_mix (PANEL_C, 0xFFFFFF, 90), UK_NORMAL);
 				ss::sheet_icon (canvas, r.icon[b] >= 300 ? text_icon (r.icon[b]) : r.icon[b], bx + 5, y + (r.h - 20) / 2, ink, false);
+				if (g_pk && hot && b == sub_of (r)) { uk_rline (canvas, bx - 2, y - 1, 34, r.h + 2, 5, C_ACCENT, 255); uk_rline (canvas, bx - 1, y, 32, r.h, 4, C_ACCENT, 255); }
 			}
 			break;
 		case R_THEMES:
@@ -504,6 +507,7 @@ public:
 				const ThemeDef &T = THEMES[k];
 				bool cur = !strcmp (g_deck.theme.name, T.name);
 				if (cur) uk_rbox (canvas, tx - 3, ty - 3, tw + 6, th + 6, 5, HANDLE_C, HANDLE_C);
+				if (g_pk && hot && k == sub_of (r)) { uk_rline (canvas, tx - 5, ty - 5, tw + 10, th + 10, 6, C_ACCENT, 255); uk_rline (canvas, tx - 4, ty - 4, tw + 8, th + 8, 5, C_ACCENT, 255); }
 				canvas.fillRect (tx, ty, tw, th - 14, 0xFFFFFF); canvas.frameRect (tx, ty, tw, th - 14, 0xC0B4AC);
 				canvas.fillRect (tx, ty, 4, th - 14, T.acc1);
 				canvas.fillRect (tx + 10, ty + 7, tw / 2, 5, T.dk2); canvas.fillRect (tx + 10, ty + 15, 18, 3, T.acc2);
@@ -523,6 +527,7 @@ public:
 				Anim &a = s->anim[k];
 				int ry = y + 4 + k * 36;
 				if (k == g_animSel) uk_rbox (canvas, r.x + 3, ry, r.w - 6, 34, 4, uk_mix (C_FIELD, HANDLE_C, 70), uk_mix (C_FIELD, HANDLE_C, 70));
+				if (g_pk && hot && k == sub_of (r)) uk_rline (canvas, r.x + 2, ry - 1, r.w - 4, 36, 5, C_ACCENT, 255);
 				if (a.start == ST_CLICK || k == 0) n++;
 				char num[8]; snprintf (num, sizeof num, "%d", n);
 				if (a.start == ST_CLICK || k == 0) uk_text_l (canvas, r.x + 8, ry, 18, num, dim, 1);
@@ -576,8 +581,38 @@ public:
 	// Pocket, no pointer: Up / Down go from row to row (a ring), Left / Right from tab to tab, Enter (A) does what a
 	// click on the row does (a list, a colour, a box ticked, a button -- of several, the first), a digit starts a value.
 	bool usable (int i) { return i >= 0 && i < rows.n && rows[i].type != R_SECTION && rows[i].type != R_INFO; }
+	// A row of several things -- buttons side by side, the themes two by two, the effects one under the other --: how many
+	// it has, the one the keys are on. The arrows go through them before they leave the row; A does that one.
+	int subs_of (const SRow &r) { return r.type == R_BUTTONS ? r.nbtn : r.type == R_THEMES ? (int) NTHEMES : r.type == R_EFFECTS ? cur_slide ()->anim.n : 1; }
+	bool on_several () { return usable (m_hot) && (rows[m_hot].type == R_BUTTONS || rows[m_hot].type == R_THEMES); }	// (Left / Right: inside the row)
+	int sub_of (const SRow &r) { int n = subs_of (r); return m_sub < 0 ? 0 : m_sub >= n ? imax (0, n - 1) : m_sub; }
 	bool pocket_key (long k)
 	{
+		if (usable (m_hot) && m_edit < 0)
+		{
+			SRow &r = rows[m_hot];
+			int n = subs_of (r), sb = sub_of (r), to = -1;
+			if (r.type == R_BUTTONS && (k == KEY_LEFT || k == KEY_RIGHT)) { to = sb + (k == KEY_LEFT ? -1 : 1); if (to >= n) to = -1; }	// (past an end: the tabs, below)
+			else if (r.type == R_THEMES)
+			{
+				if (k == KEY_LEFT || k == KEY_RIGHT) { to = sb + (k == KEY_LEFT ? -1 : 1); if (to >= n) to = -1; }
+				else if (k == KEY_UP && sb - 2 >= 0) to = sb - 2;
+				else if (k == KEY_DOWN && sb + 2 < n) to = sb + 2;
+			}
+			else if (r.type == R_EFFECTS && n > 0)
+			{
+				if (k == KEY_UP && sb > 0) to = sb - 1;
+				else if (k == KEY_DOWN && sb + 1 < n) to = sb + 1;
+			}
+			if (to >= 0)
+			{
+				m_sub = to;
+				int sy = r.type == R_THEMES ? r.y + (to / 2) * 60 : r.type == R_EFFECTS ? r.y + 4 + to * 36 : r.y, sh = r.type == R_THEMES ? 60 : r.type == R_EFFECTS ? 36 : r.h;
+				if (sy - m_top < 44) m_top = imax (0, sy - 44);
+				if (sy + sh - m_top > height - 4) m_top = sy + sh - height + 4;
+				invalidate (true); return true;
+			}
+		}
 		if (k == KEY_UP || k == KEY_DOWN)
 		{
 			int d = k == KEY_UP ? -1 : 1, i = m_hot;
@@ -586,6 +621,15 @@ public:
 			if (!usable (i)) return true;
 			m_hot = i;
 			SRow &r = rows[i];
+			m_sub = d < 0 && (r.type == R_THEMES || r.type == R_EFFECTS) ? imax (0, subs_of (r) - 1) : 0;	// (entered from below: its last one)
+			if (r.type == R_THEMES || r.type == R_EFFECTS)			// (a tall row: its part the keys are on, in view)
+			{
+				int sy = r.type == R_THEMES ? r.y + (m_sub / 2) * 60 : r.y + 4 + m_sub * 36, sh = r.type == R_THEMES ? 60 : 36;
+				if (sy - m_top < 44) m_top = imax (0, sy - 44);
+				if (sy + sh - m_top > height - 4) m_top = sy + sh - height + 4;
+				invalidate (true);
+				return true;
+			}
 			if (r.y - m_top < 44) m_top = imax (0, r.y - 44);
 			if (r.y + r.h - m_top > height - 4) m_top = r.y + r.h - height + 4;
 			invalidate (true);
@@ -596,7 +640,17 @@ public:
 		SRow &r = rows[m_hot];
 		int cx = r.x, y = r.y - m_top;
 		if (r.label[0] && r.type != R_CHECK && r.type != R_BUTTON) cx += r.half || r.w < 150 ? uk_text_w (r.label) + 8 : 96;
-		if (k == KEY_ENTER || k == ' ') { click (m_hot, r.type == R_THEMES || r.type == R_EFFECTS ? r.x + 4 : cx + 6, r.type == R_THEMES || r.type == R_EFFECTS ? y + 6 : y + r.h / 2 + 1); invalidate (true); return true; }
+		if (k == KEY_ENTER || k == ' ')					// (A: a click on the row -- on the one of its things the keys are on)
+		{
+			int sb = sub_of (r), mx = cx + 6, my = y + r.h / 2 + 1;
+			if (r.type == R_BUTTONS) mx = cx + sb * 34 + 6;
+			else if (r.type == R_THEMES) { mx = r.x + (sb % 2) * ((r.w - 10) / 2 + 10) + 4; my = y + (sb / 2) * 60 + 6; }
+			else if (r.type == R_EFFECTS) { mx = r.x + 4; my = y + 4 + sb * 36 + 6; }
+			int keep = m_hot, ks = m_sub;
+			click (m_hot, mx, my);
+			if (keep < rows.n) { m_hot = keep; m_sub = ks; }		// (the rows may be made again: the keys stay where they were)
+			invalidate (true); return true;
+		}
 		if (r.type == R_SPIN && ((k >= '0' && k <= '9') || k == '-' || k == '.')) { m_edit = m_hot; m_buf[0] = (char) k; m_buf[1] = 0; invalidate (true); return true; }
 		return false;
 	}

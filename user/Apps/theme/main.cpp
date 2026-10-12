@@ -251,7 +251,38 @@ class Preview : public Widget
 {
 public:
 	Preview (int l, int t) : Widget (l, t, PVW + 2, PVH + 2) {}
+	// In a pane smaller than the layout's (pocket's 640 px: uk_fit_pane made this widget smaller) the preview is drawn
+	// at its own size aside, then brought to the widget's, whole -- never cut. The desktop draws straight, as ever.
+	int pvNum = 1, pvDen = 1, pvX = 0, pvY = 0;		// the scale (num / den) and where the picture is in the widget
 	void onDraw () override
+	{
+		if (width >= PVW + 2 && height >= PVH + 2) { pvNum = pvDen = 1; pvX = pvY = 0; drawFull (canvas); return; }
+		static unsigned *buf = new unsigned[(PVW + 2) * (PVH + 2)];
+		Canvas full; full.adopt (buf, PVW + 2, PVH + 2);
+		drawFull (full);
+		int w = width, h = (PVH + 2) * width / (PVW + 2);
+		if (h > height) { h = height; w = (PVW + 2) * height / (PVH + 2); }
+		if (w < 1 || h < 1) return;
+		pvNum = w; pvDen = PVW + 2; pvX = (width - w) / 2; pvY = 0;
+		canvas.clear (bgColor ());
+		for (int y = 0; y < h; y++)				// (each pixel: the four it covers, by their shares)
+		{
+			long fy = (long) y * (PVH + 2) * 256 / h; int y0 = (int) (fy >> 8), wy = (int) (fy & 255), y1 = y0 + 1 < PVH + 2 ? y0 + 1 : y0;
+			unsigned *o = canvas.px + (long) (pvY + y) * canvas.stride + pvX;
+			for (int x = 0; x < w; x++)
+			{
+				long fx = (long) x * (PVW + 2) * 256 / w; int x0 = (int) (fx >> 8), wx = (int) (fx & 255), x1 = x0 + 1 < PVW + 2 ? x0 + 1 : x0;
+				unsigned a = buf[y0 * (PVW + 2) + x0], b = buf[y0 * (PVW + 2) + x1], c = buf[y1 * (PVW + 2) + x0], d = buf[y1 * (PVW + 2) + x1], px = 0;
+				for (int sh = 0; sh < 24; sh += 8)
+				{
+					int top = (int) ((a >> sh) & 255) * (256 - wx) + (int) ((b >> sh) & 255) * wx, bot = (int) ((c >> sh) & 255) * (256 - wx) + (int) ((d >> sh) & 255) * wx;
+					px |= (unsigned) ((top * (256 - wy) + bot * wy) >> 16) << sh;
+				}
+				o[x] = px;
+			}
+		}
+	}
+	void drawFull (Canvas &canvas)
 	{
 		canvas.clear (uk_tone (C_FACE, 70));
 		if (!g_wallOk) make_wall ();
@@ -469,7 +500,7 @@ bool Preview::onMouse (int mx, int my, int bl, int, int, int)
 	if (bl && !pressed)
 	{
 		pressed = true;
-		int x = mx - 1, y = my - 1;
+		int x = (mx - pvX) * pvDen / pvNum - 1, y = (my - pvY) * pvDen / pvNum - 1;	// (the preview's own pixels)
 		for (int i = g_nhot - 1; i >= 0; i--)
 			if (x >= g_hot[i].x && y >= g_hot[i].y && x < g_hot[i].x + g_hot[i].w && y < g_hot[i].y + g_hot[i].h)
 			{ pick_item (g_hot[i].item); break; }

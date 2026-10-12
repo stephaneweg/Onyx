@@ -109,10 +109,13 @@ reached the shell's overlay over an app). **Q4, Koton, built (2026-10-12)**: `g_
 the view in `ui/pocket.h` (`PocketKoton`: `drawSong`, `drawMixer`, `drawCard`, its `SegmentedControl` the window's
 tabs through `uk_segmented_nav`), the desktop's widgets made and `hidden`, a pocket Menu (its *Compose* items call
 `cmdPocketCard`), `KotonRoot::onKey` hands every key to the view there. Not proved on the PC: playing (no sound in
-the simulator). **NEXT, NOT started**: item 9 (Courier's migration); item 10 (the Control
-Panel's applets DRIVEN by the keys -- the simulator must run an applet under the Control Panel for that --, Theme's
-preview, Slides' inspector rows of several buttons, 3DForge's Operation list, the lesson / result cards still light,
-Setup's Region and rows).
+the simulator). **The leftovers (2026-10-12)**: Theme's preview whole in a smaller pane
+(`Preview::onDraw` scales `drawFull`), Sound's `uk_fit_pane`, Slides' inspector rows of several things (`m_sub`,
+`subs_of` / `sub_of` in sidebar.h), 3DForge's operation a Dropdown in pocket (`g_propsCompact`, `Props::setOp`), the
+lesson / result cards dark (`dark ()` in Circuits' views.h and Turtle Quest's `Lesson`), Setup's keyboard picture
+left out when it has no room; **not done**: Setup's Region page as three pickers, the full translations
+(AUDIT-640.md has the table and the sizes). **NEXT, NOT started**: item 9 (Courier's migration); the pass by the keys
+alone over the apps judged from a picture, and the shared dialogs at 640 x 450.
 
 **Update, 2026-10-11, the evening: the apps at 640 x 480 without a mouse** (the user's rules: only the pocket
 display changes -- the desktop's pictures were compared before / after, app by app --, panels fold or are reached

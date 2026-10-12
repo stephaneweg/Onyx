@@ -254,6 +254,19 @@ sends `AP_KEY` for every key while an applet is open: read in its code, `main.cp
 AP_KEY…)"), and Sound's group boxes are 60 px wider than the pane (their frames' right edge is cut; every control
 is inside).
 
+**The leftovers (2026-10-12, a second session)** — each looked at in its picture, the scenarios in `pocket640.sh`:
+
+| Leftover | State |
+|---|---|
+| **Theme's preview cut by 28 px** | **done**: in a pane smaller than its layout the preview is drawn at its own size aside and brought to the widget's, whole (a click is mapped back); the desktop draws straight as ever (`pt-applet-theme-640.png`) |
+| **Sound's frames 60 px past the right edge** | **done**: the applet fits its three groups to the pane (`uk_fit_pane`, as the five others) — the frames end inside it (`pt-applet-soundconf-640.png`) |
+| **Slides' inspector: a row of several buttons gave its first only** | **done**: on such a row (bold / italic…, the alignments, the order) **Left / Right move a ring from button to button** and A does that one — past the row's ends Left / Right step the tabs as before; the **themes** are reached two by two (Left / Right, Up / Down) and the **effects** one by one; the hint line says *its buttons* there (`pt-slides-640-insp-b1.png`, `-t3.png`; 6 checks) |
+| **3DForge's Operation list under *Delete this step*** | **done**: in pocket a step's operation is ONE row that opens its list (a Dropdown: the keys reach it — the four drawn rows were a pointer's), the first of the step's values; *Delete this step* is shown only where it stands clear of them (`pt-3dforge-640-values.png`) |
+| **The lesson and result cards still light** (Circuits, Turtle Quest) | **done**: dark surfaces (`bg1`, a `bg2` title band, `text1` / `text2`); the stars keep their gold and *Level complete!* the success green; Circuits' gate symbol keeps the board's colours on a small tile of the board's ground (`pt-circuits-640-check.png`, `-lesson.png`, `pt-turtle-640-lesson.png`; 3 checks) |
+| **Setup's Region page on two columns** | **not rebuilt** — it works by the keys as it is and nothing is cut any more: the keyboard's picture, which did not fit under the field to try the keys, is left out in pocket (the mock-up has none). The mock-up's page (three rows — country, time zone, layout — each opening a full-width list that typing filters) is a page of its own with three pickers: **medium, half a day** |
+| **Setup's 42 px network rows** (46 in the mock-up) | **kept at 42**: tried at 46 — with four networks the *You are online* banner then ends under the foot on a 450 px window (rule: never cut). 46 px would need the page's two lines of help to go |
+| **Slides, QBStudio, Paint, 3DForge (and Koton) translated for their pocket words only** | **not started — not small**: counted in their sources, about 410 (Slides), 230 (QBStudio), 290 (Paint), 430 (3DForge) and 550 (Koton) distinct words and sentences to wrap in `TR` and to write in French, a good part of them in tables (`TRN`) and in formatted lines; about a day an app with `tools/lang/check.py` and a look at every screen in French (`SHOTS_LANG=fr`). Their English desktop pictures would not change (`TR` gives the English back) — to prove per app |
+
 **Not built**: Q2 Paint, Q7 3DForge, Q8 Turtle
 Quest's level editor, Q9 (the clipboard's sheet, Stickies, the Agenda's line), Q4 Koton, and the medium fixes (the
 applets' least width, the Package Manager, Mail's two account dialogs, Courier). Their verdicts in the table above

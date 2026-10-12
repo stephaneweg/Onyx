@@ -3240,7 +3240,7 @@ timeline); the hint line's pill says the mode, *VIEW AND VALUES*. By the keys al
 | | **1**, **2**, **3**, **0** | from the front, the top, the right; home |
 | | **Ctrl + E**, **Ctrl + S** | export (STL…), save; the Menu has the rest |
 | **Steps** (**L**) | **Up / Down** | a step: it becomes the selection (lit on the part) |
-| | **A** (Enter) | its values, on the drawer's height: Up / Down a field, a value typed, **A** rebuilds the part; **B** the steps again |
+| | **A** (Enter) | its values, on the drawer's height: the step's **Operation** first (a list that opens: A, Up / Down, A), then Up / Down a field, a value typed, **A** rebuilds the part; **B** the steps again |
 | **Display** (**R**) | **Up / Down**, **A** or Space | *Edges*, *Grid*, *See through* |
 
 A command of the Menu that needs a pointer (a shape, Sketch, Extrude, Fillet, Chamfer, Move, Manufacture) answers
@@ -5078,7 +5078,7 @@ one row of tools, and everything is done by the keys (no mouse):
 | Move, size | **D-pad**; **Shift + D-pad** | 8 px; 1 px (the size mode moves the bottom right corner) |
 | | **A** / **B** | keep / cancel (the object as it was); **S** or **M** goes to the other mode |
 | The slides (L) | **Up / Down**, **A** | another slide, shown at once; A closes the drawer on it; **Ctrl + M** a new slide, **Backspace** deletes; **L** or **B** closes |
-| The inspector (R) | **Up / Down** | a row (a ring); **A** does what a click on it does (a list, a colour, a box ticked); a **digit** starts a value, Enter keeps it; **Left / Right** its tabs (Slide, Shape, Text, Animate); **R** or **B** closes |
+| The inspector (R) | **Up / Down** | a row (a ring); **A** does what a click on it does (a list, a colour, a box ticked); a **digit** starts a value, Enter keeps it; **Left / Right** its tabs (Slide, Shape, Text, Animate) -- on a row of several buttons (bold, italic...; the alignments; the order) Left / Right first move the ring from button to button and A does that one; the themes are reached two by two, the effects one by one; **R** or **B** closes |
 | The show | **Right** or **A** / **Left** | next / previous; **B** ends |
 
 While an object is moved or sized its place (or size) is said over it, the outline of where it was stays, and the

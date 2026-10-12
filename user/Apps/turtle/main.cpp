@@ -907,11 +907,20 @@ public:
 	}
 	void onDraw () override
 	{
-		canvas.clear (bgColor ());
+		canvas.clear (Widget::bgColor ());		// (its rounded corners over what is behind)
 		if (!c) return;
+		if (dark ())					// (pocket: a dark surface, as the level's card)
+		{
+			uk_rbox (canvas, 0, 0, width, height, 14, UK_N_BG1, UK_N_BG1);
+			uk_rline (canvas, 0, 0, width, height, 14, UK_N_LINE);
+			uk_rbox (canvas, 0, 0, width, 44, 14, UK_N_BG2, UK_N_BG2, 255, UK_TL | UK_TR);
+		}
+		else
+		{
 		uk_rbox (canvas, 0, 0, width, height, 14, 0xFFFFFF, 0xF6F4FB);
 		uk_rline (canvas, 0, 0, width, height, 14, 0x8E6CC8);
 		uk_rbox (canvas, 0, 0, width, 44, 14, 0x8E6CC8, 0x7A58B8, 255, UK_TL | UK_TR);
+		}
 		char t[120]; snprintf (t, sizeof t, "%s  %s", L2 ("New idea:", "Nouvelle idée :"), c->title[g_lang]);
 		{
 			// ("New idea:" dropped when both do not fit; a title still too wide: the UI face, bold, then cut)
@@ -939,8 +948,8 @@ public:
 				UkFaceScope fm (small && g_smallMono ? g_smallMono : g_mono);
 				if (draw && y < height - 56)
 				{
-					canvas.fillRect (18, y - 1, width - 36, uk_fh () + 3, 0xF1ECFA);
-					uk_text (canvas, 24, y, line + 2, 0x4B2E83);
+					canvas.fillRect (18, y - 1, width - 36, uk_fh () + 3, dark () ? (unsigned) UK_N_BG2 : 0xF1ECFA);
+					uk_text (canvas, 24, y, line + 2, dark () ? (unsigned) UK_N_ACCENT_HI : 0x4B2E83);
 				}
 				y += uk_fh () + 3;
 				continue;
@@ -962,11 +971,12 @@ public:
 				y += (16 / per) * (sh + 3) + 7; continue;
 			}
 			char lines[12][200]; int k; wrap_lines (line, width - 40, lines, 12, &k);
-			for (int i = 0; i < k; i++) { if (draw && y < height - 56) uk_text (canvas, 20, y, lines[i], 0x303030); y += uk_fh () + 3; }
+			for (int i = 0; i < k; i++) { if (draw && y < height - 56) uk_text (canvas, 20, y, lines[i], dark () ? (unsigned) UK_N_TEXT1 : 0x303030); y += uk_fh () + 3; }
 		}
 		return y;
 	}
 	bool onMouse (int, int, int, int, int, int) override { return true; }	// (the board under it is not clicked)
+	unsigned bgColor () override { return dark () ? (unsigned) UK_N_BG1 : Widget::bgColor (); }
 };
 static void show_lesson (bool show)
 {

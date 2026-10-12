@@ -255,6 +255,7 @@ int main (void)
 	root.addChild (new Label (X + 12, H - 34, W - 24, 20, TR ("Kept in SD:/etc/sound.ini and mixer.ini. The menu bar's speaker changes the master too."), C_DIS, root.bg));
 	g_out = new Dropdown (outL, outT, 300, 26, g_outOpt, 1, 0, on_output);
 	root.addChild (g_out);				// (last: over the groups when its list is open)
+	{ Widget *g[3] = { go, gv, g_mixBox }; uk_fit_pane (&root, W, H, g, 3); }	// (pocket's 640 px pane: the layout fitted to it)
 	read_volume ();
 	read_output ();
 	read_mixer ();

@@ -181,8 +181,10 @@ if want circuits; then
 	footsame pt-circuits-640-armed pt-circuits-640-put "the gate put: still armed (another can be put), the same keys"
 	# F8: the step mode (the line says STEP), F7 back to live; F5 checks: the result's card, its keys
 	WR=$(CQ "")
-	run pocket_circuits pt-circuits-640-step "$WWW;key 0x117;$W;dump $OUT/pt-circuits-640-step.elsm;key 0x116;$W;dump $OUT/pt-circuits-640-live.elsm;key 0x114;$W;dump $OUT/pt-circuits-640-check.elsm" $C SIM_WRITES=$WR
-	for f in pt-circuits-640-step pt-circuits-640-live pt-circuits-640-check; do out $f; done
+	run pocket_circuits pt-circuits-640-step "$WWW;key 0x117;$W;dump $OUT/pt-circuits-640-step.elsm;key 0x116;$W;dump $OUT/pt-circuits-640-live.elsm;key 0x114;$W;dump $OUT/pt-circuits-640-check.elsm;key 0x110;$W;dump $OUT/pt-circuits-640-lesson.elsm" $C SIM_WRITES=$WR
+	for f in pt-circuits-640-step pt-circuits-640-live pt-circuits-640-check pt-circuits-640-lesson; do out $f; done
+	pixel pt-circuits-640-check 300 300 15171b "the result's card is a dark surface (it was white)"
+	pixel pt-circuits-640-lesson 400 330 15171b "F1: the lesson's card is a dark surface (it was white)"
 	footdiffer pt-circuits-640 pt-circuits-640-step "F8: the step mode's keys"
 	footsame pt-circuits-640 pt-circuits-640-live "F7: live again"
 	differ pt-circuits-640-live pt-circuits-640-check "F5 checks the board"
@@ -253,8 +255,9 @@ if want turtle; then
 	differ pt-turtle-640 pt-turtle-640-run "F5 runs the program"
 	# F8: a step (the line says STEP); F2: the hint in the card
 	WR=$(TQ "" maze)
-	run pocket_turtle pt-turtle-640-step "$WWW;key 0x117;$W;$W;dump $OUT/pt-turtle-640-step.elsm;key 0x118;$W;key 0x111;$W;dump $OUT/pt-turtle-640-hint.elsm" $T SIM_WRITES=$WR
-	out pt-turtle-640-step; out pt-turtle-640-hint
+	run pocket_turtle pt-turtle-640-step "$WWW;key 0x117;$W;$W;dump $OUT/pt-turtle-640-step.elsm;key 0x118;$W;key 0x111;$W;dump $OUT/pt-turtle-640-hint.elsm;key 0x110;$W;dump $OUT/pt-turtle-640-lesson.elsm" $T SIM_WRITES=$WR
+	out pt-turtle-640-step; out pt-turtle-640-hint; out pt-turtle-640-lesson
+	pixel pt-turtle-640-lesson 450 260 15171b "F1: the lesson's card is a dark surface (it was white)"
 	footdiffer pt-turtle-640 pt-turtle-640-step "F8: the step mode's name in the hint line"
 	differ pt-turtle-640 pt-turtle-640-hint "F9, F2: the hint in the card"
 	# THE LEVEL EDITOR (Ctrl+E), in steps: the texts (a form; Down: the next field); F2: the map -- Right, Down move the
@@ -323,6 +326,20 @@ if want slides; then
 	differ pt-slides-640-slide3 pt-slides-640-inspector "R opens the inspector"
 	differ pt-slides-640-inspector pt-slides-640-inspector-row "the inspector by the keys: a tab, a row"
 	same pt-slides-640-slide3 pt-slides-640-inspector-closed "R again closes the inspector"
+	# the inspector's rows of SEVERAL buttons (bold, italic...; the alignments): Down (an object), R, Right x2 (the Text tab),
+	# Down x4: the row of styles, the ring on its first button; Right: on the second -- the hint line says "its buttons";
+	# A: that one's action (Italic on); the themes two by two: Down x6 from the Slide tab's top reaches the third row's first
+	WR=$(langdir "")
+	run pocket_slides pt-slides-640-buttons "$W8;$(K $DOWN)${RR}$(K $RIGHT)$(K $RIGHT)$(K $DOWN)$(K $DOWN)$(K $DOWN)dump $OUT/pt-slides-640-insp-size.elsm;$(K $DOWN)dump $OUT/pt-slides-640-insp-b0.elsm;$(K $RIGHT)dump $OUT/pt-slides-640-insp-b1.elsm;$(K 13)dump $OUT/pt-slides-640-insp-b2.elsm" $SL SIM_WRITES=$WR
+	WR=$(langdir "")
+	run pocket_slides pt-slides-640-themes "$W8;${RR}$(K $DOWN)$(K $DOWN)$(K $DOWN)$(K $DOWN)dump $OUT/pt-slides-640-insp-t0.elsm;$(K $RIGHT)dump $OUT/pt-slides-640-insp-t1.elsm;$(K $DOWN)dump $OUT/pt-slides-640-insp-t3.elsm;$(K 13)$W;dump $OUT/pt-slides-640-insp-t3-set.elsm" $SL SIM_WRITES=$WR
+	for f in size b0 b1 b2 t0 t1 t3 t3-set; do out pt-slides-640-insp-$f; done
+	differ pt-slides-640-insp-b0 pt-slides-640-insp-b1 "a row of buttons: Right puts the ring on the next one"
+	footdiffer pt-slides-640-insp-size pt-slides-640-insp-b0 "on such a row the hint line says Left / Right are its buttons"
+	differ pt-slides-640-insp-b1 pt-slides-640-insp-b2 "A: the button the ring is on (Italic), not the row's first"
+	differ pt-slides-640-insp-t0 pt-slides-640-insp-t1 "the themes: Right, the one beside"
+	differ pt-slides-640-insp-t1 pt-slides-640-insp-t3 "the themes: Down, the one below"
+	differ pt-slides-640-insp-t3 pt-slides-640-insp-t3-set "A: that theme is the deck's (the slide drawn again)"
 	# the objects: the D-pad chooses one, then the next; M: the move mode (Right x3: 24 px; Shift + Down: 1 px), Enter keeps;
 	# S: the size mode, Esc cancels (the object as it was kept); Enter edits its text, Esc ends
 	WR=$(langdir "")

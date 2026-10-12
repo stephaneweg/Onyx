@@ -403,6 +403,10 @@ public:
 };
 
 // ---- the right: the selection ---------------------------------------------------------------------------------------------
+// Pocket on a small screen (main.cpp's g_pk): the panel is a drawer's content, shorter than the desktop's column and with
+// no pointer -- a step's Operation is then ONE row that opens its list (a Dropdown: the keys reach it), the first of the
+// step's values, instead of the four rows drawn at their foot. False on the desktop: the panel as ever.
+static bool g_propsCompact = false;
 class Props : public Widget
 {
 public:
@@ -800,8 +804,24 @@ public:
 	{ headIcon = ic; snprintf (title, sizeof title, "%s", t); snprintf (sub[0], 24, "%s", s0 ? s0 : ""); snprintf (sub[1], 24, "%s", s1 ? s1 : ""); subAt = at; }
 
 	// The fields of a step (the one being made, or one of the history).
+	// The operation chosen (a click on its row; in pocket the Dropdown's choice): the step made again.
+	void setOp (int i)
+	{
+		if (i < 0 || i > 3 || (!A.hasPend && !feat)) return;
+		Feature &f = A.hasPend ? A.pend : *feat;
+		if (i != OP_NEW && !A.doc.body (f.target))
+		{
+			if (A.doc.bodies.empty ()) return;
+			f.target = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id;
+		}
+		if (!A.hasPend) undo_push ();
+		f.op = i; A.opAuto = false; applied (); ui (R_PANELS);
+	}
+	static void onOp (Widget &w) { ((Props *) w.parent)->setOp (((Dropdown &) w).sel); }
 	int featureFields (Feature &f, int y, bool making)
 	{
+		int opRow = -1;
+		if (g_propsCompact && makes_solid (f.kind)) { opRow = y; y += 34; }	// (pocket: the operation's row, first)
 		switch (f.kind)
 		{
 		case F_BOX:
@@ -874,7 +894,16 @@ public:
 			if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) { field (y, "Turned", &f.turn, "\xC2\xB0", 3); y += 28; }
 			y += 6;
 		}
-		if (makes_solid (f.kind))
+		if (makes_solid (f.kind) && opRow >= 0)
+		{
+			label (12, opRow + 5, "Operation");
+			Dropdown *d = new Dropdown (width - 12 - 122, opRow, 122, 26, OP_NAME, 4, f.op < 0 || f.op > 3 ? 0 : f.op, onOp); addChild (d);	// (last: its list opens over the fields)
+			if (f.op != OP_NEW && A.doc.body (f.target))
+			{
+				label (12, y + 2, f.op == OP_UNION ? "Joined to" : f.op == OP_SUB ? "Cut from" : "Kept inside", dim_col ());
+			}
+		}
+		else if (makes_solid (f.kind))
 		{
 			opY = y; y += 20 + 4 * 28 + 6 + 12;
 			if (f.op != OP_NEW && A.doc.body (f.target))
@@ -985,7 +1014,8 @@ public:
 			y = featureFields (f, y, false);
 			if (f.failed && A.selFeat < A.doc.upto) { label (12, y, "This step could not be made:", 0xB03A30, 0, true); label (12, y + 16, f.err, 0xB03A30, 0, true); y += 40; }
 			if (f.kind == F_SKETCH) { ABtn *e = new ABtn (12, y, width - 24, 28, "Edit sketch", CMD_EDIT_SKETCH); e->bg = panel_col (); addChild (e); }
-			ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this step", CMD_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
+			if (!g_propsCompact || y + 30 <= height - 40)		// (pocket: only where it stands clear of the values)
+			{ ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this step", CMD_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }
 		}
 		else if (A.selBody >= 0 && A.doc.body (A.selBody))
 		{
@@ -1155,14 +1185,7 @@ public:
 		}
 		if (opY >= 0 && my >= opY + 23 && my < opY + 23 + 4 * 28 && mx >= 12 && mx < width - 12)
 		{
-			int i = (my - opY - 23) / 28; Feature &f = A.hasPend ? A.pend : *feat;
-			if (i != OP_NEW && !A.doc.body (f.target))
-			{
-				if (A.doc.bodies.empty ()) return true;
-				f.target = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id;
-			}
-			if (!A.hasPend) undo_push ();
-			f.op = i; A.opAuto = false; applied (); ui (R_PANELS);
+			setOp ((my - opY - 23) / 28);
 			return true;
 		}
 		if (swY > 0 && my >= swY && my < swY + 20)

@@ -305,14 +305,16 @@ public:
 	int table (int tx, int ty, int ni, int no, const char *const *names, const unsigned *want)
 	{
 		int rows = 1 << ni, nc = ni + no, cw = nc > 4 ? 28 : 34, RH = rows > 8 ? 15 : rows > 4 ? 18 : 21;
-		uk_rbox (canvas, tx - 8, ty - 4, nc * cw + 16, (rows + 1) * RH + 12, 6, 0x00F1ECFA, 0x00F1ECFA);
-		for (int k = 0; k < nc; k++) uk_text_c (canvas, tx + k * cw, ty, cw, RH, names[k], 0x004B2E83, 2);
-		canvas.fillRect (tx, ty + RH, nc * cw, 1, 0x00C9B8E6);
+		bool dk = dark ();				// (pocket: a surface of the theme, as the level's card)
+		unsigned box = dk ? (unsigned) UK_N_BG2 : 0x00F1ECFA;
+		uk_rbox (canvas, tx - 8, ty - 4, nc * cw + 16, (rows + 1) * RH + 12, 6, box, box);
+		for (int k = 0; k < nc; k++) uk_text_c (canvas, tx + k * cw, ty, cw, RH, names[k], dk ? (unsigned) UK_N_TEXT2 : 0x004B2E83, 2);
+		canvas.fillRect (tx, ty + RH, nc * cw, 1, dk ? (unsigned) UK_N_LINE : 0x00C9B8E6);
 		for (int r = 0; r < rows; r++)
 			for (int k = 0; k < nc; k++)
 			{
 				int b = k < ni ? (r >> (ni - 1 - k)) & 1 : (want[k - ni] >> r) & 1;
-				uk_text_c (canvas, tx + k * cw, ty + RH + 2 + r * RH, cw, RH, b ? "1" : "0", k >= ni && b ? WIRE_1 : 0x00303030, k >= ni ? 2 : 0);
+				uk_text_c (canvas, tx + k * cw, ty + RH + 2 + r * RH, cw, RH, b ? "1" : "0", k >= ni && b ? WIRE_1 : dk ? (unsigned) UK_N_TEXT1 : 0x00303030, k >= ni ? 2 : 0);
 			}
 		return nc * cw;
 	}
@@ -320,9 +322,19 @@ public:
 	{
 		canvas.clear (g_pk ? C_BG : BOARD_BG);		// (its rounded corners over the board; pocket: over the window)
 		if (!ls) return;
+		bool dk = dark ();				// (pocket: a dark surface; only the gate's drawing keeps the board's colours)
+		if (dk)
+		{
+			uk_rbox (canvas, 0, 0, width, height, 14, UK_N_BG1, UK_N_BG1);
+			uk_rline (canvas, 0, 0, width, height, 14, UK_N_LINE);
+			uk_rbox (canvas, 0, 0, width, 44, 14, UK_N_BG2, UK_N_BG2, 255, UK_TL | UK_TR);
+		}
+		else
+		{
 		uk_rbox (canvas, 0, 0, width, height, 14, 0xFFFFFF, 0xF6F4FB);
 		uk_rline (canvas, 0, 0, width, height, 14, 0x8E6CC8);
 		uk_rbox (canvas, 0, 0, width, 44, 14, 0x8E6CC8, 0x7A58B8, 255, UK_TL | UK_TR);
+		}
 		char t[160];
 		if (ls->gate >= 0) snprintf (t, sizeof t, "%s  %s", TR ("New gate:"), gate_word (ls->gate));
 		else snprintf (t, sizeof t, "%s  %s", TR ("New idea:"), ls->title[g_lang]);
@@ -332,14 +344,16 @@ public:
 		{
 			int L = 46, T = 70, sc = 18, g = ls->gate;
 			int l = (L + sc) * 16, r = (L + sc * 41 / 10) * 16, cy = (T + 2 * sc) * 16, h2 = sc * 16 * 145 / 100;
+			unsigned pin = dk ? 0x00303030 : C_TEXT;		// (dark: the symbol is on a tile of the board's colour)
+			if (dk) uk_rbox (canvas, 12, 54, 196, 128, 8, BOARD_BG, BOARD_BG);
 			VPath s1;
 			if (g == P_NOT) s1.line (V (L - 8), cy, V (L + sc + 4), cy, V (2) + 8);
 			else { s1.line (V (L - 8), V (T + sc), V (L + sc + 4), V (T + sc), V (2) + 8); s1.line (V (L - 8), V (T + 3 * sc), V (L + sc + 4), V (T + 3 * sc), V (2) + 8); }
 			s1.line (r - V (2), cy, V (L + sc * 5 + 10), cy, V (2) + 8); s1.fill (canvas, WIRE_0);
 			draw_gate_shape (canvas, g, l, cy - h2, r, cy + h2, sc * 16 * 3 / 10, GATE_FACE, GATE_INK, V (2));
-			if (g == P_NOT) uk_text_l (canvas, L - 24, cy / 16 - 10, 20, "A", C_TEXT, 2);
-			else { uk_text_l (canvas, L - 24, T + sc - 10, 20, "A", C_TEXT, 2); uk_text_l (canvas, L - 24, T + 3 * sc - 10, 20, "B", C_TEXT, 2); }
-			uk_text_l (canvas, L + sc * 5 + 16, cy / 16 - 10, 30, "Out", C_TEXT, 2);
+			if (g == P_NOT) uk_text_l (canvas, L - 24, cy / 16 - 10, 20, "A", pin, 2);
+			else { uk_text_l (canvas, L - 24, T + sc - 10, 20, "A", pin, 2); uk_text_l (canvas, L - 24, T + 3 * sc - 10, 20, "B", pin, 2); }
+			uk_text_l (canvas, L + sc * 5 + 16, cy / 16 - 10, 30, "Out", pin, 2);
 			{ UkFaceScope fs (g_small); uk_text_c (canvas, L + sc + 2, cy / 16 - 8, sc * 2, 16, gate_word (g), GATE_INK, 2); }
 			int ni = g == P_NOT ? 1 : 2; unsigned want = 0;
 			for (int rr = 0; rr < (1 << ni); rr++)
@@ -360,10 +374,10 @@ public:
 			int w = table (30, 62, g_L->ninputs, g_L->noutputs, names, g_L->want);
 			textX = 30 + w + 30; textY = 60; textW = width - textX - 20;
 		}
-		wrap_draw (canvas, textX, textY, textW, ls->text[g_lang], 0x00303030, ls->gate >= 0 ? 6 : 12, uk_fh () + 3);
+		wrap_draw (canvas, textX, textY, textW, ls->text[g_lang], dk ? (unsigned) UK_N_TEXT1 : 0x00303030, ls->gate >= 0 ? 6 : 12, uk_fh () + 3);
 	}
 	bool onMouse (int, int, int, int, int, int) override { return true; }	// (the board under it is not clicked)
-	unsigned bgColor () override { return 0x00F6F4FB; }			// (what its buttons' corners blend into)
+	unsigned bgColor () override { return dark () ? (unsigned) UK_N_BG1 : 0x00F6F4FB; }	// (what its buttons' corners blend into)
 };
 
 // ---- the result card of a won Check ----------------------------------------------------------------------------------------
@@ -382,24 +396,34 @@ public:
 	{
 		canvas.clear (g_pk ? C_BG : BOARD_BG);
 		if (!g_L) return;
+		bool dk = dark ();				// (pocket: a dark surface; the stars and the title keep the colour that says "won")
+		if (dk)
+		{
+			uk_rbox (canvas, 0, 0, width, height, 14, UK_N_BG1, UK_N_BG1);
+			uk_rline (canvas, 0, 0, width, height, 14, UK_N_LINE);
+			uk_rbox (canvas, 0, 0, width, 44, 14, UK_N_BG2, UK_N_BG2, 255, UK_TL | UK_TR);
+		}
+		else
+		{
 		uk_rbox (canvas, 0, 0, width, height, 14, 0xFFFFFF, 0xF3FAF3);
 		uk_rline (canvas, 0, 0, width, height, 14, 0x4E9A57);
 		uk_rbox (canvas, 0, 0, width, 44, 14, 0x55A85E, 0x3E8E48, 255, UK_TL | UK_TR);
-		{ UkFaceScope fs (g_big); uk_text_l (canvas, 18, 0, 44, TR ("Level complete!"), 0xFFFFFF, 2); }
+		}
+		{ UkFaceScope fs (g_big); uk_text_l (canvas, 18, 0, 44, TR ("Level complete!"), dk ? (unsigned) UK_N_SUCCESS : 0xFFFFFF, 2); }
 		int cx = width / 2;
-		for (int k = 0; k < 3; k++) star (canvas, cx - 52 + k * 52, 86, k == 1 ? 26 : 22, k < stars ? STAR_GOLD : 0x00D5DDD3, true);
+		for (int k = 0; k < 3; k++) star (canvas, cx - 52 + k * 52, 86, k == 1 ? 26 : 22, k < stars ? STAR_GOLD : dk ? (unsigned) UK_N_BG3 : 0x00D5DDD3, true);
 		int y = 120;
-		if (record) { uk_text_c (canvas, 0, 114, width, 16, TR ("New record!"), 0x00B07A00, 2); y = 132; }
+		if (record) { uk_text_c (canvas, 0, 114, width, 16, TR ("New record!"), dk ? (unsigned) UK_N_WARNING : 0x00B07A00, 2); y = 132; }
 		char t[160]; snprintf (t, sizeof t, TR ("%d %s \xE2\x80\x94 every row right"), gates, gates_word (gates));
-		{ UkFaceScope fs (g_big); uk_text_c (canvas, 0, y, width, 26, t, 0x00264F2C, 2); }
+		{ UkFaceScope fs (g_big); uk_text_c (canvas, 0, y, width, 26, t, dk ? (unsigned) UK_N_TEXT1 : 0x00264F2C, 2); }
 		char s[300];
 		if (last) snprintf (s, sizeof s, "%s", TR ("You finished every level!"));
 		else if (stars < 3) snprintf (s, sizeof s, TR ("Three stars need %d %s or fewer. The best known circuit is smaller: can you find it?"), g_L->par3, gates_word (g_L->par3));
 		else snprintf (s, sizeof s, TR ("The best possible: %d %s."), gates, gates_word (gates));
-		wrap_draw (canvas, 25, y + 32, width - 50, s, 0x00405040, 3, 19, 0, true);
+		wrap_draw (canvas, 25, y + 32, width - 50, s, dk ? (unsigned) UK_N_TEXT2 : 0x00405040, 3, 19, 0, true);
 	}
 	bool onMouse (int, int, int, int, int, int) override { return true; }
-	unsigned bgColor () override { return 0x00F3FAF3; }
+	unsigned bgColor () override { return dark () ? (unsigned) UK_N_BG1 : 0x00F3FAF3; }
 };
 
 #endif
