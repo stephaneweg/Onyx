@@ -1,0 +1,235 @@
+#include "../utils.h"
+#include "../system.h"
+
+#include "object.h"
+#include "scene.h"
+#include "camera.h"
+#include "game.h"
+
+
+#define SCENE_START_BOOMS_MAX 4
+#define SCENE_OIL_PUMPS_MAX 2
+#define SCENE_RED_LIGHTS_MAX 4
+#define SCENE_STANDS_MAX 20
+
+static Object *scene_objects;
+static Object *sky_object;
+static vec3_t sky_offset;
+
+static Object *start_booms[SCENE_START_BOOMS_MAX];
+static int start_booms_len;
+
+static Object *oil_pumps[SCENE_OIL_PUMPS_MAX];
+static int oil_pumps_len;
+
+static Object *red_lights[SCENE_RED_LIGHTS_MAX];
+static int red_lights_len;
+
+typedef struct {
+	sfx_t *sfx;
+	vec3_t pos;
+} scene_stand_t;
+static scene_stand_t stands[SCENE_STANDS_MAX];
+static int stands_len;
+
+static bool aurora_borealis_enabled;
+
+void scene_pulsate_red_light(Object *obj);
+void scene_move_oil_pump(Object *obj);
+void scene_update_aurora_borealis(void);
+
+void scene_load(const char *base_path, float sky_y_offset) {
+	bool multiplayer = false;
+	if (def.circuits[g.circuit].release == GAME_WIPEOUT_64) {
+		// Wipeout 64's skies appear to be rendered in a way reminiscent of
+		// Mario 64, rather than using an actual model. There is a 'sky.prm'
+		// model present in the Wipeout files, but it is a red herring - it's
+		// apparently corrupt and inaccurate to the final game's rendering.
+		// As such, we use a placeholder. TODO: make a custom skybox model,
+		// or reimplement Wipeout 64's sky rendering.
+		texture_list_t sky_textures = image_get_compressed_textures(get_path("wipeout/track01/", "sky.cmp"));
+		sky_object = objects_load(get_path("wipeout/track01/", "sky.prm"), sky_textures);
+
+		// Wipeout 64 splits its scenery into "common" scenery and
+		// "multiplayer" / "singleplayer" specific scenery.
+		// We simply glue the latter to the end of the former.
+		texture_list_t scene_textures = image_get_compressed_textures(get_path(base_path, "sceneCom.cmp"));
+		scene_objects = objects_load(get_path(base_path, "sceneCom.prm"), scene_textures);
+
+		Object *obj = scene_objects;
+		while (obj->next) obj = obj->next;
+
+		texture_list_t scene_extra_textures = image_get_compressed_textures(get_path(base_path, multiplayer ? "sceneMul.cmp" : "sceneSin.cmp"));
+		obj->next = objects_load(get_path(base_path, multiplayer ? "sceneMul.prm" : "sceneSin.prm"), scene_extra_textures);
+	} else {
+		texture_list_t sky_textures = image_get_compressed_textures(get_path(base_path, "sky.cmp"));
+		sky_object = objects_load(get_path(base_path, "sky.prm"), sky_textures);
+
+		texture_list_t scene_textures = image_get_compressed_textures(get_path(base_path, "scene.cmp"));
+		scene_objects = objects_load(get_path(base_path, "scene.prm"), scene_textures);
+	}
+	
+	sky_offset = vec3(0, sky_y_offset, 0);
+
+	// Collect all objects that need to be updated each frame
+	start_booms_len = 0;
+	oil_pumps_len = 0;
+	red_lights_len = 0;
+	stands_len = 0;
+
+	Object *obj = scene_objects;
+	while (obj) {
+		mat4_set_translation(&obj->mat, obj->origin);
+
+		if (str_starts_with(obj->name, "start")) {
+			error_if(start_booms_len >= SCENE_START_BOOMS_MAX, "SCENE_START_BOOMS_MAX reached");
+			start_booms[start_booms_len++] = obj;
+		}
+		else if (str_starts_with(obj->name, "redl")) {
+			error_if(red_lights_len >= SCENE_RED_LIGHTS_MAX, "SCENE_RED_LIGHTS_MAX reached");
+			red_lights[red_lights_len++] = obj;
+		}
+		else if (str_starts_with(obj->name, "donkey")) {
+			error_if(oil_pumps_len >= SCENE_OIL_PUMPS_MAX, "SCENE_OIL_PUMPS_MAX reached");
+			oil_pumps[oil_pumps_len++] = obj;
+		}
+		else if (
+			str_starts_with(obj->name, "lostad") || 
+			str_starts_with(obj->name, "stad_") ||
+			str_starts_with(obj->name, "newstad_")
+		) {
+			error_if(stands_len >= SCENE_STANDS_MAX, "SCENE_STANDS_MAX reached");
+			stands[stands_len++] = (scene_stand_t){.sfx = NULL, .pos = obj->origin};
+		}
+		obj = obj->next;
+	}
+
+	aurora_borealis_enabled = false;
+}
+
+void scene_init(void) {
+	scene_set_start_booms(0);
+	for (int i = 0; i < stands_len; i++) {
+		stands[i].sfx = sfx_reserve_loop(SFX_CROWD);
+	}
+}
+
+void scene_update(void) {
+	for (int i = 0; i < red_lights_len; i++) {
+		scene_pulsate_red_light(red_lights[i]);
+	}
+	for (int i = 0; i < oil_pumps_len; i++) {
+		scene_move_oil_pump(oil_pumps[i]);
+	}
+	for (int i = 0; i < stands_len; i++) {
+		sfx_set_position(stands[i].sfx, stands[i].pos, vec3(0, 0, 0), 0.4);
+	}
+
+	if (aurora_borealis_enabled) {
+		scene_update_aurora_borealis();
+	}
+}
+
+void scene_draw(camera_t *camera) {
+	// Sky
+	render_set_depth_write(false);
+	mat4_set_translation(&sky_object->mat, vec3_add(camera->position, sky_offset));
+	object_draw(sky_object, &sky_object->mat);
+	render_set_depth_write(true);
+
+	// Objects
+
+	// Calculate the camera forward vector, so we can cull everything that's
+	// behind. Ideally we'd want to do a full frustum culling here. FIXME.
+	vec3_t cam_dir = camera_forward(camera);
+	Object *object = scene_objects;
+	
+	while (object) {
+		vec3_t diff = vec3_sub(camera->position, object->origin);
+		float cam_dot = vec3_dot(diff, cam_dir);
+		float dist_sq = vec3_dot(diff, diff);
+		if (
+			cam_dot < object->radius && 
+			dist_sq < (RENDER_FADEOUT_FAR * RENDER_FADEOUT_FAR)
+		) {
+			object_draw(object, &object->mat);
+		}
+		object = object->next;
+	}
+}
+
+rgba_t start_boom_color_off = rgba(0x20, 0x20, 0x20, 0xff);
+rgba_t start_boom_lights[] = {
+	rgba(0xff, 0x00, 0x00, 0xff), // Red
+	rgba(0xff, 0x80, 0x00, 0xff), // Yellow
+	rgba(0x00, 0xff, 0x00, 0xff), // Green
+};
+
+void scene_set_start_booms(int light_index) {
+	for (int i = 0; i < start_booms_len; i++) {
+		for (int j = 0; j < len(start_boom_lights); j++) {
+			primitive_t *prm = &start_booms[i]->primitives[j];
+
+			error_if(prm->type != PRM_TYPE_QUAD, "Can't happen: Expected primitive type %x, got %x", PRM_TYPE_QUAD, prm->type);
+
+			rgba_t color;
+			if (j == light_index) {
+				color = start_boom_lights[light_index];
+			} else {
+				color = start_boom_color_off;
+			}
+
+			for (int v = 0; v < 4; v++) {
+				prm->u.quad.v[v].color = color;
+			}
+		}
+	}
+}
+
+
+void scene_pulsate_red_light(Object *obj) {
+	uint8_t r = clamp(sinf(system_cycle_time() * M_PI * 2) * 128 + 128, 0, 255);
+	primitive_t *prm = obj->primitives;
+
+	error_if(prm->type != PRM_TYPE_QUAD, "Can't happen: Expected primitive type %x, got %x", PRM_TYPE_QUAD, prm->type);
+
+	for (int v = 0; v < 4; v++) {
+		prm->u.quad.v[v].color = rgba(r,0,0,0xFF);
+	}
+}
+
+void scene_move_oil_pump(Object *pump) {
+	mat4_set_yaw_pitch_roll(&pump->mat, vec3(sinf(system_cycle_time() * 0.125 * M_PI * 2), 0, 0));
+}
+
+static void scene_aurora_set_vertex_color(primitive_vertex_t *v, float phase) {
+	float y = sky_object->vertices[v->coord].y;
+	if (y > -6800 || y < -11000) return;
+
+	v->color = rgba(
+		 (sinf(v->coord * phase) * 64.0) + 190,
+		 (sinf(v->coord * (phase + 0.054)) * 64.0) + 190,
+		 (sinf(v->coord * (phase + 0.039)) * 64.0) + 190,
+		 0xFF
+	);
+}
+
+void scene_init_aurora_borealis() {
+	aurora_borealis_enabled = true;
+}
+
+void scene_update_aurora_borealis(void) {
+	float phase = system_time() / 30.0;
+
+	for (int i = 0; i < sky_object->primitives_len; i++) {
+		primitive_t *prm = &sky_object->primitives[i];
+
+		// The skybox contains triangles but none of them are of interest to us.
+		if (prm->type == PRM_TYPE_TRI) continue;
+		error_if(prm->type != PRM_TYPE_QUAD, "Can't happen: Expected primitive type %x, got %x", PRM_TYPE_QUAD, prm->type);
+
+		for (int j = 0; j < len(prm->u.quad.v); j++) {
+			scene_aurora_set_vertex_color(&prm->u.quad.v[j], phase);
+		}
+	}
+}

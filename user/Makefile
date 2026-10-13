@@ -47,7 +47,7 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom wipeout
 # (AppKit's stubs are linked into every program: made first)
 # (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
 # rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
@@ -470,6 +470,12 @@ lib/kits.bi.stamp: $(wildcard Kits/*/*.abi) $(wildcard Kits/*/*.h) ../tools/kitb
 .PHONY: doom
 doom: lib/uikit.imp.a lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C Ports/doom
+
+# wipEout (Ports/wipeout/: wipeout-rewrite from third_party, its software renderer, + the Onyx layer, against
+# newlib) -> wipeout.elf. The game's files are the player's: SD:/wipeout/README.txt.
+.PHONY: wipeout
+wipeout: lib/uikit.imp.a lib/audiokit.imp.a lib/systemkit.imp.a lib/appkit_stubs.o
+	@$(MAKE) --no-print-directory -C Ports/wipeout
 
 rtfview.elf: Apps/rtfview/rtf.h
 
@@ -962,3 +968,4 @@ clean:
 	@$(MAKE) --no-print-directory -C Servers/elegant clean
 	@$(MAKE) --no-print-directory -C Servers/pocketui clean
 	@$(MAKE) --no-print-directory -C Ports/doom clean
+	@$(MAKE) --no-print-directory -C Ports/wipeout clean

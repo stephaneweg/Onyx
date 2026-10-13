@@ -115,6 +115,10 @@ sdcard/doom/*.WAD
 sdcard/doom/savegame/
 sdcard/doom/*.cfg
 user/Ports/doom/build/
+# wipEout: the game's files are the player's (Sony's data), and its save; only the README ships
+sdcard/wipeout/*
+!sdcard/wipeout/README.txt
+user/Ports/wipeout/build/
 sdcard/etc/clock
 
 # Koton for Windows: what the app writes into its folder when tried from the repository
@@ -168,6 +172,8 @@ sdcard5/doom/*.wad
 sdcard5/doom/*.WAD
 sdcard5/doom/savegame/
 sdcard5/doom/*.cfg
+sdcard5/wipeout/*
+!sdcard5/wipeout/README.txt
 sdcard5/etc/clock
 sdcard5/res/wallpaper.*
 sdcard5_lite/res/wallpaper.*
