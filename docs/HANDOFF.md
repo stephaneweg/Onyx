@@ -4,6 +4,21 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## wipEout, a native port (2026-10-13): built, published (wipeout 1.0.0, Pi 4 and Pi 5), NOT run on a Pi yet
+
+The user asked for wipeout-rewrite (github.com/phoboslab/wipeout-rewrite) as a native Onyx game. **Done**:
+`third_party/wipeout-rewrite` (the game, its **software** renderer; `ONYX.md`: three `#ifdef ONYX` changes) +
+`user/Ports/wipeout/` (`wipeout_onyx.c`: the game's `platform.h` on UIKit's window / full screen, `kapi_key_held`,
+`gamepad.h`, AudioKit's `ak_out_*`; `wipeout_uikit.cpp`: the menu, the language) -> `user/wipeout.elf`,
+`SD:/apps/wipeout.app` (English / French). docs/04's catalogue, docs/03 (after Doom), docs/LICENSING.md.
+- **The game's data is the player's** (Sony's; never shipped): `SD:/wipeout/README.txt`. Without it the app says so.
+- **Licence**: wipeout-rewrite has **none** ("no commercial release"): docs/LICENSING.md says it; the user was told.
+- **Checked** under `onyxrun` (no data here): the window, `game_init`, the missing-file error in a notification.
+  **Not checked**: a race (no data in the cloud), the speed on the Pi (240 lines by default; 480P / NATIVE slower).
+- **Next, the user asked "does it use the GPU?" -- no**: a `render_v3d.c` behind `render.h` (textured triangles,
+  depth, two blend modes) on `kapi_gpu_texture` / `kapi_gpu_render2/3`, as n64emu / gcemu / 3dforge use them, the
+  software renderer kept as the fallback. Also possible: the game on an app core (as Doom).
+
 ## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
 
 The user's answers to `docs/3DS-EMULATOR-STUDY.md`: **option C** (our core under MIT + Dynarmic), **Old 3DS only**

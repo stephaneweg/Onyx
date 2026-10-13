@@ -49,8 +49,10 @@ def cat_unescape (s):				# a catalogue's field: \t \n \\
 
 def source_keys (app):
 	keys = {}
-	for path in sorted (glob.glob (os.path.join (ROOT, 'user', 'Apps', app, '**', '*'), recursive = True)):
-		if not path.endswith (('.cpp', '.h', '.hpp', '.inc')): continue
+	paths = glob.glob (os.path.join (ROOT, 'user', 'Apps', app, '**', '*'), recursive = True)
+	paths += glob.glob (os.path.join (ROOT, 'user', 'Ports', app, '**', '*'), recursive = True)	# (the ports: Doom, wipEout)
+	for path in sorted (paths):
+		if not path.endswith (('.cpp', '.c', '.h', '.hpp', '.inc')): continue
 		text = open (path, encoding = 'utf-8', errors = 'replace').read ()
 		rel = os.path.relpath (path, ROOT).replace ('\\', '/')
 		for m in RE_TRC.finditer (text):

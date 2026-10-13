@@ -203,7 +203,7 @@ The sources of user space are sorted by their use, in `user/`:
 | `Runtime/` | what every program is linked with: `crt0.S`, `user.ld`, the libraries' `lib.ld` / `lib.h` / `librt.cpp`, `umm.h`, `onyxpp.hpp`, and `libc/` (newlib's glue, the POSIX library) |
 | `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
 | `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
-| `Ports/` | third-party programs ported: `doom`, `stk` |
+| `Ports/` | third-party programs ported: `doom`, `wipeout`, `stk` |
 | `Include/` | the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `fileassoc.h`, `docguard.h`…) |
 | `Apps/games/` | what the games share (`game.h`, `cards.h`) |
 | `lib/` | the build's outputs for the libraries (not in git) |
@@ -2749,6 +2749,16 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
 > FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
 > `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).
+> **wipEout** (`user/Ports/wipeout/`): wipeout-rewrite (`third_party/wipeout-rewrite`, no licence of its own:
+> docs/LICENSING.md; `ONYX.md` lists the `#ifdef ONYX` changes) with its **software renderer** (`render_software.c`), built
+> against newlib like Doom by `user/Ports/wipeout/Makefile` into `user/wipeout.elf`. `wipeout_onyx.c` is the game's
+> `platform.h`: the window (640 × 480) or full screen, the picture drawn at the size `render_set_resolution` asks
+> (240 / 480 lines / the output's, the output's shape) and stretched into it, the keys (`kapi_key_held` + modifiers +
+> key events as taps; the typed text to `input_textinput`), `gamepad.h` (buttons and the sticks as analog), the game's
+> float mixer turned into `ak_out_write` after each frame (1.5 frames ahead, 2048 frames at least), the files under
+> `SD:/` (the game's names begin with `wipeout/`), `save.dat` in `SD:/wipeout`, newlib's `_stat` on `kapi_path_stat`,
+> the game's `die` said in a notification. One thread, at most 60 pictures a second. A GPU renderer (`render.h` on
+> `kapi_gpu_render*`) is not written.
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,

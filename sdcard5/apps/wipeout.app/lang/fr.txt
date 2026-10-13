@@ -1,0 +1,5 @@
+# wipEout's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+Game	Jeu
+Full Screen	Plein écran
+Quit	Quitter
+No game data in SD:/wipeout (see SD:/wipeout/README.txt)	Pas de données du jeu dans SD:/wipeout (voir SD:/wipeout/README.txt)
