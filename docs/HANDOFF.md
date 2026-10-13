@@ -176,6 +176,8 @@ a native Windows .exe, speed for the GPU, G3 later). `docs/APP-RUNNER-STUDY.md` 
 - `make -C tools/onyxrun` (Linux) / `make -C tools/onyxrun win` (`build/onyxrun.exe`, cross-built with mingw-w64);
   `sh tools/onyxrun/get_unicorn.sh` first (Unicorn 2.1.4, AArch64 only, static). `onyxrun echo hi`, `onyxrun clock`
   (Elegant + the app in a window), `--headless --shot x.bmp`, `--input "..."`, `--desktop`.
+- **Built in the repository: `tools/onyxrun/dist/onyxrun.exe`** (stripped, static; rebuild and recommit it when the
+  runner changes -- docs/03 §12.1). It links Unicorn (GPL-2.0): the .exe is GPL-2.0, the sources MIT.
 - The programs write into the folder SD: stands for: run with `--root` on a copy when `sdcard/` must stay as it is
   (`git clean -n sdcard` shows what a run left).
 - Unicorn's `uc_emu_stop` from another thread corrupts state: never use it; the tick sets `Thread::preempt`, read by

@@ -5021,6 +5021,13 @@ the runner, which stands for the kernel: the same kapi page as the kernel's (`KA
 buffers at their slots), SD: on a folder of the PC (the repository's `sdcard/` by default), RAM: on
 another. The plan and the choices are `docs/APP-RUNNER-STUDY.md`.
 
+**Built, ready to use on Windows: `tools/onyxrun/dist/onyxrun.exe`** (one static .exe, nothing to install;
+rebuilt and committed when the runner changes: `make -C tools/onyxrun win`, then `x86_64-w64-mingw32-strip -o
+tools/onyxrun/dist/onyxrun.exe tools/onyxrun/build/onyxrun.exe`). Run from the repository it finds `sdcard/`
+by itself (beside the .exe or above the current folder); elsewhere give it `--root`:
+`tools\onyxrun\dist\onyxrun.exe clock`. It carries Unicorn (GPL-2.0): the .exe is distributed under GPL-2.0,
+its sources stay MIT (docs/LICENSING.md).
+
 ```
 sh tools/onyxrun/get_unicorn.sh      # once: Unicorn built for Linux and (with mingw-w64) Windows
 make -C tools/onyxrun                # build/onyxrun          (Linux)
