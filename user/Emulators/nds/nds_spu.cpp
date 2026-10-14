@@ -183,7 +183,10 @@ void Spu::sample ()
 		s64 mv = soundcnt & 127;
 		L = (L * mv) >> 7; R = (R * mv) >> 7;
 	}
-	L >>= 1; R >>= 1;
+	// the console's own gain: its 10-bit output holds 16 channels at full volume panned to one side (a channel alone
+	// 1/16 of it); twice that here (>> 3), so a mix of many loud channels no longer clips (it did 8 times louder:
+	// crackles)
+	L >>= 3; R >>= 3;
 	if (L > 0x7FFF) L = 0x7FFF;
 	if (L < -0x8000) L = -0x8000;
 	if (R > 0x7FFF) R = 0x7FFF;

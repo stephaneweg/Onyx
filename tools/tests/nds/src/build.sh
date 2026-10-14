@@ -26,7 +26,7 @@ pack cputest CPUTEST CPUT
 link9 bench "$S/bench.9.c" "$O/obj/cc_a9.o" "$O/obj/cc_t9.o"
 link7 bench "$S/bench.7.c" "$O/obj/cc_t7.o"
 pack bench BENCH BNCH
-for t in systest gfx2d gfx3d sound; do
+for t in systest gfx2d gfx3d sound seams; do
 	if [ -f "$S/$t.9.c" ]; then
 		link9 $t "$S/$t.9.c"
 		link7 $t "$S/$t.7.c"
