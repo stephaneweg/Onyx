@@ -513,6 +513,7 @@ static unsigned pad_any (void)
 // Jet's f6, its address bar).
 static bool g_padKeys;
 static char g_padY[8] = "\t";
+static bool g_dpadPointer;			// app.txt `pad_dpad = pointer`: the d-pad moves the pointer too (Jet), not the arrows
 #include "appkeys.h"				// the on-screen keyboard that types into the apps (Select; a text field)
 // THE TIP: an app that comes to the front fills the screen with nothing of the shell's left -- for three seconds a
 // small pill at the top right says how to get the menu ("Home  Menu"; a third window, see-through, parked after).
@@ -561,7 +562,10 @@ static void front_look (void)				// (after tasks_read: who is in front)
 		fs_copy (g_padY, "\t", sizeof g_padY);
 		char q[96];
 		snprintf (q, sizeof q, "SD:/apps/%s.app/app.txt", now);
-		const char *y = now[0] && app_ini_load_path (q) >= 0 ? app_ini_get (0, "pad_y", 0) : 0;
+		bool ini = now[0] && app_ini_load_path (q) >= 0;
+		const char *dp = ini ? app_ini_get (0, "pad_dpad", 0) : 0;
+		g_dpadPointer = dp && ieq (dp, "pointer");
+		const char *y = ini ? app_ini_get (0, "pad_y", 0) : 0;
 		if (y && (y[0] == 'f' || y[0] == 'F'))
 		{
 			static const char *const FK[12] = { "\x1b[11~", "\x1b[12~", "\x1b[13~", "\x1b[14~", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~" };
@@ -628,7 +632,14 @@ static void pad_app (unsigned now)
 	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 16;
 	last = b;
 	if (b & PAD_SELECT) return;				// (Select + Start: the menu -- pad_poll)
-	if (press || rep)
+	static unsigned dpadT;				// (the d-pad as the pointer: held since)
+	if (g_dpadPointer)
+	{
+		const unsigned DP = PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT;
+		if (press & DP) dpadT = now;
+		pad_type (press & ~DP, b & ~DP, false);	// (its other buttons as ever)
+	}
+	else if (press || rep)
 	{
 		if (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) t0 = now + (press ? 22 : 0);
 		pad_type (press, b, rep);
@@ -637,6 +648,17 @@ static void pad_app (unsigned now)
 	if (g_mx < 0) { g_mx = g_sw / 2; g_my = g_sh / 2; }
 	int max = g_sw / 64 > 4 ? g_sw / 64 : 4;		// (full tilt, a turn each 16 ms: the screen's width in about a second)
 	int dx = stick_step (lx, max), dy = stick_step (ly, max);
+	if (g_dpadPointer && (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)))
+	{
+		// the d-pad: 2 pixels a turn at first (aiming at a link), faster the longer it is held (the screen's width in
+		// about 1.5 s after a second)
+		int held = (int) (now - dpadT), step = held < 25 ? D (2) : held < 60 ? D (2) + (held - 25) * max / 50 : max;
+		if (step < 1) step = 1;
+		if (b & PAD_LEFT) dx -= step;
+		if (b & PAD_RIGHT) dx += step;
+		if (b & PAD_UP) dy -= step;
+		if (b & PAD_DOWN) dy += step;
+	}
 	g_mMoving = dx || dy || ry < -300 || ry > 300 || (b & (PAD_L | PAD_R));
 	unsigned btn = ((b & PAD_A) ? 1u : 0) | ((b & PAD_X) ? 2u : 0);
 	int wheel = 0;

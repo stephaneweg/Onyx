@@ -1632,7 +1632,8 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   `pad_poll`'s `selTap`, `ak_toggle`). Its window (`W_KEYS`, opaque, the screen's width, on its bottom edge) is a
   band: the app laid out above it. The pad goes to `ak_pad` while it is up; the keys are `kapi_inject_key` -- no grab
   (a grab would send the injected keys back to the shell). An app's `app.txt` `pad_y = f1..f12` gives the pad's Y
-  that key instead of Tab (`front_look`; Jet: `f6`, its address bar). `server_sim`: `pad BITS` (a known pad with
+  that key instead of Tab (`front_look`; Jet: `f6`, its address bar), `pad_dpad = pointer` makes the d-pad move the pointer
+  (`pad_app`: 2 px a turn, faster after 0.25 s held) instead of typing the arrows (Jet). `server_sim`: `pad BITS` (a known pad with
   those `PAD_*` held), `hint T` (the latest other's field), `kapi_inject_key` routed (`run.sh`, *console-keys*).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
   call for it yet; the mock-ups' *Run / Favourites / Save states* level), the pointer held at the top edge,

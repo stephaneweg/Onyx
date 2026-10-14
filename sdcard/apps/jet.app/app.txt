@@ -4,3 +4,4 @@ category = Internet
 stack = 8M
 opens = html htm
 pad_y = f6
+pad_dpad = pointer

@@ -873,7 +873,9 @@ drag), **X** the right one, **L1** / **R1** and the **right stick** up / down sc
 **B** Esc, **Y** Tab, **Start** Enter, **L2** / **R2** Page Up / Down. The games and the emulators (the categories
 *Games* and *Emulators*) read the pad themselves. An app may give **Y** one of its keys instead of Tab (its `app.txt`:
 `pad_y = f6`): in **Jet**, **Y** goes to the **address bar** (F6) -- the keyboard below comes, **Start** opens the
-address, **B** (the keyboard hidden) goes back to the page.
+address, **B** (the keyboard hidden) goes back to the page. An app may also make the **d-pad a mouse** (`pad_dpad =
+pointer`): in **Jet** the d-pad moves the pointer too -- slowly at first, to aim at a link or a button, faster when held
+--, **A** clicks; the page scrolls with **L1** / **R1** or the right stick.
 
 **The on-screen keyboard** (2026-10-14): over an app that is not a game, it **comes by itself when a text field takes
 the focus** (a pad plugged in) and goes with it; a **tap on Select** (pressed and released alone) brings it up or hides
