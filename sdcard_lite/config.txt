@@ -8,7 +8,8 @@
 # the Raspberry Pi 4 and selects the required mode for the USB host
 # controller of the Compute Module 4.
 #
-core_freq=300
+# No core_freq here: on the Pi 4 the HDMI output's clocks come from the core clock (500 MHz); core_freq=300
+# (2026-10-06 to 2026-10-14) gave a black screen on HDMI -- the desktop composed, seen through VNC only.
 arm_64bit=1
 kernel_address=0x80000
 initial_turbo=0
