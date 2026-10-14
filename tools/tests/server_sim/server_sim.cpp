@@ -569,6 +569,9 @@ static void Pointer (int x, int y, unsigned b, int wheel)
 	el_core_pointer (x, y, b, wheel);
 }
 
+// (fakekapi's kapi_inject_key: a program typing for the user -- consolehome's on-screen keyboard)
+extern "C" void sim_inject_key (const char *keys) { printf ("server_sim: injected \"%s\"\n", keys); ws_route_key (keys, s_nMods); }
+
 extern "C" int sim_server_step (const char *st)
 {
 	Init ();
@@ -653,6 +656,21 @@ extern "C" int sim_server_step (const char *st)
 		int x = -1, y = -1;
 		sscanf (st, "%*s %d %d %255s %i %d %d", &a, &b, arg, (int *) &f, &x, &y);
 		Other (a, b, arg, f, x, y);
+		return 1;
+	}
+	if (!strcmp (cmd, "hint"))				// hint T: the latest other's focused text field (PK_OP_TEXT_HINT; -1 none)
+	{
+		sscanf (st, "%*s %d", &a);
+		long r[4] = { a, 0, 0, 0 };
+		unsigned len = 0;
+		el_op (OTHER_PID + (unsigned) s_nOthers - 1, 0x121, r, 0, 0, s_Out, &len);
+		return 1;
+	}
+	if (!strcmp (cmd, "pad"))				// pad BITS: a pad in slot 0 with those PAD_* (gamepad.h) held; pad -1: none
+	{
+		sscanf (st, "%*s %i", &a);
+		extern int g_simPadOn; extern unsigned g_simPad;
+		g_simPadOn = a >= 0; g_simPad = (unsigned) a;
 		return 1;
 	}
 	if (!strcmp (cmd, "place"))

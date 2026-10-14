@@ -1678,8 +1678,18 @@ static int mailbox_recv_note (int *from, int *type, void *buf, unsigned cap, int
 	return (int) n;
 }
 static int ipc_register_note (const char *n) { return getenv ("SIM_NOTE") ? 1 : ipc_register (n); }
+// (the server sim's "pad BITS": a known pad -- Circle's button bits, gamepad.h's KNOWN table -- with PAD_* held)
+int g_simPadOn; unsigned g_simPad;
 static int pad_state_sim (int i, struct kapi_pad *p)
 {
+	if (g_simPadOn && i == 0)
+	{
+		static const int KNOWN[17] = { 16, 18, 19, 17, 10, 9, 11, 8, 6, 7, 4, 5, 12, 15, 13, 14, 1 };
+		memset (p, 0, sizeof *p);
+		p->vid = 0x045E; p->pid = 0x028E; p->props = 1; p->focus = 1; p->seq = 7; p->nbuttons = 21;
+		for (int k = 0; k < 17; k++) if (g_simPad & (1u << k)) p->buttons |= 1u << (KNOWN[k] - 1);
+		return 1;
+	}
 	if (!getenv ("SIM_PAD") || i != 0) return 0;
 	memset (p, 0, sizeof *p);
 	p->vid = 0x045E; p->pid = 0x028E; p->props = 1; p->focus = 1; p->seq = 7;
@@ -1689,6 +1699,10 @@ static int pad_state_sim (int i, struct kapi_pad *p)
 	p->nhats = 1; p->hats[0] = 8;
 	return 1;
 }
+
+// kapi_inject_key: given to the server sim's router when there is one (consolehome's on-screen keyboard), else dropped
+extern "C" void sim_inject_key (const char *keys) __attribute__ ((weak));
+static void inject_key_sim (const char *keys) { if (sim_inject_key) sim_inject_key (keys); }
 
 static void unimplemented (void)
 {
@@ -1750,7 +1764,7 @@ static void setup (void)
 	T->win_new = win_new; T->win_select = win_select; T->win_destroy = win_destroy; T->win_raise = win_raise;
 	T->tray_set = tray_set; T->tray_clear = tray_clear; T->tray_list = tray_list; T->tray_icon = tray_icon; T->tray_activate = tray_activate;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
-	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim;
+	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim; T->inject_key = inject_key_sim;
 	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
 	T->net_resolve = net_resolve;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect; T->screen_set = screen_set;

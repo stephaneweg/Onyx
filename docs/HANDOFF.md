@@ -23,8 +23,16 @@ The user first asked for wipeout-rewrite as a native game; ported (2026-10-13), 
   for 1-4 players; under `onyxrun`, the standalone app starts full screen and draws through the GPU path. **Not known**:
   the speed on the Pi (each view draws ~5 000 vertices; `antigrav fps`), the pads in game.
 - **Asked next by the user**: (1) the console mode -- how to put the focus on Jet's address bar with a gamepad, and is there
-  an on-screen keyboard; (2) Antigrav in **CodeIsFun** (github.com/stephaneweg/CodeIsFun, the web Turtle Quest, whose BASIC
+  an on-screen keyboard: **done the same day** (below); (2) Antigrav in **CodeIsFun** (github.com/stephaneweg/CodeIsFun, the web Turtle Quest, whose BASIC
   runs Arkanoid): its BASIC would need the 3D statements on **WebGL** (and VIEW3D, PADS).
+
+## The console's on-screen keyboard, Jet's address bar with the pad (2026-10-14): built, published, NOT run on a Pi
+
+`consolehome/appkeys.h`: a keyboard that types into the app in front (`kapi_inject_key`), up by itself when a text field
+takes the focus (PocketUI's text hint, now sent in console mode too: `wm.cpp`) while a pad is plugged in, or by a tap on
+Select; a band (the app above it). Jet: `app.txt` `pad_y = f6` -- the pad's Y goes to the address bar (Jet itself
+unchanged: it is not rebuilt here). Tested in `server_sim` (`run.sh`'s *console-keys*: shown, typed "e", hidden, Select).
+To check on the Pi: Jet, Y, type an address, Start; a web form's field with Select.
 
 ## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
 

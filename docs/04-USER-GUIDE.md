@@ -762,7 +762,7 @@ Esc, Tab, **Ctrl** (for the next key: Ctrl then c is Ctrl+C) and the arrows. A f
 figures; an e-mail field has **@**, an address field **/** beside the space. Quick settings' **Keyboard** tile
 chooses when it comes: **on demand** (as shipped: a screen with a real keyboard) or **with the text fields** (a
 device without one: it comes when a text field takes the focus and goes with it) — kept in
-`SD:/etc/pocket/keyboard`. The console mode has none.
+`SD:/etc/pocket/keyboard`. The console mode has its own, for the pad (*The console mode* below).
 
 ![](compact-shell/real/pocketshell-keys-800.png)
 
@@ -871,7 +871,20 @@ reads nothing. When an app comes to the front, a small **Home · Menu** tip show
 (2026-10-09): the **left stick** moves the pointer (faster the further it is pushed), **A** is the left button (held: a
 drag), **X** the right one, **L1** / **R1** and the **right stick** up / down scroll (the wheel); the d-pad the arrows,
 **B** Esc, **Y** Tab, **Start** Enter, **L2** / **R2** Page Up / Down. The games and the emulators (the categories
-*Games* and *Emulators*) read the pad themselves.
+*Games* and *Emulators*) read the pad themselves. An app may give **Y** one of its keys instead of Tab (its `app.txt`:
+`pad_y = f6`): in **Jet**, **Y** goes to the **address bar** (F6) -- the keyboard below comes, **Start** opens the
+address, **B** (the keyboard hidden) goes back to the page.
+
+**The on-screen keyboard** (2026-10-14): over an app that is not a game, it **comes by itself when a text field takes
+the focus** (a pad plugged in) and goes with it; a **tap on Select** (pressed and released alone) brings it up or hides
+it anywhere else -- a form in a web page. It types into the app as a keyboard would: the **d-pad** (or the left stick)
+chooses a key, **A** types it, **B** deletes, **X** a space, **Y** the next page (capitals for one letter, then **?123**
+the figures and the signs), **L1** / **R1** move the caret, **Start** is Enter, **Select** hides it. Its letters follow
+the keyboard's layout (QWERTY, AZERTY, QWERTZ: Settings › Keyboard). The app is laid out again above it.
+
+![](compact-shell/real/consolehome-keys-shown-720.png)
+
+*The console's on-screen keyboard over an app, 1280 × 720.*
 
 **A game's own resolution.** Each emulator says the screen size it plays best at (its `app.txt`: `resolution =
 800x600` for the Game Boy and the Game Boy Advance, `640x480` for the NES, the Super Nintendo, the Nintendo 64 and

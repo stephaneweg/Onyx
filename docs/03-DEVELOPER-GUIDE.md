@@ -1626,6 +1626,14 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   no app's size is on (`g_ours`): a change made meanwhile (the Display applet) is followed, only a size set by the
   shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
   The kernel's switch is not simulated by `server_sim` (its stand-in has no `screen_set`).
+- **The apps' on-screen keyboard** (`consolehome/appkeys.h`, 2026-10-14): PocketUI now gives the console's shell the
+  focused field's type too (`wm.cpp`: `UK_SHELL_EV_TEXT` in pocket AND console mode); `ak_hint` shows the keyboard
+  when a pad is plugged in (`g_padKeys`: not over a game) and hides it unless it was asked for (a Select tap:
+  `pad_poll`'s `selTap`, `ak_toggle`). Its window (`W_KEYS`, opaque, the screen's width, on its bottom edge) is a
+  band: the app laid out above it. The pad goes to `ak_pad` while it is up; the keys are `kapi_inject_key` -- no grab
+  (a grab would send the injected keys back to the shell). An app's `app.txt` `pad_y = f1..f12` gives the pad's Y
+  that key instead of Tab (`front_look`; Jet: `f6`, its address bar). `server_sim`: `pad BITS` (a known pad with
+  those `PAD_*` held), `hint T` (the latest other's field), `kapi_inject_key` routed (`run.sh`, *console-keys*).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
   call for it yet; the mock-ups' *Run / Favourites / Save states* level), the pointer held at the top edge,
   History and Favourites (Lakka's), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
