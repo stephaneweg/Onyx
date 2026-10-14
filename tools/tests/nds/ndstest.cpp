@@ -20,6 +20,7 @@
 #ifdef NDS_DEBUG
 namespace nds { extern u32 g_watch[2][2]; extern bool g_watchHit; }
 #endif
+namespace nds { extern unsigned g_hideLayers; }
 #if defined(__aarch64__)
 namespace nds { extern unsigned g_jitNoKinds, g_jitNoDP; extern u64 g_jitStats[8]; extern u32 g_jitInterpOps[256][2]; extern u64 g_jitSlowRegion[2][256]; extern void (*g_jitDumpHook) (const u32 *, int, u32); }
 #endif
@@ -134,6 +135,7 @@ int main (int argc, char **argv)
 	if (getenv ("NDS_WATCH9")) { char *e; nds::g_watch[0][0] = (unsigned) strtoul (getenv ("NDS_WATCH9"), &e, 16); nds::g_watch[0][1] = (unsigned) strtoul (e + 1, 0, 16); }
 	if (getenv ("NDS_WATCH7")) { char *e; nds::g_watch[1][0] = (unsigned) strtoul (getenv ("NDS_WATCH7"), &e, 16); nds::g_watch[1][1] = (unsigned) strtoul (e + 1, 0, 16); }
 #endif
+	if (getenv ("NDS_HIDE")) nds::g_hideLayers = (unsigned) strtoul (getenv ("NDS_HIDE"), 0, 16);	// (layers hidden: see nds_gpu2d.cpp)
 	bool trace = getenv ("NDS_TRACE") != 0;
 	const char *wavPath = getenv ("NDS_WAV");
 	FILE *wav = wavPath ? fopen (wavPath, "wb") : 0;
@@ -165,7 +167,29 @@ int main (int argc, char **argv)
 		}
 #endif
 		if (trace) printf ("f%d arm9 pc=%08x cpsr=%08x %s  arm7 pc=%08x cpsr=%08x %s\n", i, m->arm9.r[15], m->arm9.cpsr, m->arm9.halted ? "H" : "-", m->arm7.r[15], m->arm7.cpsr, m->arm7.halted ? "H" : "-");
-		if (shots && i % shotEvery == shotEvery - 1) { char p[512]; snprintf (p, sizeof p, "%s%05d.ppm", shots, i + 1); writePpm (p, *m); }
+		if (shots && i % shotEvery == shotEvery - 1)
+		{
+			char p[512]; snprintf (p, sizeof p, "%s%05d.ppm", shots, i + 1); writePpm (p, *m);
+			if (getenv ("NDS_REGS"))				// the 2D engines' registers beside each picture
+			{
+				snprintf (p, sizeof p, "%s%05d.txt", shots, i + 1);
+				if (FILE *rf = fopen (p, "w"))
+				{
+					for (int e = 0; e < 2; e++)
+					{
+						const nds::Gpu2D &g = e ? m->gpuB : m->gpuA;
+						fprintf (rf, "engine %c DISPCNT %08x\n", e ? 'B' : 'A', g.dispcnt);
+						for (int k = 0; k < 0x70; k += 16)
+						{
+							fprintf (rf, "  %02x:", k);
+							for (int j = 0; j < 16; j++) fprintf (rf, " %02x", g.reg[k + j]);
+							fprintf (rf, "\n");
+						}
+					}
+					fclose (rf);
+				}
+			}
+		}
 	}
 	double secs = (double) (clock () - t0) / CLOCKS_PER_SEC;
 	printf ("%d frames in %.2f s: %.1f fps (%.0f%% of a DS)\n", frames, secs, frames / (secs > 0 ? secs : 1), frames / (secs > 0 ? secs : 1) / 59.8261 * 100);

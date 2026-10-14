@@ -520,13 +520,18 @@ static int clipPlane (Vertex *in, int n, Vertex *out, int k, int side)
 		if (ca >= 0) out[o++] = a;
 		if ((ca >= 0) != (cb >= 0))
 		{
-			// the crossing: t = ca / (ca - cb), 16 bits of fraction
-			s64 den = ca - cb;
-			s64 t = den ? (ca << 16) / den : 0;
+			// the crossing, always from the inside vertex to the outside one: an edge two polygons share is
+			// cut at the same point in both (else their seams, a diagonal of pixels left behind a fade);
+			// the cut coordinate set on the plane itself (else a truncation left the screen's last column)
+			const Vertex &vi = ca >= 0 ? a : b, &vo = ca >= 0 ? b : a;
+			s64 ci = ca >= 0 ? ca : cb, co = ca >= 0 ? cb : ca;
+			s64 den = ci - co;
+			s64 t = den ? (ci << 16) / den : 0;
 			Vertex v;
-			#define LERP(f) v.f = (s32) (a.f + (((s64) (b.f - a.f) * t) >> 16))
+			#define LERP(f) v.f = (s32) (vi.f + (((s64) (vo.f - vi.f) * t) >> 16))
 			LERP (x); LERP (y); LERP (z); LERP (w); LERP (cr); LERP (cg); LERP (cb); LERP (s); LERP (t);
 			#undef LERP
+			(&v.x)[k] = side * v.w;
 			v.clipped = true; v.sx = v.sy = v.sz = v.sw = 0;
 			out[o++] = v;
 		}

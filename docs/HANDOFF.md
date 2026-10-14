@@ -163,6 +163,24 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   |---|---|---|---|---|---|---|
   | Pokemon Mystery Dungeon: Explorers of Sky (EU) | C2SP | yes: logos, intro, title on the Pi (JIT) and the PC; a new game reaches the quiz on the PC | not tried | not tried: the chip is read with 3 address bytes (128 KB), its type is set at the first write (then Flash, 512 KB) | not measured (F12) | a thin diagonal line on the black top screen during two of the intro's fades (PC, interpreter): to look at |
 
+- **The user's second report (2026-10-14: Explorers of Sky "a little slower than the emulator on Linux", the sound
+  crackling a little, a slight lag at times; diagonal dots of pixels not erased in the transitions)** -- `ndsemu` 1.0.3:
+  - **The sound**: the mixer's gain was 8 times the console's (`L >>= 1` after the master volume): a mix of a few
+    loud channels clipped. Now twice the console's (`>> 3`: its 10-bit output holds 16 channels at full volume, a
+    channel alone 1/16) -- quieter, no clipping. The check's level lowered.
+  - **The speed**: the 2D compositing was half the core's time on a 2D scene (gprof, `ndstest` on the PC): the
+    pixel's two layers found in one pass over the BGs shown (the OBJ merged at its priority), the second layer only
+    when something is a second blend target, the window masks a line at a time, the master brightness's mode out of
+    the pixel loop -- 2.6 times faster, **the same pixels** (126 pictures of 7 ROMs compared before / after).
+  - **The fades**: a polygon clipped by the view volume had its cut vertex interpolated from whichever end came first
+    (an edge two triangles share cut at two slightly different points) and truncated inside the plane (a fade larger
+    than the screen left its last column). Now cut from the inside vertex, the cut coordinate on the plane.
+    New test program `tools/tests/nds/src/seams.9.c` (full-screen fades as triangles, quads, fans, clipped, in
+    perspective, w-buffered; `check.sh`: no pixel left uncovered). **Not proven to be the user's diagonal**: none of
+    these variants drew one before the fix either. If it is still there: `NDS_SHOTS` + `NDS_REGS=1` on the frames of
+    the transition, then `NDS_HIDE` layer by layer (docs/LOCAL-AGENT-NDS.md) to name the layer (3D, a BG, the OBJ, a
+    window) that leaves it.
+  - Still to measure on the Pi: F12's `emu` and `draw` times in Explorers of Sky (the JIT's share is unknown).
 - **Seen once on the Pi, not understood (the kernel, not the emulator)**: `run ndsemu <rom on SD1:>` from telnet while
   rdpd served Onyx Remote and a VNC capture was asked 8 s later -- core 0 stopped in the 128 MB ROM's loading (after
   ~60 of its 1 MB reads), the hang watchdog restarted the Pi. `lastcrash.txt`: ndsemu's task in the kernel, in the SD
