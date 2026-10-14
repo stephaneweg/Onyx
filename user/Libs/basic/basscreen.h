@@ -76,10 +76,13 @@ public:
 	virtual bool windowColours (unsigned *face, unsigned *text) { (void) face; (void) text; return false; }
 	// 3D on a GPU (the platform's; else the software renderer draws): a texture -> the
 	// platform's handle (< 0: none); a frame into w x h pixels (stride = w) whose batches name
-	// the platform's handles -> 0 ok, < 0 failed (then drawn in software).
+	// the platform's handles -> 0 ok, < 0 failed (then drawn in software). stride: the pixels of a row of dst
+	// (more than w: VIEW3D's part of the page).
 	virtual int gpuTexture (const unsigned *px, int w, int h) { (void) px; (void) w; (void) h; return -1; }
-	virtual int gpuRender (unsigned *dst, int w, int h, const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
-	{ (void) dst; (void) w; (void) h; (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	virtual int gpuRender (unsigned *dst, int w, int h, int stride, const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
+	{ (void) dst; (void) w; (void) h; (void) stride; (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	int v3x = 0, v3y = 0, v3w = 0, v3h = 0;		// VIEW3D (v3w 0: the whole page)
+	void view3d (int x, int y, int w, int h) override { v3x = x; v3y = y; v3w = w; v3h = h; }
 
 	// ---- the state -----------------------------------------------------------------------------------
 	bool win, windowCmd, textUsed;			// the window exists; WINDOW was used; text was shown
@@ -146,10 +149,19 @@ public:
 			}
 			else bt3[i].texture = -1;
 		}
-		if (!gpuOk || gpuRender (d, W, H, v, nv, bt3, nb, clear, keep) != 0)
+		// VIEW3D: a part of the page (clipped to it)
+		int x0 = 0, y0 = 0, w = W, h = H;
+		if (v3w > 0 && v3h > 0)
 		{
-			if (zb3n < W * H) { delete [] zb3; zb3 = new float[W * H]; zb3n = W * H; }
-			swRender (d, W, H, W, zb3, v, nv, b, nb, clear, keep, [this] (int t) -> const G3Texture *
+			x0 = v3x < 0 ? 0 : v3x; y0 = v3y < 0 ? 0 : v3y;
+			int x1 = v3x + v3w > W ? W : v3x + v3w, y1 = v3y + v3h > H ? H : v3y + v3h;
+			if (x1 <= x0 || y1 <= y0) return 0;
+			w = x1 - x0; h = y1 - y0; d += (long) y0 * W + x0;
+		}
+		if (!gpuOk || gpuRender (d, w, h, W, v, nv, bt3, nb, clear, keep) != 0)
+		{
+			if (zb3n < w * h) { delete [] zb3; zb3 = new float[w * h]; zb3n = w * h; }
+			swRender (d, w, h, W, zb3, v, nv, b, nb, clear, keep, [this] (int t) -> const G3Texture *
 			{
 				static G3Texture T;
 				if (t < 1 || t > ntex3) return 0;

@@ -25,3 +25,20 @@ for name, (c, ok) in checks.items():
     print(('ok   ' if ok(c) else 'FAIL ') + name, c); bad += not ok(c)
 sys.exit(bad)
 PY
+# VIEW3D: the two halves of the fourth frame (out_3)
+python3 - "$OUT/out_3.ppm" <<'PY'
+import sys
+d = open(sys.argv[1], 'rb').read()
+parts = d.split(b'\n', 3); w, h = map(int, parts[1].split()); px = parts[3]
+def at(x, y): i = (y * w + x) * 3; return tuple(px[i:i + 3])
+def red_in(x): return any(at(x, y)[0] > 120 and at(x, y)[1] < 90 and at(x, y)[2] < 90 for y in range(h // 4, h * 3 // 4))
+checks = { 'VIEW3D: the left half blue': (at(5, 5), lambda c: c == (10, 20, 200)),
+           'VIEW3D: the right half green': (at(w - 5, 5), lambda c: c == (10, 200, 20)),
+           'VIEW3D: a sphere in the left half': (red_in(w // 4), lambda c: c),
+           'VIEW3D: a sphere in the right half': (red_in(w * 3 // 4), lambda c: c),
+           'VIEW3D: nothing in the middle': (red_in(w // 2), lambda c: not c) }
+bad = 0
+for name, (c, ok) in checks.items():
+    print(('ok   ' if ok(c) else 'FAIL ') + name, c); bad += not ok(c)
+sys.exit(bad)
+PY

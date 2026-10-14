@@ -1,3 +1,0 @@
-# Onyx application metadata -- read by the category launcher (key=value, no section).
-name = wipEout
-category = Games

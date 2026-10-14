@@ -4,20 +4,27 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## wipEout, a native port (2026-10-13): built, published (wipeout 1.0.0, Pi 4 and Pi 5), NOT run on a Pi yet
+## Antigrav, an anti-gravity racer in BASIC (2026-10-14): built, published, NOT run on a Pi yet
 
-The user asked for wipeout-rewrite (github.com/phoboslab/wipeout-rewrite) as a native Onyx game. **Done**:
-`third_party/wipeout-rewrite` (the game, its **software** renderer; `ONYX.md`: three `#ifdef ONYX` changes) +
-`user/Ports/wipeout/` (`wipeout_onyx.c`: the game's `platform.h` on UIKit's window / full screen, `kapi_key_held`,
-`gamepad.h`, AudioKit's `ak_out_*`; `wipeout_uikit.cpp`: the menu, the language) -> `user/wipeout.elf`,
-`SD:/apps/wipeout.app` (English / French). docs/04's catalogue, docs/03 (after Doom), docs/LICENSING.md.
-- **The game's data is the player's** (Sony's; never shipped): `SD:/wipeout/README.txt`. Without it the app says so.
-- **Licence**: wipeout-rewrite has **none** ("no commercial release"): docs/LICENSING.md says it; the user was told.
-- **Checked** under `onyxrun` (no data here): the window, `game_init`, the missing-file error in a notification.
-  **Not checked**: a race (no data in the cloud), the speed on the Pi (240 lines by default; 480P / NATIVE slower).
-- **Next, the user asked "does it use the GPU?" -- no**: a `render_v3d.c` behind `render.h` (textured triangles,
-  depth, two blend modes) on `kapi_gpu_texture` / `kapi_gpu_render2/3`, as n64emu / gcemu / 3dforge use them, the
-  software renderer kept as the fallback. Also possible: the game on an app core (as Doom).
+The user first asked for wipeout-rewrite as a native game; ported (2026-10-13), then **removed at the user's request**
+(its data is Sony's, its code has no licence) and **replaced by Antigrav**: our own, MIT, everything procedural.
+- **The game**: `sdcard/basic/examples/antigrav.bas` (one file, ~1500 lines): circuits generated from a number (a star-shaped
+  loop -- never crossing itself -- climbing, banking, tunnels, arches, pads), the city, six craft, AI, weapons, music on the
+  General MIDI synthesizer, sounds on the voices, English / French from `SD:/etc/system.ini`. **1 to 4 players** (as many
+  as `PADS`), the screen shared with `VIEW3D`, AI to make six craft. Starts full screen. Test options in `COMMAND$`:
+  `demo` (all AI), `auto` (the players fly themselves, their HUD shown), `players=n`, `laps1`, `fps`, `window`.
+- **The app**: `SD:/apps/antigrav.app/main` is a **standalone** BASIC app (the runtime + the program): `kernel/Makefile`'s
+  `BASIC_STANDALONE`, `tools/basc/basc --standalone <runtime> <prog.bas> <main>`. Package `antigrav` (`replaces = wipeout`).
+- **The BASIC gained** (all three: user/Libs/basic, `/bin/basic` rebuilt): `VIEW3D x, y, w, h` (3D into a part of the page:
+  `kapi_gpu_frame` with the page's stride; the software renderer too; tested in `run_basic3d_test.sh`), `PADS` /
+  `PADS(n)` (the pads plugged in), and AudioKit's refusals (no SoundFont...) are error 73, which ON ERROR catches (it was
+  51, fatal: a MIDINOTE without the SoundFont stopped the program).
+- **Tested** on the PC: a host on a virtual clock (the session's scratch `simhost.cpp`: PAUSE = a frame) ran whole races
+  for 1-4 players; under `onyxrun`, the standalone app starts full screen and draws through the GPU path. **Not known**:
+  the speed on the Pi (each view draws ~5 000 vertices; `antigrav fps`), the pads in game.
+- **Asked next by the user**: (1) the console mode -- how to put the focus on Jet's address bar with a gamepad, and is there
+  an on-screen keyboard; (2) Antigrav in **CodeIsFun** (github.com/stephaneweg/CodeIsFun, the web Turtle Quest, whose BASIC
+  runs Arkanoid): its BASIC would need the 3D statements on **WebGL** (and VIEW3D, PADS).
 
 ## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
 

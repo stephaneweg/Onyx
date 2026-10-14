@@ -234,6 +234,13 @@ public:
 	char *env[MAXENV]; int nenv;
 	// graphics
 	int mode, scrW, scrH;
+	int v3w = 0, v3h = 0;				// VIEW3D's size (0: the whole page)
+	// the 3D's aspect: the displayed width / height of the page, or of VIEW3D's part of it
+	float aspect3d ()
+	{
+		double w = v3w > 0 && v3h > 0 ? v3w : scrW, h = v3w > 0 && v3h > 0 ? v3h : scrH;
+		return (float) (w / (h > 0 ? h : 1) * H.pixelAspect ());
+	}
 	bool viewOn, viewScreen; int vx1, vy1, vx2, vy2;
 	bool winOn, winScreen; double wx1, wy1, wx2, wy2;
 	double lastX, lastY;
@@ -315,6 +322,9 @@ public:
 		err->line = P->lineAt (opPc);
 		bscpy (err->msg, msg, sizeof err->msg);
 	}
+	// AudioKit refused (no SoundFont, no output...): its own words, an error ON ERROR can catch -- 73, *Advanced
+	// feature unavailable* -- unless they name one (a file not found: 53)
+	void failSound (const char *msg) { int c = errCodeOf (msg); fail (msg, c == 51 ? 73 : c); }
 	// A GPIOKit call's result: >= 0 true; else the error, its text said (BASIC's "Device I/O error", 57).
 	bool gpioOk (int r, const char *what)
 	{
@@ -1483,6 +1493,10 @@ public:
 		case B_MOUSEB: pushN (H.mouse (2)); break;
 		case B_PLAYN: pushN (H.bgNotes ()); break;
 		case B_PAD: pushN ((double) H.padButtons (argc > 0 ? (int) a[0].n : -1)); if (!H.poll ()) ended = true; break;
+		case B_PADS:					// PADS: the gamepads connected; PADS (n): -1 if pad n is, else 0
+			if (argc > 0) pushN (H.padConnected ((int) a[0].n) ? -1 : 0);
+			else { int c = 0; for (int i = 0; i < 4; i++) if (H.padConnected (i)) c++; pushN (c); }
+			break;
 		case B_GPU3D: pushN (H.gpu3d () ? 1 : 0); break;
 		case B_GRAB3D:					// a texture from a rectangle of the screen (magenta: transparent)
 		{
@@ -1706,14 +1720,20 @@ public:
 			int c = N (0, 0);
 			s3.begin (c < 0 ? 0 : H.rgbColor (c), c < 0);
 			H.screenSize (&scrW, &scrH);
-			s3.camera ((float) ((double) scrW / (double) (scrH > 0 ? scrH : 1) * H.pixelAspect ()));
+			s3.camera (aspect3d ());
 			break;
 		}
+		case S_VIEW3D:					// VIEW3D [x, y, w, h]: the 3D drawn into that part of the page
+			if (argc >= 4) { v3w = N (2, 0); v3h = N (3, 0); H.view3d (N (0, 0), N (1, 0), v3w, v3h); }
+			else { v3w = v3h = 0; H.view3d (0, 0, 0, 0); }
+			H.screenSize (&scrW, &scrH);
+			s3.camera (aspect3d ());
+			break;
 		case S_CAMERA3D:
 			for (int k = 0; k < 3; k++) { s3.eye[k] = F (k, 0); s3.target[k] = F (3 + k, 0); }
 			s3.fov = F (6, 60); if (s3.fov < 1) s3.fov = 1; if (s3.fov > 170) s3.fov = 170;
 			H.screenSize (&scrW, &scrH);
-			s3.camera ((float) ((double) scrW / (double) (scrH > 0 ? scrH : 1) * H.pixelAspect ()));
+			s3.camera (aspect3d ());
 			break;
 		case S_LIGHT3D:
 			s3.light[0] = F (0, 0); s3.light[1] = F (1, 0); s3.light[2] = F (2, 0); s3.normL ();
@@ -1876,7 +1896,7 @@ public:
 		// value, MIDIOFF: notes on the General MIDI synthesizer (16 channels, 9: the drums).
 		case S_PLAYFILE:
 			cstr (a[0], t1, sizeof t1);
-			if (H.akPlay (t1, argc > 1 ? N (1, 0) : 0) != 0) fail (H.akError ()[0] ? H.akError () : "PLAYFILE: no sound library on this system");
+			if (H.akPlay (t1, argc > 1 ? N (1, 0) : 0) != 0) failSound (H.akError ()[0] ? H.akError () : "PLAYFILE: no sound library on this system");
 			break;
 		case S_STOPFILE: H.akCommand (0, 0); break;
 		// GPIOKit: the 40-pin header -- PINMODE pin, "OUT" | "IN" | "PULLUP" | "PULLDOWN" | "FREE"; PIN pin = level;
@@ -1936,7 +1956,7 @@ public:
 		{
 			int vel = argc > 2 ? N (2, 100) : 100;
 			if (H.akMidi (vel > 0 ? 0x90 : 0x80, N (0, 0), N (1, 60), vel) != 0)
-				fail (H.akError ()[0] ? H.akError () : "MIDINOTE: no sound library on this system");
+				failSound (H.akError ()[0] ? H.akError () : "MIDINOTE: no sound library on this system");
 			break;
 		}
 		case S_MIDIPROGRAM: H.akMidi (0xC0, N (0, 0), N (1, 0), 0); break;

@@ -168,7 +168,8 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
   **`main`** (the "Onyx" layout; an app's other files — `app.txt`, icons, resources — are
   kept in `sdcard/apps/<name>.app/` itself, committed);
 - Koton's plugins (`user/Apps/kp_<name>/`) → `sdcard/koton/plugins/<name>/main` + `plugin.json`;
-- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`;
+- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`, and the standalone ones
+  (`antigrav`) → `apps/<name>.app/main` (`basc --standalone`: the BASIC runtime with the program inside);
 - copies each `../user/BinUtils/<tool>.elf` → `sdcard/bin/<tool>`.
 
 **Executables on the card have no extension**: `.elf` only exists in the build tree
@@ -203,7 +204,7 @@ The sources of user space are sorted by their use, in `user/`:
 | `Runtime/` | what every program is linked with: `crt0.S`, `user.ld`, the libraries' `lib.ld` / `lib.h` / `librt.cpp`, `umm.h`, `onyxpp.hpp`, and `libc/` (newlib's glue, the POSIX library) |
 | `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
 | `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
-| `Ports/` | third-party programs ported: `doom`, `wipeout`, `stk` |
+| `Ports/` | third-party programs ported: `doom`, `stk` |
 | `Include/` | the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `fileassoc.h`, `docguard.h`…) |
 | `Apps/games/` | what the games share (`game.h`, `cards.h`) |
 | `lib/` | the build's outputs for the libraries (not in git) |
@@ -2749,16 +2750,6 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
 > FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
 > `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).
-> **wipEout** (`user/Ports/wipeout/`): wipeout-rewrite (`third_party/wipeout-rewrite`, no licence of its own:
-> docs/LICENSING.md; `ONYX.md` lists the `#ifdef ONYX` changes) with its **software renderer** (`render_software.c`), built
-> against newlib like Doom by `user/Ports/wipeout/Makefile` into `user/wipeout.elf`. `wipeout_onyx.c` is the game's
-> `platform.h`: the window (640 × 480) or full screen, the picture drawn at the size `render_set_resolution` asks
-> (240 / 480 lines / the output's, the output's shape) and stretched into it, the keys (`kapi_key_held` + modifiers +
-> key events as taps; the typed text to `input_textinput`), `gamepad.h` (buttons and the sticks as analog), the game's
-> float mixer turned into `ak_out_write` after each frame (1.5 frames ahead, 2048 frames at least), the files under
-> `SD:/` (the game's names begin with `wipeout/`), `save.dat` in `SD:/wipeout`, newlib's `_stat` on `kapi_path_stat`,
-> the game's `die` said in a notification. One thread, at most 60 pictures a second. A GPU renderer (`render.h` on
-> `kapi_gpu_render*`) is not written.
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -4078,7 +4069,10 @@ Library's systems** come from the same keys (`load_systems`: every app with `gam
 sorted by `order =`); a system whose emulator is not one of the cores it carries (GB, GBA, NES, SNES;
 the N64's label, the GameCube's banner) shows its emulator's icon on the cards. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
-compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
+compiler) to `apps/<name>.app/main.bax` (Arkanoid); one in `BASIC_STANDALONE` becomes a native program,
+`apps/<name>.app/main` = `basc --standalone ../user/BinUtils/basic.elf prog.bas main` (the runtime of this build with
+the program attached, `bas::attachBax`: what the editor's *Make App > Standalone* makes on the Pi) -- Antigrav.
+See *Onyx BASIC* below.
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `/etc/autostart` and what `kapi_list_apps` returns.
