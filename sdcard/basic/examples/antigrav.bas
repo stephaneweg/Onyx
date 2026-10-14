@@ -46,11 +46,12 @@ DIM SHARED mtx(48), mty(48), mtz(48)             ' the mountains around
 ' ---- the craft ---------------------------------------------------------------------------------
 DIM SHARED sd(NSHIP), lx(NSHIP), v(NSHIP), vl(NSHIP), steer(NSHIP), thrust(NSHIP)
 DIM SHARED wep(NSHIP), shield(NSHIP), turbo(NSHIP), spin(NSHIP), skill(NSHIP), aioff(NSHIP)
-DIM SHARED fin(NSHIP), fintime(NSHIP), lapst(NSHIP), bestlap(NSHIP), lastlap(NSHIP), place(NSHIP), firewait(NSHIP)
+DIM SHARED arrived(NSHIP), fintime(NSHIP), lapst(NSHIP), bestlap(NSHIP), lastlap(NSHIP), place(NSHIP), firewait(NSHIP)
 DIM SHARED col1(NSHIP), col2(NSHIP), pilot$(NSHIP), order(NSHIP)
 DIM SHARED shx(NSHIP), shy(NSHIP), shz(NSHIP)    ' where each craft is (world)
-' the model: 11 points, 16 triangles (indices), each with its shade (1 = colour 1, 2 = colour 2, 3 dark)
-DIM SHARED mvx(11), mvy(11), mvz(11), mt(48), mshade(16)
+' the model: 11 points, 14 triangles (indices), each with its shade (1 = colour 1, 2 = colour 2, 3 dark); drawn both
+' faces (a face and its back are one triangle: two would fight in the depth)
+DIM SHARED mvx(11), mvy(11), mvz(11), mt(42), mshade(14)
 DIM SHARED wx, wy, wz                            ' TrackAt's answer
 DIM SHARED ftx, fty, ftz, frx, fry, frz, fux, fuy, fuz, fcv, fkind, flane
 
@@ -146,7 +147,7 @@ Model:   ' x (right), y (up), z (forward); then the triangles: three points and 
 DATA 0, .18, 1.7,  -.9, 0, -1.0,  .9, 0, -1.0,  0, .55, -.8,  0, -.12, -.9
 DATA -1.35, .06, -1.15,  1.35, .06, -1.15,  -.55, .06, .5,  .55, .06, .5,  0, 1.05, -1.3,  0, .45, -.25
 DATA 1, 4, 2, 1,   1, 3, 4, 1,   1, 2, 5, 3,   1, 5, 3, 3,   4, 3, 5, 3,   4, 5, 2, 3
-DATA 8, 6, 2, 2,   9, 3, 7, 2,   8, 2, 6, 3,   9, 7, 3, 3,   11, 10, 4, 2,  1, 11, 4, 1
+DATA 8, 6, 2, 2,   9, 3, 7, 2,   11, 10, 4, 2,  1, 11, 4, 1
 DATA 1, 8, 2, 2,   1, 3, 9, 2,   8, 1, 11, 4,  9, 11, 1, 4
 
 BigFont:     ' the big letters, 5 x 7: a string of 35 a glyph (# = lit), in the order of FONTCH$
@@ -413,8 +414,8 @@ SUB BuildCircuit (c)
   FOR i = 0 TO NSEG - 1 STEP 5
     IF nbld < MAXBLD AND RND < .85 THEN
       sd0 = 1: IF RND < .5 THEN sd0 = -1
-      off = HW + 9 + RND * 34
-      x = px(i) + rx(i) * off * sd0: z = pz(i) + rz(i) * off * sd0
+      offs = HW + 9 + RND * 34
+      x = px(i) + rx(i) * offs * sd0: z = pz(i) + rz(i) * offs * sd0
       w = 4 + RND * 9
       ok = -1
       FOR k = 0 TO NSEG - 1 STEP 2
@@ -702,7 +703,7 @@ END SUB
 SUB MakeModel
   RESTORE Model
   FOR i = 1 TO 11: READ mvx(i), mvy(i), mvz(i): NEXT
-  FOR i = 1 TO 16: READ mt(i * 3 - 2), mt(i * 3 - 1), mt(i * 3), mshade(i): NEXT
+  FOR i = 1 TO 14: READ mt(i * 3 - 2), mt(i * 3 - 1), mt(i * 3), mshade(i): NEXT
 END SUB
 
 SUB DrawShip (n)
@@ -720,7 +721,7 @@ SUB DrawShip (n)
   qx = bx * cr + fux * sr: qy = by * cr + fuy * sr: qz = bz * cr + fuz * sr              ' right, leaning
   ox = fux * cr - bx * sr: oy = fuy * cr - by * sr: oz = fuz * cr - bz * sr              ' up, leaning
   c1 = col1(n): c2 = col2(n)
-  FOR f = 1 TO 16
+  FOR f = 1 TO 14
     s = mshade(f)
     IF s = 1 THEN c = c1 ELSE IF s = 2 THEN c = c2 ELSE IF s = 3 THEN c = RGB(28, 30, 40) ELSE c = RGB(30, 40, 60)
     COLOR3D c
@@ -748,7 +749,7 @@ SUB SetupGrid
     n = order(g)
     sd(n) = -6 - g * 4.5: lx(n) = 2.2 * (1 - 2 * (g MOD 2))
     v(n) = 0: vl(n) = 0: steer(n) = 0: thrust(n) = 0: wep(n) = 0: shield(n) = 0: turbo(n) = 0: spin(n) = 0
-    fin(n) = 0: fintime(n) = 0: lapst(n) = 0: bestlap(n) = 0: lastlap(n) = 0: firewait(n) = 0
+    arrived(n) = 0: fintime(n) = 0: lapst(n) = 0: bestlap(n) = 0: lastlap(n) = 0: firewait(n) = 0
     skill(n) = .9 + RND * .1: aioff(n) = (RND - .5) * 2
     IF Human(n) THEN skill(n) = 1: pilot$(n) = T$("P") + LTRIM$(STR$(n + 1)) ELSE pilot$(n) = aiName$(n)
   NEXT
@@ -807,12 +808,12 @@ SUB Race
       ' the race ends when every player is through the line
       IF state = 2 THEN
         done = -1
-        FOR i = 0 TO np - 1: IF fin(i) = 0 THEN done = 0
+        FOR i = 0 TO np - 1: IF arrived(i) = 0 THEN done = 0
         NEXT
         IF done THEN
           state = 3
           FOR n = 0 TO NSHIP - 1
-            IF fin(n) = 0 THEN fintime(n) = racet + (laps * tlen - sd(n)) / (v(n) + 40)
+            IF arrived(n) = 0 THEN fintime(n) = racet + (laps * tlen - sd(n)) / (v(n) + 40)
           NEXT
           SaveTimes
         END IF
@@ -856,7 +857,7 @@ SUB Controls
   FOR n = 0 TO NSHIP - 1
     IF state = 1 THEN
       steer(n) = 0: thrust(n) = 0
-    ELSEIF Human(n) AND fin(n) = 0 AND NOT autoP THEN
+    ELSEIF Human(n) AND arrived(n) = 0 AND NOT autoP THEN
       p = 0: q = padslot(n)
       IF q >= 0 THEN p = PAD(q)
       kb = (n = 0)
@@ -934,20 +935,20 @@ END SUB
 
 ' The craft just ahead of n within dmax (its number), or -1; the one just behind.
 FUNCTION Ahead (n, dmax)
-  best = dmax: Ahead = -1
+  bd = dmax: Ahead = -1
   FOR m = 0 TO NSHIP - 1
     IF m <> n THEN
       d = sd(m) - sd(n): d = d - tlen * INT(d / tlen + .5)
-      IF d > 0 AND d < best THEN best = d: Ahead = m
+      IF d > 0 AND d < bd THEN bd = d: Ahead = m
     END IF
   NEXT
 END FUNCTION
 FUNCTION Behind (n, dmax)
-  best = dmax: Behind = -1
+  bd = dmax: Behind = -1
   FOR m = 0 TO NSHIP - 1
     IF m <> n THEN
       d = sd(n) - sd(m): d = d - tlen * INT(d / tlen + .5)
-      IF d > 0 AND d < best THEN best = d: Behind = m
+      IF d > 0 AND d < bd THEN bd = d: Behind = m
     END IF
   NEXT
 END FUNCTION
@@ -993,14 +994,14 @@ SUB Physics
       END IF
     END IF
     ' a lap
-    IF INT(sd(n) / tlen) > INT(sold / tlen) AND sd(n) > 0 AND fin(n) = 0 THEN
+    IF INT(sd(n) / tlen) > INT(sold / tlen) AND sd(n) > 0 AND arrived(n) = 0 THEN
       lt = racet - lapst(n): lastlap(n) = lt
       IF INT(sold / tlen) >= 0 THEN
         IF bestlap(n) = 0 OR lt < bestlap(n) THEN bestlap(n) = lt
       END IF
       lapst(n) = racet
-      IF sd(n) >= laps * tlen THEN fin(n) = -1: fintime(n) = racet
-      IF Human(n) AND fin(n) = 0 AND INT(sold / tlen) >= 0 THEN Sfx 12, 523, 1, 140, .25
+      IF sd(n) >= laps * tlen THEN arrived(n) = -1: fintime(n) = racet
+      IF Human(n) AND arrived(n) = 0 AND INT(sold / tlen) >= 0 THEN Sfx 12, 523, 1, 140, .25
     END IF
   NEXT
   ' the craft against each other
@@ -1021,11 +1022,11 @@ SUB Physics
     place(n) = 1
     FOR m = 0 TO NSHIP - 1
       IF m <> n THEN
-        IF fin(m) AND fin(n) THEN
+        IF arrived(m) AND arrived(n) THEN
           IF fintime(m) < fintime(n) THEN place(n) = place(n) + 1
-        ELSEIF fin(m) THEN
+        ELSEIF arrived(m) THEN
           place(n) = place(n) + 1
-        ELSEIF fin(n) = 0 AND sd(m) > sd(n) THEN
+        ELSEIF arrived(n) = 0 AND sd(m) > sd(n) THEN
           place(n) = place(n) + 1
         END IF
       END IF
@@ -1164,7 +1165,7 @@ SUB Hud (i)
     IF wep(i) THEN DRAWTEXT x0 + 136, y0 + h - 22, wname$(wep(i)), RGB(255, 120, 90)
     IF shield(i) > 0 THEN DRAWTEXT x0 + 136, y0 + h - 40, T$("Shield"), RGB(120, 170, 255)
   END IF
-  IF fin(i) AND state = 2 THEN
+  IF arrived(i) AND state = 2 THEN
     BigText T$("FINISH"), cx, y0 + h * .3, 3 * bs, RGB(255, 220, 80)
     DRAWTEXT cx - LEN(T$("Waiting for the others")) * 4, y0 + h * .3 + 30 * bs, T$("Waiting for the others"), RGB(200, 210, 240)
   END IF
