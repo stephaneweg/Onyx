@@ -171,56 +171,103 @@ def _shell(rings, mat, cap1=True):
 
 
 # (the planforms measured on the user's top view of the six ships, the heights on their side view, 2026-10-15)
+# Nova Streak, measured on the user's generated model (sections every 0.1 m): a flat arrowhead with a knife-edge rim,
+# a raised rear block across its whole width (the cowl in its middle), two exhaust pipes; the engine is the tail
+_NV_FRONT = [  # (z, deck centre y, deck flat half, rim top y, bottom centre y, bottom flat half, its edge y)
+    (2.24, 0.635, 0.13, 0.62, 0.47, 0.12, 0.475), (2.05, 0.665, 0.15, 0.63, 0.445, 0.17, 0.46),
+    (1.55, 0.745, 0.16, 0.65, 0.395, 0.21, 0.41), (1.20, 0.79, 0.19, 0.65, 0.375, 0.25, 0.39),
+    (0.44, 0.83, 0.22, 0.66, 0.33, 0.29, 0.35), (0.15, 0.85, 0.23, 0.655, 0.31, 0.31, 0.335),
+    (-0.65, 0.87, 0.26, 0.65, 0.255, 0.37, 0.31)]
+_NV_LABS = ["mid", "deck", "slope", "stripe", "slope", "stripe", "slope", "bevel", "rim", "bevel", "under", "bottom"]
+
+
+def _nv_w(z):
+    """The planform's half width: a taper from the nose, a little faster aft of z 1.0, then 1.17 from z -0.78."""
+    return _lerp_tab([(2.24, 0.215), (1.00, 0.595), (-0.78, 1.17)], z)[0]
+
+
+def _nv_mirror(right):
+    """A closed ring from its right half (centre top first, centre bottom last)."""
+    return right + [(-x, y) for x, y in right[-2:0:-1]]
+
+
+def _nv_front_ring(z):
+    yt, D, yr, yb, B, ybe = _lerp_tab(_NV_FRONT, z)
+    W, c = _nv_w(z), 0.03
+    # the two pinstripes (inner 0.045 wide, outer 0.035, 0.03 apart) diverge from the nose block to the step;
+    # ahead of it they keep their place on the slope, as a fraction of it
+    def xs(zz):
+        x1 = 0.31 + 0.19 * (1.52 - zz) / 2.17
+        return [x1 - 0.0225, x1 + 0.0225, x1 + 0.0525, x1 + 0.0875]
+    if z > 1.52:
+        D1, W1 = _lerp_tab(_NV_FRONT, 1.52)[1], _nv_w(1.52) - c
+        s = [D + (W - c - D) * (x - D1) / (W1 - D1) for x in xs(1.52)]
+    else:
+        s = xs(z)
+    sl = lambda x: yt + (yr - yt) * (x - D) / (W - c - D)
+    right = [(0.0, yt), (min(0.155, D - 0.03), yt), (D, yt)] + [(x, sl(x)) for x in s] + \
+            [(W - c, yr), (W, yr - c), (W, 0.53), (W - c, 0.50), (B, ybe), (0.0, yb)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _nv_rear_ring(z, W, top, rim=None):
+    """The rear block: the cowl's flat top and 45-degree sides, the raised deck to the rim, a shallow keel; rim: its
+    four rim points (at the back, the rim swells round the pipes)."""
+    rim = rim or [(W - 0.05, 0.90 - 0.30 * (W - 0.48)), (W, 0.63), (W, 0.53), (W - 0.03, 0.495)]
+    right = [(0.0, top), (0.21, top), (0.43, 0.90)] + rim + [(0.21, 0.23), (0.18, 0.20), (0.0, 0.20)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _nv_step(ring):
+    """A ring on the step across the deck: at z -0.66 in the middle, swept back to -0.77 at the rim."""
+    pts = []
+    for k in range(len(ring(-0.66))):
+        z = -0.66
+        for _ in range(3):
+            z = -0.66 - 0.11 * max(0.0, abs(ring(z)[k][0]) - 0.5) / 0.67
+        pts.append(ring(z)[k])
+    return pts
+
+
 def hull_needle():
-    m = Model("hull_needle", "Nova Streak: a flat delta widest near its back, a paint2 nose block, a flat deck with a paint2 "
-              "panel and white pinstripes, a slate canopy wedge under a raised rear cowl")
-    # (z, half width W, bottom, knife edge, deck half D, deck y): the planform and the heights measured on the
-    # reference; the deck rises from the nose to the cowl
-    key = [(2.25, 0.28, 0.30, 0.36, 0.40, 0.50), (1.52, 0.60, 0.24, 0.33, 0.40, 0.62),
-           (-0.95, 1.52, 0.20, 0.33, 0.40, 0.86), (-1.50, 1.56, 0.20, 0.33, 0.40, 0.86)]
-    sx = [0.60, 0.555, 0.505, 0.46]                   # the two pinstripes (outer, inner), from the outer edge in
-    rings = []
-    for z in (2.25, 1.52, 1.34, 0.37, -0.95):
-        W, yb, ye, D, yd = _lerp_tab(key, z)
-        f = min(1.0, W / 0.62)                        # the nose: everything scaled in
-        D, P = D * f, 0.20 * f
-        sl = lambda x: ye + (yd - ye) * (W - x) / (W - D)
-        right = [(max(W * 0.7, W - 0.30), yb), (W, ye)] + [(x * f, sl(x * f)) for x in sx] + [(D, yd), (P, yd)]
-        ring = right + [(0.0, yd)] + [(-x, y) for x, y in right[::-1]]
-        rings.append([(x, y, z) for x, y in ring])
-    labs = ["bevel", "slope", "stripe", "slope", "stripe", "slope", "deck", "mid",
-            "mid", "deck", "slope", "stripe", "slope", "stripe", "slope", "bevel", "bottom"]
+    m = Model("hull_needle", "Nova Streak: a flat arrowhead with a knife-edge rim, a paint2 nose block and deck panel, "
+              "white pinstripes, a slate canopy under a raised rear block, two exhaust pipes")
 
     def mat(i, j, c):
-        lab = labs[j % len(labs)]
-        if c[2] > 1.52:
+        lab = (_NV_LABS + _NV_LABS[::-1])[j]
+        z = c[2]
+        if z > 1.55:
             return "paint2"                         # the nose block
-        if lab == "bottom":
-            return SL
-        if lab == "mid" and 0.37 < c[2] < 1.34:
-            return "paint2"                         # the panel on the deck
         if lab == "stripe":
-            return "white"                          # the pinstripes
+            return "white"
+        if lab in ("mid", "bottom") and 0.44 < z < 1.46:
+            return "paint2"                         # the deck panel (and its twin underneath)
+        if lab == "bottom" and z < 0.15:
+            return SL                               # the slate plate under the cockpit
         return "paint1"
-    m.add(_shell(rings, mat, cap1=False))
-    # the rear cowl: the deck steps up at z -0.95 (its front cap the step), its sides fall to the knife edges, the
-    # back's corners chamfered in to the nozzle
-    cw = []
-    for z, W, ye, D, yd, yc, zt in ((-0.95, 1.52, 0.33, 0.58, 1.12, 1.22, -0.84), (-1.50, 1.56, 0.33, 0.58, 1.14, 1.24, -1.50),
-                                    (-1.86, 0.58, 0.38, 0.46, 1.08, 1.18, -1.86)):
-        right = [(max(W * 0.7, W - 0.30), 0.20, z), (W, ye, z), (D, yd, zt)]
-        cw.append(right + [(0.0, yc, zt + (zt - z) * 0.8)] + [(-x, y, zz) for x, y, zz in right[::-1]])
-    m.add(_shell(cw, lambda i, j, c: SL if j == 6 else "paint1"))
-    # the canopy: a slate wedge from the deck rising back under the cowl's front edge
+    zs = (2.24, 2.05, 1.55, 1.46, 1.00, 0.44, 0.15)
+    m.add(_shell([_nv_front_ring(z) for z in zs] + [_nv_step(_nv_front_ring)], mat, cap1=False))
+    # the rear block: its front cap the step across the deck, its back corners cut in to the pipes
+    m.add(_shell([_nv_step(lambda z: _nv_rear_ring(z, _nv_w(z), 1.16)), _nv_rear_ring(-0.85, 1.17, 1.16),
+                  _nv_rear_ring(-1.20, 1.17, 1.12),
+                  _nv_rear_ring(-1.32, 0, 1.115, [(0.95, 0.75), (1.02, 0.65), (1.02, 0.52), (0.97, 0.44)]),
+                  _nv_rear_ring(-1.43, 0, 1.11, [(0.70, 0.83), (0.82, 0.69), (0.85, 0.54), (0.74, 0.38)])], "paint1"))
+    # the canopy: a slate wedge rising from the deck back under the cowl's front edge
     cr = []
-    for z, top, w in ((0.08, 0.77, 0.22), (-0.30, 1.07, 0.28), (-1.00, 1.16, 0.28)):
-        yb = _lerp_tab(key, z)[4] - 0.06
-        cr.append([(w, yb, z), (w, top - 0.08, z), (w - 0.08, top, z), (-w + 0.08, top, z), (-w, top - 0.08, z),
-                   (-w, yb, z)])
+    for z, top, wt, wb in ((0.20, 0.87, 0.13, 0.18), (0.00, 0.95, 0.15, 0.19), (-0.20, 1.045, 0.16, 0.20),
+                           (-0.40, 1.09, 0.16, 0.23), (-0.70, 1.10, 0.17, 0.26)):
+        yd = _lerp_tab(_NV_FRONT, z)[0]
+        right = [(0.0, top), (wt, top), (wb, yd + 0.02), (wb, yd - 0.06), (0.0, yd - 0.06)]
+        cr.append([(x, y, z) for x, y in _nv_mirror(right)])
     m.add(_shell(cr, "tint"))
-    return finish(m, (1.30, 0.36, -1.20), (0.0, 0.52, -0.55),
-                  [(0.30, 1.40), (-0.30, 1.40), (0.90, -1.30), (-0.90, -1.30)], -1.86,
-                  engine_y=0.70)       # (the tail nozzle in the middle of the cowl's back face)
+    # the cowl's back: a chamfered block between the pipes (the engine, its collar sunk in it, plays the tail block)
+    blk = lambda z, y0: [(0.39, y0 + 0.04, z), (0.39, 0.98, z), (0.24, 1.10, z), (-0.24, 1.10, z), (-0.39, 0.98, z),
+                         (-0.39, y0 + 0.04, z), (-0.35, y0, z), (0.35, y0, z)]
+    m.add(_shell([blk(-1.40, 0.21), blk(-1.54, 0.25), blk(-1.58, 0.30)], "paint1"))
+    for sx in (1, -1):                              # the two exhaust pipes
+        m.add(nozzle(0.21, -1.60, -1.36, SL, sx * 0.63, 0.575, 8, 0.08, "paint1"))
+    return finish(m, (1.12, 0.58, -1.05), (0.0, 0.58, -0.40),
+                  [(0.30, 1.30), (-0.30, 1.30), (0.585, -1.30), (-0.585, -1.30)], -1.36, engine_y=0.74)
 
 
 def hull_comet():
