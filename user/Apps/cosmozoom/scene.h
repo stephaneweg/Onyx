@@ -228,6 +228,7 @@ struct Scene
 	ShipModel ship[MAXCRAFT];
 	Ghost ghost;
 	Particles fx;
+	V3 eyeW;				// the camera, this frame (the chrome's reflections)
 	const Mesh *mBox = 0, *mBubble = 0, *mGoo = 0, *mSpring = 0, *mTraffic = 0, *mStar = 0, *mNebula = 0, *mWarp = 0;
 	float time = 0;
 
@@ -317,6 +318,7 @@ struct Scene
 		M4 P = M4::perspective (cam.fov, (float) w / (float) (h > 0 ? h : 1), 0.4f, 1600);
 		M4 V = M4::lookAt (cam.eye, cam.at, cam.up);
 		M4 VP = P * V;
+		eyeW = cam.eye;
 		M4 Vs = V; Vs.m[3] = Vs.m[7] = Vs.m[11] = 0;
 		F.begin (P * Vs, 0, B_NOZWRITE | B_ZALWAYS); F.add (world.sky); F.end ();
 		if (world.skyGlow.v.n) { F.begin (P * Vs, TX_GLOW, B_NOZWRITE | B_ZALWAYS | B_ADD | B_LINEAR | B_CLAMP); F.add (world.skyGlow); F.end (); }
@@ -430,7 +432,6 @@ struct Scene
 			M4 M = shipMatrix (R, i);
 			F.begin (VP * M, 0, B_ALPHA | B_NOZWRITE | B_CULL); F.mesh (ship[i].mesh, M4::identity (), 255, 0, 1); F.end ();
 		}
-		boxGlass (F, R, VP);
 		// what glows: the world's lights, the flames, the sparkles, the shields
 		for (int i = 0; i < R.n; i++)
 		{
@@ -611,14 +612,41 @@ struct Scene
 		*M = M4::frame (-r, u, f, p) * M4::rotY (a) * M4::rotX (0.6f) * M4::rotZ (0.6f) * M4::scale (grow, grow, grow);
 		return true;
 	}
-	// The item boxes' see-through shells, with the other glass (after everything opaque)
-	void boxGlass (Frame &F, const Race &R, const M4 &VP)
+	// What a chrome mirror shows in the direction d (the world's): the sky, a dark horizon, the track's colours below,
+	// the sun's glint
+	static unsigned chromeEnv (const V3 &d, const Track &T)
 	{
-		if (!mBox) return;
-		for (int b = 0; b < R.nbox; b++)
+		float y = d.y;
+		unsigned c;
+		if (y > 0.06f) c = rgbMix (rgbMix (T.sky[1], 0xFFFFFF, 0.5f), rgbVivid (T.sky[0], 1.1f), clampf ((y - 0.06f) * 1.6f, 0, 1));
+		else if (y > -0.04f) c = rgbMix (0x2A3048, rgbScale (T.road[0], 0.45f), 0.35f);
+		else c = rgbMix (rgbScale (T.road[0], 0.75f), rgbMix (T.road[0], 0xFFFFFF, 0.45f), clampf (-y * 1.4f, 0, 1));
+		float g = dot (d, sunDir ());
+		if (g > 0.86f) c = rgbMix (c, 0xFFFFFF, clampf ((g - 0.86f) * 9, 0, 1));
+		return c;
+	}
+	// An item box: its shell chrome (the colours reflected for the camera, every frame: the box turns), its '?' marks
+	// as modelled; the shell is the rounded cube of items.py, a vertex's normal from the cube's flat core
+	void chromeBox (Frame &F, const Mesh &m, const M4 &M, const Track &T)
+	{
+		Vtx *p = F.room (m.tris.n * 3); if (!p) return;
+		V3 o = M.point (V3 ());
+		const float core = 0.36f;		// (1.2 m, rounded 0.24)
+		for (int i = 0; i < m.tris.n; i++)
 		{
-			M4 M; if (!boxMatrix (R, b, &M)) continue;
-			F.begin (VP * M, 0, B_ALPHA | B_NOZWRITE | B_CULL); F.mesh (*mBox, M4::identity (), 255, 0, 1); F.end ();
+			const Tri &Q = m.tris[i];
+			for (int k = 0; k < 3; k++)
+			{
+				const V3 &q = Q.p[k];
+				unsigned col = Q.col[k];
+				if (((Q.base >> 16) & 255) > 0xB0 && ((Q.base >> 8) & 255) > 0xB0 && (Q.base & 255) > 0xB0)	// (the pale "chrome"; the marks are magenta)
+				{
+					V3 n = norm (q - V3 (clampf (q.x, -core, core), clampf (q.y, -core, core), clampf (q.z, -core, core)));
+					V3 wp = M.point (q), wn = norm (M.point (n) - o), v = norm (wp - eyeW);
+					col = chromeEnv (v - wn * (2 * dot (v, wn)), T);
+				}
+				setVtx (*p++, q, Q.s[k], Q.t[k], col, 255);
+			}
 		}
 	}
 
@@ -630,7 +658,7 @@ struct Scene
 		{
 			M4 M; if (!boxMatrix (R, b, &M)) continue;
 			F.begin (VP * M, 0, B_CULL);
-			if (mBox) F.mesh (*mBox, M4::identity ());		// (the '?' marks; the see-through shell: boxGlass)
+			if (mBox) chromeBox (F, *mBox, M, T);
 			else cube (F, 0.8f, time + (float) b);
 			F.end ();
 		}

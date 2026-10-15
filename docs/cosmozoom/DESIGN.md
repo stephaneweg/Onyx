@@ -94,7 +94,7 @@ above and behind, a cool sky fill, a darker underside, a glossy highlight).
 - **Sky**: a bright blue gradient with **round white puffy clouds** (low-poly).
 - **Track**: a **teal** floating ribbon with a slightly lighter centre and soft edges. The **rails are round
   tubes, candy-striped in pastels** (pink/mint/cream). **Glowing cyan chevron pads** are the boosts.
-  **Translucent "?" cubes** are the item capsules.
+  **Chrome "?" cubes** are the item capsules (the user, 2026-10-15: a mirror of the sky and the track, magenta "?"; the game paints the reflections for the camera each frame).
 - **Tubes and loops**: teal ribbed tubes and loops arching over the track, in the same colour as the road.
 - **World**: **rounded pastel capsule towers** (pill-shaped buildings with stripes and caps), **floating grassy
   islands** with round low-poly trees and boulders, little arched bridges, and distant floating rocks.

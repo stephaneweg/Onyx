@@ -68,11 +68,11 @@ def qmark_face(size=0.62, t=0.12, depth=0.05, mat="white"):
 
 
 def itembox():
-    m = Model("itembox", "the item capsule: a translucent rounded cube (1.2 m), a white '?' on each side and on top")
+    m = Model("itembox", "the item box: a chrome rounded cube (1.2 m), a magenta '?' on each side and on top")
     s = 1.2
     from soft import soft_box
-    m.add(soft_box(-s / 2, s / 2, -s / 2, s / 2, -s / 2, s / 2, 0.24, "holo", k=3), "shell")
-    q = qmark_face(0.66, 0.13, 0.05)
+    m.add(soft_box(-s / 2, s / 2, -s / 2, s / 2, -s / 2, s / 2, 0.24, "chrome", k=3), "shell")
+    q = qmark_face(0.66, 0.13, 0.05, "magenta")
     for ang in (0, 90, 180, 270):
         m.add(q.copy().tr(0, 0, s / 2 - 0.01).rot("y", ang), "shell")
     m.add(q.copy().tr(0, 0, s / 2 - 0.01).rot("x", -90), "shell")

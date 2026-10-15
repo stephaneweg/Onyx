@@ -56,7 +56,7 @@ converted files stay in the repository).
 |---|---|
 | the player's colours / the city's walls (recoloured by the game) | `paint1` (a ship's body, a tower's walls), `paint2` (a ship's second colour block: noses, trims, fins; a tower's bands and rounded top) |
 | fixed colours | `white`, `cream`, `ink`, `darkgrey` / `grey` / `silver` (mechanics: nozzles, intakes, trusses, poles), `navy` (window slots, visors), `pink`, `magenta`, `yellow`, `orange`, `red`, `mint`, `green`, `teal`, `cyan`, `sky`, `blue`, `grape`, `lavender`, `gold`, `peach`, `sand`, `stone`, `wood`, `grass`, `leaf`, `darkgreen`, `rock`, `pebble` |
-| see-through | `tint` (the ships' dark-blue canopies, d 0.62), `holo` (the item capsule, d 0.40), `glass` (d 0.35), `bubble` (d 0.45) |
+| see-through | `tint` (the ships' dark-blue canopies, d 0.62), `holo` (unused, d 0.40), `glass` (d 0.35), `bubble` (d 0.45) |
 | glowing (`*_glow`: unlit, added) | in the final look **only the nozzles' cores**: `cyan_glow`, `purple_glow`, `magenta_glow`; the others (`plasma_glow`, `yellow_glow`, `lime_glow`, `pink_glow`, `orange_glow`, `red_glow`) stay for the earlier neon pieces |
 | unlit (`Ke`) | `white_flat` (lamps' lights, the flying car's headlights), `ink_flat` |
 
@@ -114,7 +114,7 @@ The files keep the first cast's names: `pilot_pepper`, `pilot_bruno`, `pilot_bol
 
 | File | Look | Notes |
 |---|---|---|
-| `itembox` | the item capsule: a translucent rounded `holo` cube 1.2 m, a bold white "?" (five bars) on its four sides and its top | `o shell` |
+| `itembox` | the item capsule: a rounded `chrome` cube 1.2 m (the game paints its reflections: the sky, a dark horizon, the track below, the sun's glint -- `Scene::chromeBox`), a bold magenta "?" (five bars) on its four sides and its top | `o shell` |
 | `bubble` | the plasma bubble 1.4 m: a see-through pink sphere, two white rings, a magenta core | |
 | `goo` | the ion goo: a mint puddle 3 m × 0.3 m, bubbles and droplets | on the ground |
 | `spring` | the gravity well: a hexagonal pad, three grape blades, an orb, a tilted ring | `o ring`, socket `ring` |
