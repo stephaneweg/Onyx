@@ -19,7 +19,7 @@ namespace cz {
 // ---- the parts: each gives stat points (1..5) ------------------------------------------------------------------------
 struct Part { const char *name, *model, *look; int speed, accel, handling, weight; const char *perk; };
 
-enum { NHULL = 7, NWING = 5, NENGINE = 5, NPAINT = 10, NPATTERN = 7 };
+enum { NHULL = 8, NWING = 5, NENGINE = 5, NPAINT = 10, NPATTERN = 7 };
 
 // (the user's concept sheet, 2026-10-15: docs/cosmozoom/DESIGN.md section 4)
 static const Part HULLS[NHULL] = {
@@ -30,6 +30,7 @@ static const Part HULLS[NHULL] = {
 	{ TRN ("Plasma Runner"), "hull_pod", TRN ("The quick starter"),   3, 5, 2, 2, "" },
 	{ TRN ("Ringmaster"), "hull_cube", TRN ("Tough and steady"),    4, 3, 1, 5, "" },
 	{ TRN ("Nebula Sprinter"), "hull_sprinter", TRN ("Fast off the line"), 4, 4, 3, 2, "" },	// (the user's, 2026-10-15)
+	{ TRN ("Sonic Wave"), "hull_wave", TRN ("Rides the shock wave"), 5, 3, 3, 2, "" },	// (the user's, 2026-10-15)
 };
 static const Part WINGS[NWING] = {
 	{ TRN ("Stubby Fins"), "wing_stubby", "", 0, 1, -1, 0, "" },
@@ -141,7 +142,7 @@ static const Pilot PILOTS[NPILOT] = {
 	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 4, 0, 1, 5, 0 }, "14" },
 	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 6, 4, 0, 2, 3, 0 }, "09" },
 	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 0, 1, 2, 0 }, "33" },
-	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 4, 0, 8, 5, 0 }, "18" },
+	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 7, 4, 0, 7, 1, 0 }, "18" },
 	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 4, 4, 2, 0, 0 }, "42" },
 };
 
