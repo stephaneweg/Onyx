@@ -27,7 +27,7 @@ for opt in ("items", "city", "nature", "props"):
 CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's six ships, then two more
     ("pilot_bolt", "hull_needle", "", "engine_ion", ("#E63ACB", "#FF8A1F")),
     ("pilot_bloop", "hull_comet", "", "engine_ion", ("#3FD7EE", "#9DEFFA")),
-    ("pilot_bruno", "hull_whale", "", "engine_twin", ("#FF8A1F", "#FFD23F")),
+    ("pilot_bruno", "hull_whale", "", "engine_ion", ("#FF8A1F", "#FFD23F")),
     ("pilot_zib", "hull_pod", "", "engine_star", ("#9BE03A", "#22C3B5")),
     ("pilot_kiki", "hull_cube", "", "engine_ring", ("#FFD23F", "#E63ACB")),
     ("pilot_pepper", "hull_manta", "", "engine_ion", ("#FF8A1F", "#22C3B5")),

@@ -25,11 +25,7 @@ GLB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "glb")
 
 # name: (source, title, length (m), triangles, colour rules, default material)
 # a rule: [material, hue min, hue max, saturation min, value min, saturation max] -- the first that fits
-IMPORTS = {
-    "hull_comet": ("comet_chaser.glb", "Comet Chaser (generated from the user's reference, imported)", 4.1, 3000,
-                   [["white", 0, 360, 0, 0.8, 0.10], ["paint1", 170, 206, 0.6, 0, 1], ["slate", 160, 280, 0.1, 0, 1]],
-                   "paint1"),
-}
+IMPORTS = {}           # (none now: the Nova and the Comet were remodelled in ships.py from their GLB)
 
 
 def classify(c, rules, default):

@@ -4,7 +4,7 @@
 # chamfered low-poly shapes (crisp 45-degree bevels, flat faces), soft light, no outline, solid vivid colours,
 # slate-navy canopies and intakes, glowing cores in the nozzles only. The six ships of the sheet:
 #   hull_needle  "Nova Streak"   a faceted arrowhead, a paint2 nose tip and side panels, white pinstripes
-#   hull_comet   "Comet Chaser"  a narrow fuselage, a stepped cabin (+ engine_pods: two long boxes at its sides)
+#   hull_comet   "Comet Chaser"  a narrow fuselage, a stepped cabin, its two pods on struts (measured on its GLB)
 #   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe (+ engine_twin: big nacelles, lattice booms ahead)
 #   hull_pod     "Plasma Runner" a small cockpit block (+ engine_star: two chunky octagonal pods ahead, on cables)
 #   hull_cube    "Ringmaster"    an octagonal torpedo, a paint2 nose cone (+ engine_ring: a big ring round its back)
@@ -270,16 +270,83 @@ def hull_needle():
                   [(0.30, 1.30), (-0.30, 1.30), (0.585, -1.30), (-0.585, -1.30)], -1.36, engine_y=0.74)
 
 
+# Comet Chaser, measured on the user's generated model (sections every 0.1 m): a long narrow nose widening into a rear
+# body, a raised spine with a step down to the shoulders, a stepped cabin and a roof block, two boxy pods on struts
+_CM_BODY = [  # (z, spine top y, spine half, its step's foot y, shoulder x, its y, half width, side top y,
+    #            side bottom y, bottom chamfer x, its y, bottom centre y)
+    (2.24, 0.945, 0.24, 0.945, 0.24, 0.945, 0.33, 0.86, 0.63, 0.28, 0.565, 0.555),
+    (2.10, 0.97, 0.26, 0.97, 0.26, 0.97, 0.35, 0.88, 0.63, 0.27, 0.55, 0.53),
+    (1.40, 1.00, 0.25, 1.00, 0.34, 0.98, 0.41, 0.88, 0.64, 0.31, 0.52, 0.50),
+    (1.00, 1.03, 0.36, 0.97, 0.38, 0.955, 0.44, 0.89, 0.64, 0.35, 0.515, 0.475),
+    (0.40, 1.07, 0.39, 0.99, 0.47, 0.94, 0.50, 0.90, 0.61, 0.42, 0.49, 0.46),
+    (0.20, 1.075, 0.40, 1.00, 0.46, 0.98, 0.52, 0.93, 0.60, 0.44, 0.48, 0.46),
+    (-1.16, 1.09, 0.41, 0.99, 0.46, 0.97, 0.52, 0.92, 0.60, 0.44, 0.48, 0.46),
+    (-1.40, 1.10, 0.39, 0.98, 0.39, 0.98, 0.49, 0.89, 0.64, 0.42, 0.55, 0.53),
+    (-1.85, 1.07, 0.33, 0.95, 0.33, 0.95, 0.41, 0.91, 0.69, 0.40, 0.69, 0.69)]
+_CM_CAB = [  # (z, cabin top y, its flat half, its flank's foot y on the spine edge)
+    (-0.45, 1.36, 0.23, 1.12), (-1.16, 1.36, 0.24, 1.13), (-1.40, 1.29, 0.26, 1.11), (-1.85, 1.16, 0.27, 1.08)]
+
+
+def _cm_ring(z, cab=True, groove=0.0):
+    """groove: the flanks pulled in (the panel lines round the rear body's front and back)."""
+    T, S, Yd, Xd, Yd2, W, Ys, Yb, Wb, Bb, B = _lerp_tab(_CM_BODY, z)
+    Tc, Rc, Tcb = _lerp_tab(_CM_CAB, z) if cab and z <= -0.45 else (T, S - 0.04, T)
+    right = [(0.0, Tc), (Rc, Tc), (S, Tcb), (S, Yd), (Xd, Yd2), (W, Ys), (W, Yb), (Wb, Bb), (0.0, B)]
+    return [(x - groove if x > W - 0.1 else x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _cm_pod(sx):
+    """A side pod: a chamfered box, a collar and a groove behind its intake's lip, the slate intake recessed in its
+    front, a tapered slate exhaust block at its back, recessed too."""
+    def r(z, x0, x1, y0, y1, c):
+        ring = oct_ring((x0 + x1) / 2, (y0 + y1) / 2, 0, (x1 - x0) / 2, (y1 - y0) / 2, c)
+        return [(sx * x, y, z) for x, y, _ in ring]
+    body = (0.92, 1.565, 0.35, 1.11, 0.085)
+    rings = [r(0.25, 1.01, 1.48, 0.43, 1.03, 0.05), r(0.48, 1.01, 1.48, 0.43, 1.03, 0.05),
+             r(0.48, 0.955, 1.535, 0.38, 1.08, 0.07), r(0.45, 0.93, 1.555, 0.36, 1.10, 0.08),
+             r(0.34, 0.93, 1.555, 0.36, 1.10, 0.08), r(0.32, 0.96, 1.53, 0.39, 1.08, 0.07),
+             r(0.23, 0.96, 1.53, 0.39, 1.08, 0.07), r(0.21, *body), r(-1.16, *body),
+             r(-1.16, 1.00, 1.47, 0.41, 1.01, 0.06), r(-1.56, 1.03, 1.44, 0.47, 0.98, 0.05),
+             r(-1.56, 1.07, 1.40, 0.51, 0.94, 0.04), r(-1.46, 1.07, 1.40, 0.51, 0.94, 0.04)]
+    return _shell(rings, lambda i, j, c: SL if i == 0 or i >= 9 else "paint1")
+
+
 def hull_comet():
-    m = Model("hull_comet", "Comet Chaser: a narrow neck and nose ahead of a wide rear block, a slate canopy")
-    neck = [S(0.25, 0.44, 0.27, 0.09, 0, 0.92), S(1.50, 0.42, 0.26, 0.09, 0, 0.88), S(2.00, 0.30, 0.18, 0.07, 0, 0.80)]
-    m.add(ch_loft(neck, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.04, c1=0.06))
-    rear = [S(-2.00, 0.86, 0.40, 0.12, 0, 0.85), S(0.35, 0.86, 0.40, 0.12, 0, 0.85)]
-    m.add(ch_loft(rear, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.08, c1=0.16))
-    m.add(canopy(-0.70, 0.28, 1.18, 1.48, 0.24, 0.30))
-    m.add(ch_box(-0.33, 0.33, 1.20, 1.36, -1.58, -0.82, 0.05, "paint1"))
-    return finish(m, (0.86, 0.60, -1.20), (0.0, 1.02, -0.20),
-                  [(0.50, 1.20), (-0.50, 1.20), (0.60, -1.50), (-0.60, -1.50)], -2.00)
+    m = Model("hull_comet", "Comet Chaser: a long nose, a raised spine, a slate canopy before a stepped cabin, "
+              "two boxy side pods on struts with slate intakes and exhausts, a small ventral fin")
+    # the fuselage: its front a slate panel recessed in a frame, the cabin rising off the spine from z -0.45
+    front = _cm_ring(2.24)
+
+    def inset(z):
+        return [(x * 0.28 / 0.33, 0.62 + (y - 0.555) * 0.22 / 0.39, z) for x, y, _ in front]
+    rings = [inset(2.17), inset(2.24)] + [_cm_ring(z) for z in (2.24, 2.10, 1.40, 1.00, 0.40, 0.37)] + \
+            [_cm_ring(0.355, groove=0.06), _cm_ring(0.285, groove=0.06), _cm_ring(0.27), _cm_ring(-0.45, False)] + \
+            [_cm_ring(z) for z in (-0.45, -1.16)] + [_cm_ring(-1.20, groove=0.06)] + \
+            [_cm_ring(z) for z in (-1.24, -1.40, -1.85)]
+    m.add(_shell(rings, lambda i, j, c: SL if i == 0 else "paint1"))
+    # the canopy: a slate wedge on the spine, rising back to the cabin's front
+    cr = []
+    for z, top, wt, wb in ((0.37, 1.09, 0.17, 0.22), (0.30, 1.115, 0.19, 0.27), (0.15, 1.185, 0.20, 0.30),
+                           (0.00, 1.255, 0.20, 0.31), (-0.15, 1.295, 0.20, 0.31), (-0.47, 1.30, 0.20, 0.31)):
+        yd = _lerp_tab(_CM_BODY, z)[0]
+        right = [(0.0, top), (wt, top), (wb, yd), (wb, yd - 0.06), (0.0, yd - 0.06)]
+        cr.append([(x, y, z) for x, y in _nv_mirror(right)])
+    m.add(_shell(cr, "tint"))
+    # the roof block on the cabin
+    roof = lambda z, top: [(x, y, z) for x, y in _nv_mirror([(0.0, top), (0.12, top), (0.24, 1.35), (0.24, 1.30),
+                                                              (0.0, 1.30)])]
+    m.add(_shell([roof(-0.60, 1.48), roof(-1.16, 1.48), roof(-1.32, 1.43), roof(-1.38, 1.35)], "paint1"))
+    # the pods and the struts (one bar through the fuselage), the ventral fin (its foot slate)
+    m.add(_cm_pod(1))
+    m.add(_cm_pod(-1))
+    m.add(_shell([[(-0.93, y, -0.87), (0.93, y, -0.87), (0.93, y, -0.07), (-0.93, y, -0.07)] for y in (0.63, 0.89)],
+                 "paint1"))
+    fin = lambda y, z0, z1, w, c: [(w, y, z1 - c), (w, y, z0 + c), (w - c, y, z0), (c - w, y, z0), (-w, y, z0 + c),
+                                   (-w, y, z1 - c), (c - w, y, z1), (w - c, y, z1)]
+    m.add(_shell([fin(0.20, 0.92, 1.42, 0.11, 0.03), fin(0.50, 1.05, 1.31, 0.09, 0.03)],
+                 lambda i, j, c: SL if c[1] < 0.21 else "paint1"))
+    return finish(m, (1.54, 0.80, -0.80), (0.0, 0.82, -0.20),
+                  [(0.22, 1.75), (-0.22, 1.75), (1.24, -0.50), (-1.24, -0.50)], -1.84, engine_y=0.93)
 
 
 def hull_whale():

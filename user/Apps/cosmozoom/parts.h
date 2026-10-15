@@ -137,7 +137,7 @@ static const Pilot PILOTS[NPILOT] = {
 	{ "Aya Okafor",  "Volt",     "Volt",       0xFFD21F, 0x1E2A6A, "pilot_bolt",     { 4, 4, 3, 2, 6, 2 }, "22" },
 	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 4, 0, 4, 9, 1 }, "14" },
 	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 0, 4, 0, 0, 9, 3 }, "09" },
-	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 2, 3, 6, 2 }, "33" },
+	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 0, 3, 6, 2 }, "33" },
 	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 4, 0, 7, 0, 1 }, "18" },
 	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 4, 4, 1, 2, 1 }, "42" },
 };
