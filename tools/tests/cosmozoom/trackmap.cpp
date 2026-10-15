@@ -3,7 +3,8 @@
 // (start: green bar, boost pads: cyan, capsule rows: yellow, jumps: red, loops: white, tubes: teal, twists: orange
 // edges, tunnels: grey), the decor props as small squares. It also checks the layout and prints it: the length,
 // the heights, the tightest turn, the steepest slope, the crossings (and how far above each other they pass).
-//   trackmap track.trk out.ppm [t ...]     (each t: the road's centre, height and heading there -- for the decor)
+//   trackmap [-r] track.trk out.ppm [t ...]     (-r: the Remix, driven the other way round; each t: the road's
+//   centre, height and heading there -- for the decor)
 // Build: g++ -std=gnu++17 -O2 -w -Iuser -Iuser/Libs -o /tmp/trackmap tools/tests/cosmozoom/trackmap.cpp
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -19,6 +20,8 @@ static Track T, T0;
 static const int W = 720, H = 720;
 static unsigned px[W * H];
 
+// a stretch's width as it lies on the ground: a tube's is its diameter, not its round
+static float footW (const Seg &S) { return S.tube > 0.5f ? 2 * TUBE_R : S.w; }
 static void disc (float cx, float cy, float r, unsigned c)
 {
 	int x0 = (int) floorf (cx - r), x1 = (int) ceilf (cx + r), y0 = (int) floorf (cy - r), y1 = (int) ceilf (cy + r);
@@ -48,8 +51,10 @@ static unsigned heightCol (float f)
 
 int main (int argc, char **argv)
 {
-	if (argc < 3) { fprintf (stderr, "trackmap track.trk out.ppm [t ...]\n"); return 1; }
-	if (!T.load (argv[1])) { fprintf (stderr, "no track %s\n", argv[1]); return 1; }
+	bool rev = argc > 1 && !strcmp (argv[1], "-r");	// the Remix: driven the other way round
+	if (rev) { argv++; argc--; }
+	if (argc < 3) { fprintf (stderr, "trackmap [-r] track.trk out.ppm [t ...]\n"); return 1; }
+	if (!T.load (argv[1], false, rev)) { fprintf (stderr, "no track %s\n", argv[1]); return 1; }
 	const int n = T.n;
 	// ---- the checks
 	float maxc = 0; int maxci = 0;
@@ -95,7 +100,7 @@ int main (int argc, char **argv)
 			if (dd < 40 || (T.seg[j].flags & F_LOOP)) continue;
 			V3 d = T.seg[j].c - T.seg[i].c;
 			float hd = sqrtf (d.x * d.x + d.z * d.z);
-			float need = (T.seg[i].w + T.seg[j].w) * 0.5f + 2;
+			float need = (footW (T.seg[i]) + footW (T.seg[j])) * 0.5f + 2;
 			if (hd < need && hd < best) { best = hd; bj = j; bdy = d.y; }
 		}
 		if (bj >= 0 && !seen[i])
@@ -110,7 +115,7 @@ int main (int argc, char **argv)
 					int dd = abs (k - j); if (dd > n / 2) dd = n - dd;
 					if (dd < 40) continue;
 					V3 d = T.seg[j].c - T.seg[k].c;
-					if (sqrtf (d.x * d.x + d.z * d.z) < (T.seg[k].w + T.seg[j].w) * 0.5f + 2) { any = true; mdy = fminf (mdy, fabsf (d.y)); }
+					if (sqrtf (d.x * d.x + d.z * d.z) < (footW (T.seg[k]) + footW (T.seg[j])) * 0.5f + 2) { any = true; mdy = fminf (mdy, fabsf (d.y)); }
 				}
 				if (!any) break;
 				seen[k] = 1; k++;
@@ -119,6 +124,24 @@ int main (int argc, char **argv)
 		}
 	}
 	if (!nx) printf ("  no crossing\n");
+	// the pylons under a raised road (world.h: every 14th segment, down to the ground): one standing on a road
+	// that passes below?
+	if (strcmp (T.groundKind, "none"))
+		for (int i = 0; i < n; i += 14)
+		{
+			const Seg &A = T.seg[i];
+			if (A.flags & (F_LOOP | F_TWIST)) continue;
+			V3 top = A.c - A.u * (A.tube > 0.5f ? 2 * TUBE_R : 1.6f);
+			if (top.y - T.groundY < 3.0f) continue;
+			for (int j = 0; j < n; j++)
+			{
+				int dd = abs (i - j); if (dd > n / 2) dd = n - dd;
+				if (dd < 10 || T.seg[j].c.y > top.y - 2) continue;
+				V3 d = T.seg[j].c - top;
+				if (sqrtf (d.x * d.x + d.z * d.z) < footW (T.seg[j]) * 0.5f + 1.5f)
+				{ printf ("  pylon at t %.3f stands on the road at t %.3f  <-- IN THE WAY\n", (float) i / n, (float) j / n); break; }
+			}
+		}
 	for (int k = 3; k < argc; k++)
 	{
 		float t = (float) atof (argv[k]);

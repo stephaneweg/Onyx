@@ -4,7 +4,7 @@
 # sdcard/apps/cosmozoom.app/tracks/<id>.trk (the control points sampled along the drive, the features' t computed).
 # The layout is closed exactly: the lengths of the straights marked `free` are solved so the drive ends where it
 # began (the turns must add up to a whole turn -- or none, for a figure of eight).
-#   python3 tools/hoverkart/trackgen.py [id ...]        (no id: all of them)
+#   python3 tools/cosmozoom/trackgen.py [id ...]        (no id: all of them)
 # Check a circuit: tools/tests/cosmozoom/trackmap.cpp (the map, the crossings), racesim.cpp, racepic.cpp.
 #
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -17,8 +17,10 @@ class Course:
     """A drive: S (straight), R / L (an arc to the right / left: radius, degrees). Heading: yaw in degrees,
     the direction (sin, cos) in (x, z) -- the engine's frame, where turning right lowers the yaw."""
 
-    def __init__(self, cid, x=0.0, z=0.0, heading=0.0, y=0.0, step=55.0):
-        self.id, self.x0, self.z0, self.h0, self.y0, self.step = cid, x, z, heading, y, step
+    def __init__(self, cid, x=0.0, z=0.0, heading=0.0, y=0.0, step=55.0, scale=1.0):
+        """scale: the whole layout made bigger or smaller (the straights, the radii, the places of things along
+        and across the road; not the heights)."""
+        self.id, self.x0, self.z0, self.h0, self.y0, self.step, self.k = cid, x, z, heading, y, step, scale
         self.ops = []
         self.head = []
         self.feats = []
@@ -31,27 +33,27 @@ class Course:
         most, the fixed ones never."""
         if m:
             self.mark(m)
-        self.ops.append(dict(kind="S", L=length, free=free, fix=fix, **k)); return self
+        self.ops.append(dict(kind="S", L=length * self.k, free=free, fix=fix, **k)); return self
 
     def R(self, r, deg, m=None, **k):
         if m:
             self.mark(m)
-        self.ops.append(dict(kind="A", r=r, a=-deg, **k)); return self
+        self.ops.append(dict(kind="A", r=r * self.k, a=-deg, **k)); return self
 
     def L(self, r, deg, m=None, **k):
         if m:
             self.mark(m)
-        self.ops.append(dict(kind="A", r=r, a=deg, **k)); return self
+        self.ops.append(dict(kind="A", r=r * self.k, a=deg, **k)); return self
 
     def mark(self, name):
         self.ops.append(dict(kind="M", name=name)); return self
 
     # ---- what is on it
     def feat(self, kind, at, d=0.0, lane=None):
-        self.feats.append((kind, at, d, None, 0.0, lane)); return self
+        self.feats.append((kind, at, d * self.k, None, 0.0, lane)); return self
 
     def span(self, kind, a, b, da=0.0, db=0.0, extra=None):
-        self.feats.append((kind, a, da, b, db, extra)); return self
+        self.feats.append((kind, a, da * self.k, b, db * self.k, extra)); return self
 
     def line(self, text):
         self.lines.append(text); return self
@@ -59,7 +61,7 @@ class Course:
     def decor(self, model, at, d=0.0, lat=0.0, dy=0.0, yaw=0.0, scale=1.0, ground=False):
         """A prop placed from the road: at a mark + d metres, lat metres to the right, dy above the road (or on the
         ground: no y), yaw added to the road's heading."""
-        self.decors.append((model, at, d, lat, dy, yaw, scale, ground)); return self
+        self.decors.append((model, at, d * self.k, lat * self.k, dy, yaw, scale, ground)); return self
 
     def decorAbs(self, model, x, z, y=None, yaw=0.0, scale=1.0):
         """A prop at a place (y None: on the ground, its own size and heading)."""
@@ -105,6 +107,7 @@ class Course:
         adj = [i for i, o in enumerate(self.ops) if o["kind"] == "S" and not o["fix"]]
         base = self._walk({})[-1]
         rx, rz = base[1] - self.x0, base[2] - self.z0
+        self.residual = (rx, rz)
         poses0 = self._walk({})
         dirs, inv = [], []
         for i in adj:
@@ -224,7 +227,7 @@ class Course:
         return ((self.marks[name] + d) % self.total) / self.total
 
     def write(self):
-        o = ["# Cosmo Zoom! -- %s: made by tools/hoverkart/trackgen.py (edit the circuit there, then run it)." % self.head[0][1],
+        o = ["# Cosmo Zoom! -- %s: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it)." % self.head[0][1],
              "# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).", ""]
         for k, v in self.head:
             o.append("%-10s = %s" % (k, v))
@@ -284,7 +287,7 @@ class Course:
         path = os.path.join(OUT, self.id + ".trk")
         with open(path, "w") as f:
             f.write("\n".join(o))
-        print("%-10s %6.0f m  %3d points  straights stretched %s" % (self.id, self.total, len(self.pts), " ".join("%.0f>%.0f" % (a, b) for i, a, b in self.stretch if abs(a - b) > 5)))
+        print("%-10s %6.0f m  %3d points  gap as wished %+.0f %+.0f  stretched %s" % (self.id, self.total, len(self.pts), self.residual[0], self.residual[1], " ".join("%.0f>%.0f" % (a, b) for i, a, b in self.stretch if abs(a - b) > 5)))
 
 
 def header(c, **kv):
@@ -304,6 +307,18 @@ def circuit(f):
 # the circuits (DESIGN.md 7.3 / 7.4)
 # ======================================================================================================================
 
+# (A mark given to an op, m="name", is where that op begins; c.mark("name") alone: the place reached.)
+
+def ringOverTube(c, at, d, sc=2.1):
+    """A glowing ring round a tube (its axis 7 m under the road's crown)."""
+    c.decor("holo_ring", at, d, 0, -7 - 8 * sc, 0, sc)
+
+
+def gate(c, at, d, sc=1.25):
+    """A glowing ring standing over the road."""
+    c.decor("holo_ring", at, d, 0, -0.6, 0, sc)
+
+
 @circuit
 def harbour():
     # 1. Neon Harbour: the league's home, the tutorial -- wide and gentle, the harbour bridge, the jump between two
@@ -313,39 +328,39 @@ def harbour():
            groundkind="water", road="1A2A6C 1F3278", rails="FF2BD6 22E6FF", walls="16245E 22E6FF", neon="FF2BD6 22E6FF B8FF2E",
            city="0.9", width="18", laps="3", edge="FFFFFF")
     c.S(170, m="s1")
-    c.R(110, 95)                                # the first long sweeper; the harbour bridge rising
-    c.S(50, y=5, m="bridge")
+    c.R(110, 95)                                # the first long sweeper
+    c.S(50, y=5, m="bridge")                    # the harbour bridge
     c.L(130, 35, y=11)
-    c.R(130, 35, y=11, m="crest")
-    c.S(free=True, y=6, m="bridgeEnd")
+    c.R(130, 35, m="crest")
+    c.S(60, free=True, y=6)
     c.R(55, 85, y=1)                            # down to the piers
-    c.S(free=True, m="pier")                 # the two piers: the jump between them
-    c.mark("pierEnd")
-    c.R(60, 75)
-    c.L(80, 55, m="quay")                    # the quay's S-bend
+    c.S(120, m="pier")                          # the two piers: the jump between them
+    c.L(150, 20)
+    c.R(150, 20)
+    c.S(80, m="pier2")
+    c.R(60, 75, y=0)
+    c.L(80, 55, m="quay")                       # the quay's S-bend
     c.R(80, 70)
-    c.S(150, m="back")
+    c.S(150, free=True, m="back")
     c.R(70, 50)
     c.S(40)
     c.R(70, 40)
-    c.S(70)
-    c.feat("boost", "s1", -70, 0)
+    c.S(70, fix=True)
+    c.feat("boost", "s1", 100, 0)
     c.feat("items", "bridge", 20)
-    c.feat("jump", "pierEnd", -90)
-    c.feat("items", "quay", 10)
+    c.feat("jump", "pier", 75)
+    c.feat("items", "quay", 15)
     c.feat("boost", "back", 60, -0.4)
     c.feat("boost", "back", 60, 0.4)
-    # the props: the piers' cargo, the docked ships, the arches over the pier, the sea platforms
-    c.line(lambda c: "prop = kk_cargo_stack left 16 1.6 %.3f %.3f" % (c.t("pier", 10), c.t("pierEnd", -10)))
-    c.line(lambda c: "prop = street_lamp right 24 1 %.3f %.3f" % (c.t("pier"), c.t("pierEnd")))
+    c.line(lambda c: "prop = kk_cargo_stack left 16 1.6 %.3f %.3f" % (c.t("pier", 10), c.t("pier2", 70)))
     c.line("scatter = kk_landingpad 7 1.2")
     c.line("scatter = traffic_ship 6 7")
-    c.decor("neon_arch", "pier", 30, 0, 0, 0, 1.1)
-    c.decor("neon_arch", "pierEnd", -40, 0, 0, 0, 1.1)
-    c.decor("traffic_ship", "pier", 60, -45, 0, 10, 9, ground=True)
-    c.decor("traffic_ship", "pier", 150, -48, 0, -5, 11, ground=True)
-    c.decor("traffic_ship", "pier", 120, 40, 0, 180, 8, ground=True)
-    c.decor("holo_ring", "crest", 0, 0, -1.2, 0, 1.4)
+    c.decor("neon_arch", "pier", 20, 0, 0, 0, 1.1)
+    c.decor("neon_arch", "pier2", 60, 0, 0, 0, 1.1)
+    c.decor("traffic_ship", "pier", 40, -45, 0, 10, 9, ground=True)
+    c.decor("traffic_ship", "pier2", 20, -50, 0, -5, 11, ground=True)
+    c.decor("traffic_ship", "pier", 100, 42, 0, 180, 8, ground=True)
+    gate(c, "crest", 0, 1.4)
     c.decor("antenna_mast", "back", 40, -30, 0, 0, 1.2, ground=True)
     return c
 
@@ -353,7 +368,7 @@ def harbour():
 @circuit
 def domebay():
     # 2. Dome Bay: an ocean city of glass domes by day -- the cliff road, a tube flown above the sea on a long curve,
-    # the rolling waves (a jump on a crest), the sandbar's S-bend.
+    # the rolling waves (a jump off a crest), the sandbar's S-bend, the long sea front.
     c = Course("domebay")
     header(c, name="Dome Bay", name_fr="Baie des Dômes", time="day", sky="2F86F0 BFE6FF", ground="1FA6C9 1C9CBE",
            groundkind="water", road="6F86A8 788FB0", rails="FF2BD6 22E6FF", walls="F2E8D8 FF8A1F", neon="FF2BD6 22E6FF FF8A1F",
@@ -363,37 +378,40 @@ def domebay():
     c.S(60, y=6, m="cliff")
     c.L(95, 60, y=8)
     c.R(65, 100, y=12)
-    c.mark("tubeA")
-    c.S(150, y=14)
+    c.S(150, y=14, m="tubeA")                   # the tube above the sea
     c.L(230, 28, y=12)
     c.S(40)
     c.mark("tubeB")
     c.R(80, 95, y=3)
-    c.S(40, fix=True, y=1, m="waves")
-    c.S(50, y=5, m="crest1")
+    c.S(40, fix=True, y=1, m="waves")           # the waves
+    c.S(50, y=5); c.mark("crest1")
     c.S(50, y=1)
-    c.S(50, y=5, m="crest2")
+    c.S(50, y=5); c.mark("crest2")
     c.S(40, y=1)
-    c.R(60, 80)
-    c.L(70, 70, m="sandbar")
+    c.R(60, 80, y=0)
+    c.L(70, 70, m="sandbar")                    # the sandbar's S-bend
     c.R(70, 83)
-    c.S(300, free=True, m="east")
+    c.S(150, free=True, m="front")              # the sea front
+    c.L(300, 16)
+    c.R(300, 16)
+    c.S(60, free=True)
     c.R(65, 90)
-    c.S(80)
+    c.S(80, fix=True)
     c.feat("items", "s1", 90)
     c.span("tube", "tubeA", "tubeB", 0, 0)
-    c.feat("jump", "crest2", -18)
-    c.feat("boost", "crest1", -30, -0.3)
-    c.feat("boost", "east", 30, 0.3)
-    c.feat("items", "east", 80)
+    c.feat("boost", "crest1", -25, -0.3)
+    c.feat("jump", "crest2", -10)
+    c.feat("boost", "front", 40, 0.3)
+    c.feat("items", "front", 120)
+    c.feat("boost", "front", 250, -0.3)
     c.line("scatter = kk_dome 16 2.2")
     c.line("scatter = kk_water_storage 6 1.4")
     c.line("scatter = kk_landingpad 6 1.4")
-    c.decor("kk_dome", "tubeA", 120, -60, 0, 0, 3.5, ground=True)
-    c.decor("kk_dome", "tubeA", 220, 70, 0, 0, 4.0, ground=True)
+    c.decor("kk_dome", "tubeA", 100, -60, 0, 0, 3.5, ground=True)
+    c.decor("kk_dome", "tubeA", 200, 70, 0, 0, 4.0, ground=True)
     c.decor("antenna_mast", "sandbar", 0, -40, 0, 0, 1.4, ground=True)
-    c.decor("holo_ring", "tubeA", 70, 0, -7 - 8 * 2.1 + 0.0, 0, 2.1)
-    c.decor("holo_ring", "tubeA", 170, 0, -7 - 8 * 2.1, 0, 2.1)
+    ringOverTube(c, "tubeA", 70)
+    ringOverTube(c, "tubeA", 160)
     c.decor("neon_arch", "waves", 10, 0, 0, 0, 1.0)
     return c
 
@@ -407,37 +425,35 @@ def foundry():
            groundkind="city", road="4A5A8A 52628F", rails="FF8A1F 22E6FF", walls="C9B8A0 FFE14D", neon="FFE14D FF8A1F 22E6FF",
            city="0.8", width="15", laps="3", edge="FFFFFF")
     c.S(140, m="s1")
-    c.R(28, 90)
+    c.R(28, 90)                                 # the steps: right angles
     c.S(90, m="step1")
     c.L(28, 90)
     c.S(60)
     c.R(28, 90)
-    c.S(free=True, m="conveyor")
-    c.R(70, 90, y=6)
-    c.S(free=True, y=14, m="deck")
-    c.R(30, 90, y=14)
+    c.S(200, free=True, m="conveyor")
+    c.R(70, 90, y=6)                            # up to the upper deck
+    c.S(230, free=True, y=14, m="deck")
+    c.R(30, 90)
     c.S(60, y=8, m="dive")
-    c.S(130, y=0, m="hall")
+    c.S(130, y=0, m="hall")                     # the assembly hall
     c.L(45, 60)
-    c.R(45, 60, m="crates")
-    c.S(110)
+    c.R(45, 60)
+    c.S(110, m="crates")
     c.R(55, 90)
-    c.S(70)
-    c.feat("boost", "s1", -80, 0)
+    c.S(70, fix=True)
+    c.feat("boost", "s1", 60, 0)
     c.feat("items", "step1", 40)
-    c.feat("boost", "conveyor", 40, 0.5)
-    c.feat("boost", "conveyor", 40, -0.5)
-    c.span("tunnel", "hall", "crates", -20, -60)
+    c.feat("boost", "conveyor", 50, 0.5)
+    c.feat("boost", "conveyor", 50, -0.5)
+    c.feat("items", "deck", 40)
+    c.span("tunnel", "hall", "hall", -10, 180)
     c.feat("jump", "crates", 45)
-    c.feat("items", "deck", 30)
     c.line(lambda c: "prop = kk_cargo_stack both 14 1.5 %.3f %.3f" % (c.t("crates"), c.t("crates", 110)))
     c.line(lambda c: "prop = kk_water_storage left 45 1.3 %.3f %.3f" % (c.t("conveyor"), c.t("conveyor", 200)))
     c.line("scatter = kk_structure_tall 14 1.6")
     c.line("scatter = kk_cargo_stack 30 2")
     c.line("scatter = antenna_mast 8 1")
-    c.decor("neon_arch", "hall", -20, 0, 0, 0, 1.0)
-    c.decor("kk_basemodule_a", "hall", 40, 0, 0, 0, 2.2, ground=True)
-    c.decor("kk_basemodule_c", "hall", 100, 0, 0, 90, 2.2, ground=True)
+    c.decor("neon_arch", "dive", 40, 0, 0, 0, 1.0)
     return c
 
 
@@ -449,24 +465,26 @@ def jungle():
     header(c, name="Glow Jungle", name_fr="Jungle Lumineuse", time="night", sky="0B2A4A 1F6A6A", ground="0F3A2A 12442F",
            groundkind="jungle", road="1A2A6C 1F3278", rails="B8FF2E 22E6FF", walls="16245E B8FF2E", neon="B8FF2E 22E6FF FF2BD6",
            city="0.25", width="15", laps="3", edge="FFFFFF")
-    c.S(free=True, m="under")                # the low road, under the bridge
-    c.R(85, 90, y=0)
-    c.S(70, m="fallTop")
-    c.R(70, 90, y=0)
-    c.S(70)
-    c.R(85, 90)
-    c.S(free=True, y=14, m="bridge")         # up over the low road
-    c.L(85, 90, y=8)
-    c.S(70, m="vines")
-    c.L(70, 90, y=7)
-    c.S(70, y=7, m="falls")
-    c.L(85, 90, y=0)
+    c.S(260, free=True, m="under")              # the low road, under the bridge
+    c.R(100, 90)
+    c.S(86, m="lower")
+    c.R(80, 90)
+    c.S(90)
+    c.R(100, 90, y=12)
+    c.S(290, free=True, y=14, m="bridge")       # up over the low road
+    c.L(100, 90, y=10)
+    c.S(90, m="vines")                          # the vine tunnel
+    c.L(80, 90, y=8)
+    c.S(70, m="falls")
+    c.S(60, y=1)                                # the waterfall
+    c.L(100, 90, y=0)
     c.S(90)
     c.feat("items", "under", 60)
-    c.feat("boost", "bridge", -60, 0)
-    c.span("tunnel", "vines", "vines", -10, 90)
-    c.feat("jump", "falls", 40)
-    c.feat("items", "fallTop", 30)
+    c.feat("boost", "lower", 30, 0)
+    c.feat("boost", "bridge", 40, 0)
+    c.span("tunnel", "vines", "vines", -10, 100)
+    c.feat("items", "vines", 120)
+    c.feat("jump", "falls", 62)
     c.line("scatter = kn_tree 60 2.2")
     c.line("scatter = kn_tree_pine 40 2.8")
     c.line("prop = kn_tree both 16 1.6")
@@ -476,26 +494,26 @@ def jungle():
 
 @circuit
 def crystal():
-    # 5. Crystal Moon: ice under the aurora -- the high ridge, the ski jump down the cliff, the valley's hairpins (the
+    # 5. Crystal Moon: ice under the aurora -- the high ridge, the ski jump off the cliff, the valley's hairpins (the
     # ice cave through the middle peak), the long climb back.
     c = Course("crystal", heading=-90, y=18)
     header(c, name="Crystal Moon", name_fr="Lune de Cristal", time="aurora", sky="0B1A4A 3FD9A0", ground="DCEBFF D0E2FA",
            groundkind="snow", road="2A4A9A 31529F", rails="8A5CFF 22E6FF", walls="E8F2FF 8A5CFF", neon="8A5CFF 22E6FF 3FD9A0",
            city="0.2", width="15", laps="3", edge="FFFFFF")
-    c.S(260, free=True, y=18, m="ridge")
+    c.S(260, free=True, m="ridge")
     c.L(55, 90, y=17)
-    c.S(70, y=15, m="cliff")
+    c.S(70, y=15, m="cliff")                    # the ski jump
     c.S(110, y=5)
     c.S(100, free=True, y=0)
-    c.L(60, 150, y=0)
+    c.L(60, 150)
     c.S(200, y=6, m="up1")
-    c.R(22, 120, y=8, m="cave")
+    c.R(22, 120, y=8, m="cave")                 # the first hairpin, in the ice cave
     c.S(200, y=0, m="down")
-    c.L(22, 120, y=0, m="pin2")
+    c.L(22, 120, m="pin2")
     c.S(200, y=9, m="climb")
     c.S(200, y=18)
-    c.L(60, 120, y=18)
-    c.S(60, fix=True, y=18)
+    c.L(60, 120)
+    c.S(60, fix=True)
     c.feat("items", "ridge", 120)
     c.feat("jump", "cliff", 30)
     c.feat("boost", "up1", 40, 0)
@@ -514,45 +532,43 @@ def crystal():
 
 @circuit
 def asteroids():
-    # 6. Asteroid Rings: a mining colony in a planet's rings, in deep space -- low-gravity jumps, the hollow asteroid,
-    # the twisting ribbon, the tube between two rocks; climbs and dives in the void.
-    c = Course("asteroids")
+    # 6. Asteroid Rings: a mining colony in a planet's rings, in deep space -- the hollow asteroid, the low-gravity
+    # jumps down a long dive, the twisting ribbon, the tube between two rocks; climbs and dives in the void.
+    c = Course("asteroids", scale=0.9)
     header(c, name="Asteroid Rings", name_fr="Anneaux d'Astéroïdes", time="space", sky="05092A 3A2A6A", ground="5A4A6A 4F4060",
            groundkind="none", road="1A2A6C 1F3278", rails="FF2BD6 FFE14D", walls="2A2A4A FFE14D", neon="FF2BD6 FFE14D 22E6FF",
            city="0", width="16", laps="3", edge="FFFFFF")
-    c.S(140, m="s1")
-    c.R(90, 70, y=8)
-    c.S(70, y=18)
-    c.L(70, 50, y=24, m="rock")
-    c.S(130, y=26, m="rockEnd")
-    c.R(80, 110, y=14)
-    c.S(free=True, y=-6, m="jumps")
+    c.S(200, free=True, m="s1")
+    c.R(90, 70, y=10)
+    c.S(80, y=22)
+    c.L(70, 50, y=28, m="rock")                 # into the hollow asteroid
+    c.S(130)
+    c.R(80, 110, y=18)
+    c.S(220, fix=True, y=-8, m="jumps")        # the dive: low-gravity jumps
     c.R(100, 60, y=-14)
     c.L(80, 40, y=-16)
-    c.S(170, y=-16, m="twist")
+    c.S(200, fix=True, m="twist")              # the twisting ribbon
     c.R(90, 100, y=-6)
-    c.mark("tubeA")
-    c.S(free=True, y=8)
+    c.S(330, free=True, y=8, m="tubeA")         # the tube between two rocks
     c.L(250, 20, y=10)
-    c.mark("tubeB")
-    c.R(70, 130, y=2)
-    c.S(90, y=0)
-    c.feat("boost", "s1", -70, 0)
-    c.span("tunnel", "rock", "rockEnd", 20, -10)
-    c.feat("items", "rockEnd", 50)
-    c.feat("jump", "jumps", 30)
-    c.feat("jump", "jumps", 110)
-    c.span("twist", "twist", "twist", 10, 160, 1)
-    c.span("tube", "tubeA", "tubeB", 0, 0)
-    c.feat("items", "tubeB", 20)
-    # the void's props: rocks floating, the mining stations, the beacons
+    c.R(70, 130, y=2, m="tubeB")
+    c.S(90, fix=True, y=0)
+    c.feat("boost", "s1", 70, 0)
+    c.span("tunnel", "rock", "rock", 30, 170)
+    c.feat("items", "rock", 200)
+    c.feat("jump", "jumps", 40)
+    c.feat("jump", "jumps", 140)
+    c.span("twist", "twist", "twist", 20, 190, 1)
+    c.span("tube", "tubeA", "tubeB", 0, 10)
+    c.feat("items", "tubeB", 90)
+    c.feat("boost", "jumps", 100, -0.4)
     import random
     rnd = random.Random(6)
-    c.decor("kk_rock_a", "rock", 60, 0, -14, 0, 9)          # the hollow asteroid, round the tunnel
-    c.decor("kk_rocks_a", "rock", 90, 0, -10, 90, 7)
-    for k in range(18):
+    c.decor("kk_rock_a", "rock", 80, 0, -14, 0, 9)          # the hollow asteroid round the tunnel
+    c.decor("kk_rocks_a", "rock", 120, 0, -10, 90, 7)
+    for k in range(20):
         m = rnd.choice(["kk_rock_a", "kk_rocks_a"])
-        c.decor(m, rnd.choice(["s1", "jumps", "twist", "tubeA", "rockEnd"]), rnd.uniform(0, 120), rnd.choice([-1, 1]) * rnd.uniform(35, 120),
+        c.decor(m, rnd.choice(["s1", "jumps", "twist", "tubeA", "rock"]), rnd.uniform(0, 140), rnd.choice([-1, 1]) * rnd.uniform(35, 130),
                 rnd.uniform(-60, 40), rnd.uniform(0, 360), rnd.uniform(3, 9))
     c.decor("kk_basemodule_a", "jumps", 60, -70, -30, 0, 2.5)
     c.decor("kk_structure_tall", "jumps", 60, -70, -12, 0, 1.5)
@@ -561,8 +577,9 @@ def asteroids():
     c.decor("kk_landingpad", "tubeA", 60, 70, -38, 30, 2.5)
     c.decor("antenna_mast", "s1", 40, 40, -30, 0, 1.2)
     c.decor("kk_dome", "twist", 80, -60, -40, 0, 3)
-    c.decor("holo_ring", "tubeA", 40, 0, -7 - 8 * 2.1, 0, 2.1)
-    c.decor("holo_ring", "tubeB", -40, 0, -7 - 8 * 2.1, 0, 2.1)
+    ringOverTube(c, "tubeA", 50)
+    ringOverTube(c, "tubeA", 140)
+    gate(c, "s1", 30)
     c.decor("traffic_ship", "s1", 80, -50, 15, 90, 5)
     c.decor("traffic_ship", "twist", 40, 40, 20, 270, 5)
     return c
@@ -578,31 +595,30 @@ def skyline():
            city="1", width="15", laps="3", edge="FFFFFF")
     c.S(150, m="s1")
     c.R(80, 90)
-    c.S(180, m="loopRoad")
+    c.S(178, m="loopRoad")                      # the loop
     c.L(70, 40)
     c.R(70, 40)
     c.S(80, fix=True, m="spiral")
-    c.R(48, 270, y=16, bank=6)
-    c.S(70, fix=True, y=16, bank=0, m="spiralEnd")
+    c.R(48, 270, y=16, bank=6, m="spiralR")     # the spiral round the tower, over its own way in
+    c.S(70, fix=True, bank=0, m="spiralEnd")
     c.L(70, 90, y=14)
-    c.mark("tubeA")
-    c.S(300, free=True, y=14)
-    c.mark("tubeB")
-    c.L(70, 90, y=6)
-    c.S(400, free=True, y=2, m="avenue")
+    c.S(300, free=True, m="tubeA")              # the tube across the central gap
+    c.L(70, 90, y=4)
+    c.S(400, free=True, y=0, m="avenue")        # the north avenue
     c.L(70, 90)
     c.S(120, m="top")
     c.L(70, 90)
-    c.S(70)
+    c.S(70, fix=True)
     c.feat("items", "s1", 90)
     c.feat("loop", "loopRoad", 50)
     c.feat("boost", "spiral", 30, 0)
-    c.span("tube", "tubeA", "tubeB", 0, 0)
+    c.span("tube", "tubeA", "tubeA", 20, 250)
     c.feat("items", "avenue", 40)
     c.span("twist", "avenue", "avenue", 130, 330, 1)
     c.feat("boost", "top", 50, 0.4)
-    c.decor("holo_ring", "loopRoad", 30, 0, -1, 0, 1.25)
-    c.line("prop = billboard_wall both 60 1.4")
+    gate(c, "loopRoad", 30)
+    c.decor("tower_round", "spiralR", 0, 48, 0, 0, 1.6, ground=True)
+    ringOverTube(c, "tubeA", 120, 2.4)
     return c
 
 
@@ -610,35 +626,38 @@ def skyline():
 def dunes():
     # 8. Twin Sun Dunes: a desert planet at sunset -- big dune crests and their jumps, long sweeping curves, the
     # canyon tunnel, the outpost's wind turbines.
-    c = Course("dunes")
+    c = Course("dunes", scale=0.92)
     header(c, name="Twin Sun Dunes", name_fr="Dunes des Deux Soleils", time="dusk", sky="3A3A9A FF9A5A", ground="F2B878 E8AE70",
            groundkind="sand", road="8A7A9A 92829F", rails="FF4FA0 FFE14D", walls="F2D8B0 FF8A1F", neon="FF8A1F FF4FA0 FFE14D",
            city="0.2", width="16", laps="3", edge="FFFFFF")
     c.S(110, m="s1")
-    c.S(80, y=9, m="dune1")
+    c.S(80, y=9); c.mark("dune1")
     c.R(110, 60, y=4)
     c.S(80, y=2)
     c.L(90, 70, y=6)
-    c.S(100, y=12, m="dune2")
+    c.S(100, y=12); c.mark("dune2")
     c.R(90, 120, y=4)
     c.S(100, y=0, m="flat")
     c.R(140, 50, y=8)
-    c.S(120, y=14, m="dune3")
-    c.L(70, 80, y=3, m="canyon")
+    c.S(120, y=14); c.mark("dune3")
+    c.L(70, 80, y=3, m="canyon")                # the canyon
     c.R(70, 100, y=0)
     c.S(200, free=True, y=6, m="north")
     c.R(80, 90, y=10)
-    c.S(380, free=True, y=3, m="top")
-    c.R(90, 90, y=0)
+    c.S(120, y=4, m="top")
+    c.L(250, 22, y=10)
+    c.R(250, 22, y=4)
+    c.S(150, free=True, y=0)
+    c.R(90, 90)
     c.S(80, fix=True)
-    c.feat("jump", "dune1", -12)
+    c.feat("jump", "dune1", -10)
+    c.feat("boost", "dune2", -60, -0.4)
     c.feat("items", "flat", 40)
-    c.feat("jump", "dune3", -15)
-    c.feat("boost", "north", 30, 0)
+    c.feat("jump", "dune3", -10)
     c.span("tunnel", "canyon", "canyon", 0, 150)
+    c.feat("boost", "north", 30, 0)
     c.feat("items", "top", 60)
-    c.feat("boost", "top", 200, 0.4)
-    c.feat("boost", "dune2", -50, -0.4)
+    c.feat("boost", "top", 250, 0.4)
     c.line("scatter = kk_windturbine 14 1.6")
     c.line("scatter = kk_solarpanel 18 2")
     c.line("scatter = kk_rocks_a 30 3")
@@ -653,36 +672,35 @@ def dunes():
 
 @circuit
 def lava():
-    # 9. Lava Moon: a volcano moon at night -- the corkscrew tube round the cone, the lava-rock jumps, the tunnel
-    # through the black rock, the glowing plain.
+    # 9. Lava Moon: a volcano moon at night -- the corkscrew tube up round the cone, the long dive through the black
+    # rock's tunnel, the lava-rock jumps, the glowing plain.
     c = Course("lava")
     header(c, name="Lava Moon", name_fr="Lune de Lave", time="night", sky="1A1440 A0402A", ground="2A1A2A 3A1A22",
            groundkind="rock", road="1A2A6C 1F3278", rails="FF8A1F 22E6FF", walls="2A2440 FF8A1F", neon="FF8A1F 22E6FF FF2BD6",
            city="0.15", width="15", laps="3", edge="FFFFFF")
     c.S(150, m="s1")
-    c.R(90, 90)
+    c.R(90, 70)
     c.S(110, m="plain")
-    c.L(80, 50)
-    c.R(80, 50)
+    c.L(80, 40)
+    c.R(70, 100)
     c.S(90, m="rocks")
-    c.R(70, 90, y=2)
-    c.S(150, free=True, y=2, m="toCone")
-    c.mark("tubeA")
-    c.R(55, 450, y=32, m="tubeB")
-    c.S(60, fix=True, y=30)
-    c.S(250, free=True, y=4, m="tunnel")
-    c.R(70, 90)
+    c.R(70, 30, y=2)
+    c.S(150, free=True, m="toCone")
+    c.R(55, 400, y=30, m="tubeA")               # the corkscrew round the volcano
+    c.mark("tubeB")
+    c.S(60, fix=True, y=28)
+    c.S(250, free=True, y=4, m="tunnel")        # the dive through the black rock
+    c.R(160, 160, y=0)
     c.S(150, m="lavaJump")
-    c.L(60, 60)
-    c.R(60, 60)
     c.S(80, fix=True)
     c.feat("items", "s1", 90)
     c.feat("boost", "plain", 40, 0)
     c.feat("jump", "rocks", 40)
     c.span("tube", "tubeA", "tubeB", 0, 0)
-    c.span("tunnel", "tunnel", "tunnel", 100, 230)
+    c.span("tunnel", "tunnel", "tunnel", 90, 230)
     c.feat("items", "lavaJump", 20)
-    c.feat("jump", "lavaJump", 90)
+    c.feat("jump", "lavaJump", 100)
+    c.decor("kk_rock_a", "tubeA", 0, 55, 0, 0, 8, ground=True)     # the volcano, in the corkscrew
     c.line("scatter = kk_rocks_a 40 3")
     c.line("scatter = kk_rock_a 20 5")
     c.line("scatter = kk_structure_tall 6 1.8")
@@ -694,26 +712,25 @@ def lava():
 def cylinder():
     # 10. Hyper Cylinder: a tube course above the clouds by day -- three long tubes on wide curves, the short flat
     # links, the jump between two tubes, the spirals of speed pads.
-    c = Course("cylinder")
+    c = Course("cylinder", scale=0.93)
     header(c, name="Hyper Cylinder", name_fr="Hyper Cylindre", time="day", sky="1F6FEB BFE6FF", ground="FFFFFF F2F6FF",
            groundkind="clouds", road="6F86A8 788FB0", rails="FF2BD6 22E6FF", walls="F2F6FF FF2BD6", neon="FF2BD6 22E6FF B8FF2E",
            city="0.7", width="16", laps="3", edge="FFFFFF")
     c.S(90, fix=True, m="s1")
-    c.mark("tube1a")
-    c.S(200, free=True, y=8)
-    c.R(170, 50, y=14)
+    c.S(120, y=8, m="tube1a")
+    c.R(220, 100, y=14)
+    c.S(60)
     c.mark("tube1b")
-    c.R(45, 40, y=12)
-    c.S(70, fix=True, y=12, m="gap")
-    c.mark("tube2a")
-    c.S(260, y=8)
-    c.R(180, 90, y=18)
-    c.S(240, y=20)
+    c.R(45, 35, y=12)
+    c.S(70, fix=True, m="gap")
+    c.S(140, free=True, y=10, m="tube2a")
+    c.L(200, 45, y=18)
+    c.R(160, 140, y=20)
+    c.S(100, free=True)
     c.mark("tube2b")
-    c.R(45, 90, y=18, m="corner")
-    c.mark("tube3a")
-    c.S(250, free=True, y=10)
-    c.R(170, 60, y=2)
+    c.R(45, 45, y=18, m="corner")
+    c.S(200, free=True, y=10, m="tube3a")
+    c.R(200, 55, y=2)
     c.S(80, y=0)
     c.mark("tube3b")
     c.R(60, 30)
@@ -728,6 +745,8 @@ def cylinder():
         c.feat("boost", "tube3a", 70 + 22 * k, 0.6 - 0.3 * k)
     c.feat("boost", "tube3b", 40, 0)
     c.feat("items", "tube2a", 120)
+    for at, d in (("tube1a", 60), ("tube2a", 60), ("tube2a", 330), ("tube3a", 150)):
+        ringOverTube(c, at, d, 2.4)
     return c
 
 
@@ -739,34 +758,37 @@ def carnival():
     header(c, name="Star Carnival", name_fr="Fête Spatiale", time="dusk", sky="2A1A6A FF6FB0", ground="3A2A5A 43325F",
            groundkind="city", road="2A3A7A 32427F", rails="FFE14D FF2BD6", walls="F2E8D8 FFE14D", neon="FFE14D FF2BD6 B8FF2E",
            city="0.4", width="16", laps="3", edge="FFFFFF")
-    c.S(140, m="s1")
+    c.S(150, m="s1")
     c.R(70, 60)
-    c.S(80, m="jump")
+    c.S(90, m="jumpRd")
     c.L(55, 110)
-    c.S(50)
-    c.R(60, 160)
-    c.S(170, m="loopRoad")
+    c.S(60)
+    c.R(60, 150)
+    c.S(200, fix=True, m="loopRd")              # the loop through the giant ring
     c.R(70, 70)
-    c.S(free=True, m="mid")
+    c.S(180, fix=True, m="mid")
     c.L(60, 100)
-    c.R(60, 130)
-    c.mark("tubeA")
-    c.S(free=True, y=10)
-    c.mark("tubeB")
+    c.R(60, 130, y=10)
+    c.S(200, free=True, m="tubeA")              # the tube through the big wheel's hub
     c.R(70, 80, y=4)
-    c.S(90, m="bumper")
-    c.R(70, 70)
-    c.S(70)
+    c.S(380, free=True, m="bumper")
+    c.R(70, 80, y=0)
+    c.S(70, fix=True)
     c.feat("items", "s1", 90)
-    c.feat("jump", "jump", 40)
-    c.feat("loop", "loopRoad", 60)
-    c.feat("boost", "loopRoad", 20, 0)
-    c.span("twist", "mid", "mid", 10, 170, 1)
-    c.span("tube", "tubeA", "tubeB", 0, 0)
-    c.feat("items", "bumper", 20)
-    c.feat("items", "bumper", 60)
-    c.feat("boost", "bumper", -60, 0.4)
-    c.decor("holo_ring", "loopRoad", 40, 0, -1, 0, 1.3)
+    c.feat("jump", "jumpRd", 45)
+    c.feat("boost", "loopRd", 20, 0)
+    c.feat("loop", "loopRd", 70)
+    c.span("twist", "mid", "mid", 25, 160, 1)
+    c.span("tube", "tubeA", "tubeA", 0, 200)
+    c.feat("items", "bumper", 120)
+    c.feat("items", "bumper", 160)
+    c.feat("items", "bumper", 200)
+    c.feat("boost", "s1", 40, 0.4)
+    gate(c, "loopRd", 50, 1.4)
+    ringOverTube(c, "tubeA", 100, 5.0)          # the big wheel
+    ringOverTube(c, "tubeA", 104, 4.6)
+    c.line("prop = neon_arch both 90 0.5")
+    c.line("scatter = holo_ring 10 1.5")
     return c
 
 
@@ -780,29 +802,28 @@ def aurora():
            city="0.15", width="15", laps="3", edge="FFFFFF")
     c.S(140, m="s1")
     c.R(80, 80)
-    c.S(80, m="roots")
+    c.S(90, m="roots")                          # under the roots
     c.L(70, 70)
-    c.S(110, m="rootJump")
+    c.S(120, m="rootJump")
     c.R(60, 120)
-    c.mark("tubeA")
-    c.S(free=True, y=20)
-    c.L(150, 40, y=30)
+    c.S(220, fix=True, y=22, m="tubeA")         # the tube up the giant trunk
+    c.L(150, 40, y=32)
     c.mark("tubeB")
-    c.S(80, y=26)
+    c.S(80, y=28)
     c.R(70, 140, y=12)
-    c.S(free=True, y=2, m="dive")
-    c.L(60, 90)
+    c.S(260, free=True, y=2, m="dive")          # the long dive
+    c.L(60, 90, y=0)
     c.R(55, 150)
-    c.S(100, m="walk")
+    c.S(120, free=True, m="walk")
     c.R(80, 70)
-    c.S(80)
+    c.S(80, fix=True)
     c.feat("items", "s1", 90)
-    c.span("tunnel", "roots", "roots", -10, 90)
+    c.span("tunnel", "roots", "roots", -10, 100)
     c.feat("jump", "rootJump", 60)
     c.span("tube", "tubeA", "tubeB", 0, 0)
     c.feat("boost", "dive", 40, 0)
     c.feat("items", "walk", 40)
-    c.feat("boost", "walk", -60, -0.4)
+    c.feat("boost", "walk", 80, -0.4)
     c.line("scatter = kn_tree_pine 70 4")
     c.line("scatter = kn_tree 50 3")
     c.line("prop = kn_tree_pine both 22 2.5")
@@ -818,31 +839,35 @@ def ribbon():
            groundkind="none", road="22378A 2A3F92", rails="FF2BD6 22E6FF", walls="16245E 22E6FF", neon="FF2BD6 22E6FF B8FF2E",
            city="0", width="15", laps="3", edge="FFFFFF")
     c.S(200, fix=True, m="s1")
-    c.R(90, 90, y=15)
-    c.S(180, y=15, m="loop1")
-    c.L(80, 60, y=25)
+    c.R(90, 70, y=12)
+    c.S(160, m="loop1")
+    c.L(80, 80, y=25)
     c.S(120, fix=True, y=30, m="jumps")
-    c.R(70, 150, y=20)
-    c.S(250, free=True, y=0, m="twist1")
-    c.mark("spiral")
-    c.R(55, 450, y=-45)
+    c.R(60, 160, y=20)
+    c.S(260, free=True, y=0, m="twist1")
+    c.R(55, 450, y=-45, m="spiral")             # the corkscrew tube
     c.mark("spiralEnd")
-    c.S(450, free=True, y=-10, m="top")
-    c.R(80, 90, y=0)
+    c.S(300, free=True, y=-10, m="top")
+    c.R(90, 120, y=0)
     c.S(60, fix=True)
-    c.feat("boost", "s1", -110, 0)
-    c.feat("boost", "s1", -80, 0)
-    c.feat("boost", "s1", -50, 0)
+    c.feat("boost", "s1", 60, 0)
+    c.feat("boost", "s1", 90, 0)
+    c.feat("boost", "s1", 120, 0)
     c.feat("loop", "loop1", 60)
-    c.feat("items", "jumps", -20)
-    c.feat("jump", "jumps", 20)
-    c.feat("jump", "jumps", 80)
+    c.feat("items", "jumps", 5)
+    c.feat("jump", "jumps", 40)
+    c.feat("jump", "jumps", 95)
     c.span("twist", "twist1", "twist1", 30, 220, 1)
+    c.feat("jump", "twist1", 330)
     c.span("tube", "spiral", "spiralEnd", 0, 0)
     c.span("twist", "top", "top", 20, 180, 1)
-    c.feat("loop", "top", 230)
-    c.feat("items", "top", 330)
-    c.feat("jump", "top", 380)
+    c.feat("loop", "top", 240)
+    c.feat("items", "top", 340)
+    c.feat("jump", "top", 390)
+    gate(c, "s1", 20, 1.3)
+    gate(c, "loop1", 40, 1.3)
+    gate(c, "top", 70, 1.3)
+    gate(c, "top", 200, 1.3)
     return c
 
 

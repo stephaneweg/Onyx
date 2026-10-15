@@ -3313,7 +3313,10 @@ pilots: results, events — `g++ -std=gnu++17 -O2 -Iuser -Iuser/Libs`), `racepic
 software renderer), `objview.cpp` (a model as the game draws it, four sides: the modeller's preview),
 `trackmap.cpp` (a circuit seen from above), and `tools/tests/cosmozoom/sim.sh OUT.png "SCRIPT" [ARGS]` (the real app
 on the desktop simulator's stand-in kernel: menus, HUD, everything; `SIM_SCREEN=1920x1080` for a 1280 × 720 window).
-The models are made by Python scripts (`python3 tools/cosmozoom/models/build_all.py --sheets`), the icon by
+The circuits are made by `python3 tools/cosmozoom/trackgen.py [id...]` (each circuit described as a drive -- straights,
+arcs, heights, features at marks -- written as `sdcard/apps/cosmozoom.app/tracks/<id>.trk`: change the generator, not
+the file; `trackmap.cpp` checks a layout, `tracksheet.py` makes `docs/cosmozoom/tracks.png`), the models by Python
+scripts (`python3 tools/cosmozoom/models/build_all.py --sheets`), the icon by
 `tools/icons/cosmozoom_icon.sh`.
 
 ### Screenshot, the capture tool (`user/Apps/screenshot`)

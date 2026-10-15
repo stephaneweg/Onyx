@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# mockups.py -- the design mock-ups of Cosmo Zoom, the anti-gravity racer of Onyx (docs/hoverkart/DESIGN.md).
+# mockups.py -- the design mock-ups of Cosmo Zoom, the anti-gravity racer of Onyx (docs/cosmozoom/DESIGN.md).
 #
-#   python3 tools/hoverkart/mockups.py            -> docs/hoverkart/mockups/*.png
-#   python3 tools/hoverkart/mockups.py title      -> only the pictures whose name holds "title"
+#   python3 tools/cosmozoom/mockups.py            -> docs/cosmozoom/mockups/*.png
+#   python3 tools/cosmozoom/mockups.py title      -> only the pictures whose name holds "title"
 #
 # Everything is drawn by this script with Pillow (no picture is read): the title screen, the cup selection, the
 # hangar, a race and a tube section with their HUD, the split screen, the sheets of the hulls, the parts, the
@@ -24,7 +24,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-OUT = os.path.join(ROOT, "docs", "hoverkart", "mockups")
+OUT = os.path.join(ROOT, "docs", "cosmozoom", "mockups")
 FONT_DIRS = [os.path.join(ROOT, "sdcard", "res", "fonts"), "/usr/share/fonts/truetype/dejavu"]
 S = 2  # supersampling: drawn twice as big, then reduced (smooth edges)
 

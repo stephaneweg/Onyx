@@ -5,7 +5,7 @@ using namespace cz;
 static Track T; static World W; static ModelLib lib; static Frame F; static TexStore tex;
 int main (int argc, char **argv)
 {
-	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/test.trk";
+	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/harbour.trk";
 	float s = argc > 2 ? (float) atof (argv[2]) : 0;
 	const char *out = argc > 3 ? argv[3] : "/tmp/view.ppm";
 	snprintf (lib.dir, sizeof lib.dir, "sdcard/apps/cosmozoom.app/models");

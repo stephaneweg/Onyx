@@ -256,6 +256,14 @@ struct World
 		V3 top = A.c - A.u * (A.tube > 0.5f ? 2 * TUBE_R : 1.6f);
 		if (top.y - T.groundY < 3.0f) return;
 		V3 bot (top.x, T.groundY, top.z);
+		// not through a road below (a crossing, a corkscrew's lower coil)
+		for (int j = 0; j < T.n; j++)
+		{
+			const Seg &S = T.seg[j];
+			if (S.c.y > top.y - 3) continue;
+			float dx = S.c.x - top.x, dz = S.c.z - top.z, rr = S.w * 0.5f + 3 + (S.tube > 0.5f ? TUBE_R : 0);
+			if (dx * dx + dz * dz < rr * rr) return;
+		}
 		box (L, top, bot, 0.7f, rgbMix (T.walls[0], 0xFFFFFF, 0.2f));
 		box (L, bot + V3 (0, 1.2f, 0), bot, 1.8f, rgbScale (T.walls[0], 0.8f));
 		int k = 0;
@@ -399,7 +407,8 @@ struct World
 			float yaw = atan2f (-S.r.x * side, -S.r.z * side);
 			place (lib.get ("street_lamp", 0xFF000000u, 0xFF000000u, 0), at (p, yaw, 1, 1, 1), i / CHUNK);
 		}
-		// the far city: a ring of towers beyond, and highways
+		// the far city: a ring of towers beyond, and highways (a real city only)
+		if (T.city < 0.5f) return;
 		float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
 		float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 140;
 		for (int k = 0; k < 40; k++)

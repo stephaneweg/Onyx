@@ -2,10 +2,10 @@
 #
 # preview.py -- the modeller's previews: a model (or a whole ship assembled from its parts at the hull's sockets,
 # the wing mirrored) rendered by the game's own renderer (tools/tests/cosmozoom/objview.cpp: the toon light, the
-# outline, the glass, the glow), and the contact sheets of docs/hoverkart/models/.
+# outline, the glass, the glow), and the contact sheets of docs/cosmozoom/models/.
 #   python3 tools/cosmozoom/models/preview.py <model> [<model>...]        -> <scratch>/<model>.png
 #   python3 tools/cosmozoom/models/preview.py --ship hull wing engine pilot
-#   python3 tools/cosmozoom/models/preview.py --sheets                     -> docs/hoverkart/models/*.png
+#   python3 tools/cosmozoom/models/preview.py --sheets                     -> docs/cosmozoom/models/*.png
 #
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 #
@@ -24,7 +24,7 @@ import czmodel as cz  # noqa: E402
 OBJVIEW = os.environ.get("OBJVIEW", "/tmp/objview")
 SRC = os.path.join(cz.ROOT, "tools", "tests", "cosmozoom", "objview.cpp")
 WORK = os.environ.get("CZ_PREVIEW", os.path.join(tempfile.gettempdir(), "czpreview"))
-SHEETS = os.path.join(cz.ROOT, "docs", "hoverkart", "models")
+SHEETS = os.path.join(cz.ROOT, "docs", "cosmozoom", "models")
 
 
 def ensure_objview():

@@ -5,7 +5,7 @@ using namespace cz;
 static Track T; static Race R;
 int main (int argc, char **argv)
 {
-	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/test.trk";
+	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/harbour.trk";
 	if (!T.load (trk)) { fprintf (stderr, "no track %s\n", trk); return 1; }
 	for (int i = 0; i < 8; i++) { R.c[i].pilot = i; R.c[i].build = PILOTS[i].build; R.c[i].human = false; R.c[i].skill = 0.9f + 0.015f * i; }
 	R.start (&T, 8, 3, 1, argc > 2 ? atoi (argv[2]) : 7);

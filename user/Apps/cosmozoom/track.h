@@ -202,6 +202,7 @@ struct Track
 				w = cpbank[i]; cpbank[i] = cpbank[j]; cpbank[j] = w;
 			}
 			for (int i = 0; i < ncp; i++) cpbank[i] = -cpbank[i];
+			for (int k = 0; k < ntwist; k++) { float a = 1 - twistT1[k], b = 1 - twistT0[k]; twistT0[k] = a; twistT1[k] = b; twistTurns[k] = -twistTurns[k]; }
 			for (int k = 0; k < nfeat; k++)
 			{
 				Feat &F = feat[k];
@@ -410,7 +411,14 @@ struct Track
 				float scale = (float) (n - N) / (float) n;
 				auto fix = [&] (float t) { float base = t * scale; return t > tl ? base + (float) N / (float) n : base; };
 				G.t0 = fix (G.t0); G.t1 = fix (G.t1);
+				(void) 0;
 				if (q != k && G.kind == F_LOOP && G.t0 < feat[k].t0) {}
+			}
+			for (int q = 0; q < ntwist; q++)
+			{
+				float scale = (float) (n - N) / (float) n;
+				auto fix = [&] (float t) { float base = t * scale; return t > tl ? base + (float) N / (float) n : base; };
+				twistT0[q] = fix (twistT0[q]); twistT1[q] = fix (twistT1[q]);
 			}
 			feat[k].t0 = 2;	// (done)
 		}

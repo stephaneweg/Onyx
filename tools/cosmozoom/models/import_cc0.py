@@ -9,7 +9,7 @@
 # without them nothing is done and the files already made stay.
 #
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md). (This script;
-# the models it makes stay CC0, credited in their header and in docs/hoverkart/MODELS.md.)
+# the models it makes stay CC0, credited in their header and in docs/cosmozoom/MODELS.md.)
 #
 import os
 import sys

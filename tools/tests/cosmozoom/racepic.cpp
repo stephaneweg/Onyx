@@ -12,7 +12,7 @@ static void save (const char *path, const unsigned *px, int w, int h)
 }
 int main (int argc, char **argv)
 {
-	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/test.trk";
+	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/harbour.trk";
 	const char *out = argc > 2 ? argv[2] : "/tmp/race";
 	snprintf (S.lib.dir, sizeof S.lib.dir, "sdcard/apps/cosmozoom.app/models");
 	if (!T.load (trk)) { fprintf (stderr, "no track\n"); return 1; }

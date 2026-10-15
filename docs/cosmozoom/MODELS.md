@@ -10,7 +10,7 @@ a few public-domain (CC0) props converted by `import_cc0.py`. The files go to
 
 ```sh
 python3 tools/cosmozoom/models/build_all.py            # every .obj + cosmo.mtl (+ the table below)
-python3 tools/cosmozoom/models/build_all.py --sheets   # + the contact sheets in docs/hoverkart/models/
+python3 tools/cosmozoom/models/build_all.py --sheets   # + the contact sheets in docs/cosmozoom/models/
 python3 tools/cosmozoom/models/preview.py hull_needle  # one model, 4 views, by the game's renderer
 python3 tools/cosmozoom/models/preview.py --ship hull_comet wing_swept engine_pods pilot_bloop
 ```

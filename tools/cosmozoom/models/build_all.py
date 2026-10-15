@@ -2,8 +2,8 @@
 #
 # build_all.py -- regenerates every Cosmo Zoom! model: the shared material file and every .obj of
 # sdcard/apps/cosmozoom.app/models/ (ships.py, pilots.py, items.py, props.py; import_cc0.py for the CC0 props
-# when its source packs are present), and with --sheets the contact sheets of docs/hoverkart/models/ (rendered by
-# the game's own renderer, tools/tests/cosmozoom/objview.cpp) and the triangle table of docs/hoverkart/MODELS.md.
+# when its source packs are present), and with --sheets the contact sheets of docs/cosmozoom/models/ (rendered by
+# the game's own renderer, tools/tests/cosmozoom/objview.cpp) and the triangle table of docs/cosmozoom/MODELS.md.
 #   python3 tools/cosmozoom/models/build_all.py [--sheets]
 #
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
@@ -72,7 +72,7 @@ def table(built):
 
 
 def update_doc(built):
-    path = os.path.join(cz.ROOT, "docs", "hoverkart", "MODELS.md")
+    path = os.path.join(cz.ROOT, "docs", "cosmozoom", "MODELS.md")
     if not os.path.exists(path):
         return
     txt = open(path).read()
