@@ -2130,7 +2130,7 @@ pane they scroll.)
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, Cosmo Zoom!, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -5720,6 +5720,88 @@ always give the same run, on the PC as on the Pi.
 186 builder 0      # at step 186 (9.3 s in), the first creature out builds
 ```
 
+### Cosmo Zoom!, the anti-gravity racer (`cosmozoom`)
+
+**Cosmo Zoom!** (category *Games*) is a 3D racing game of anti-gravity ships through neon cities, by day, at dusk,
+at night and in deep space — drawn by the Raspberry Pi 4's **GPU** (the V3D; without one, by the processor, slower
+and blurrier). Eight racers, ships made of parts in the **hangar**, **gadgets** picked up from the item capsules,
+speed pads, jumps, loops, twisted sections of track and **tubes ridden on their outside** (steering takes the ship
+round the tube; the camera turns with it). It starts **full screen** (**F**: a window and back).
+
+![Cosmo Zoom!: a race in Neon Harbour](../screenshots/cosmozoom.png)
+*A race by night: the shield's energy and the boost (top left), the times, the gadget's slot and the "BOOST ACTIVE"
+banner (top centre), the leaderboard (top right), the speed (bottom left), the map, the lap and the place (bottom
+right).*
+
+**Playing.** The title, then the menu: **Grand Prix** (a cup of four circuits, 3 laps each; the points 10, 8, 6, 5,
+4, 3, 2, 1 by place; a trophy for the top 3), **Single Race** (any circuit, 1 to 5 laps), **Time Trial** (alone,
+3 laps, a Triple Hyper to start with; the best times kept, the best race's **ghost** racing with you), **Options**, **Quit**. **One to four players** (left /
+right on the menu's first two lines): the screen shared — one above the other for two, the four corners for three or
+four (with three, the fourth corner shows the map). Then the **hangar** of each player, then the class and the cup or
+the circuit, and the race: 3, 2, 1, GO — **holding the throttle when "1" shows** gives a boost at the start.
+
+| | Keyboard (player 1) | Gamepad |
+|---|---|---|
+| Steer | **←** / **→** | the left stick or the d-pad |
+| Accelerate | **↑** or **X** | **A** |
+| Brake | **↓** | **B** |
+| Drift (charges a mini-boost: blue, orange, pink) | **Z** or **C**, held while turning | **L** / **R** (or **L2** / **R2**) |
+| Use the gadget (**↓** held: thrown backward) | **Space** | **X** or **Y** |
+| Look back | **V** | **Select** |
+| Pause (Resume, Restart, Quit the race) | **P** or **Esc** | **Start** |
+| Menus | arrows, **Enter**, **Esc**; **R** a random ship in the hangar | d-pad, **A**, **B**; **Y** random |
+
+**The hangar.** A ship is a **hull** (six: *Comet Chaser*, *Nova Streak*, *Star Drifter*, *Manta Ray*,
+*Plasma Runner*, *Ringmaster*), **wings** (four), an **engine** (five: a central jet, side pods, nacelles on truss
+arms, detached *Plasma Pods* joined by an energy arc, a ring drive) and a **paint** (a colour, a trim, a pattern).
+Each part moves the four stats — **Speed**, **Acceleration**, **Handling**, **Weight** (who pushes whom) — by a point
+at most; some have a perk (longer jumps, faster drift charges, longer boosts). The **pilot** (eight racers in
+closed helmets, one per team) is only a look. The ships of each player are kept for the next time.
+
+![Cosmo Zoom!: the hangar](../screenshots/cosmozoom-hangar.png)
+
+**On the track.** The **speed pads** (glowing arrows) throw the ship forward; the **star bits** add 1 % of top speed
+each (10 at most; a hit loses 3); the **item capsules** (holographic cubes in rows across the track) give a gadget
+after a roulette — the leaders get small ones, the last ones the big helps:
+
+| Gadget | What it does |
+|---|---|
+| **Hyper Boost** / **Triple Hyper** | a burst of speed (three of them) |
+| **Shield Dome** | blocks one hit (8 s) |
+| **Plasma Bubble** | shot ahead (or, **↓** held, behind): the ship it touches floats a moment in a bubble |
+| **Ion Goo** | a sticky puddle dropped behind |
+| **Gravity Well** | a small vortex thrown ahead (or dropped) that pulls the ships in |
+| **Tractor Beam** | pulls you along behind the ship ahead |
+| **EMP Burst** | the ships close behind see sparks and cannot use their gadget for a moment |
+| **Ion Storm** | a storm cloud flies to the leader and slows them down |
+| **Warp Star** | very fast, on autopilot, nothing can stop you (5 s) |
+
+A hit, a wall, a bump take some of the **shield's energy** (the bar at the top left; it comes back by itself, faster
+on the speed pads); with none left, the ship sputters a moment. Nothing is ever destroyed. The **classes**: *Orbit*
+(30 m/s, gentle computer pilots), *Hyper* (40 m/s), *Warp* (50 m/s), *Mirror* (the circuits turned over: won by a gold
+trophy in the last cup). **Options**: the music, the sounds, a **steering help** (off, some, lots: the ship follows the
+track's turns by itself in part) and **auto-accelerate** (off, on, or for the Orbit class only — the default: the
+youngest just steer).
+
+**The circuits and the cups.** Thirteen circuits in four cups (the last cup's first three are circuits driven the
+other way round, the *Remixes*); a cup opens with a trophy in the one before (the first two are open):
+
+![Cosmo Zoom!: choosing a cup](../screenshots/cosmozoom-cups.png)
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**), the game is in French — its
+menus, the HUD, the parts and gadgets, the circuits' and cups' names.
+
+**Files.** Reads `SD:/apps/cosmozoom.app/cups.ini` (the circuits and the cups), `tracks/*.trk` (the circuits: a
+text file of control points and features — docs/cosmozoom/DESIGN.md and the comment of
+`user/Apps/cosmozoom/track.h` say the format: a new circuit is a new file and a line in `cups.ini`),
+`models/*.obj` (the 3D models: Wavefront OBJ with `cosmo.mtl`), `lang/fr.txt`. Writes **`SD:/apps/cosmozoom.app/save.ini`**
+(never on the card: made the first time): the trophies (`[trophies]`), the best laps and races (`[times]`), each
+player's ship (`[p1]`..`[p4]`) and the options. The music needs the General MIDI SoundFont (the package
+`generaluser-gs`); without it the game is silent but for its sounds. For the tests: `cosmozoom window` (in a
+window), `fps` (the pictures a second), `players=N`, `race=<circuit>` (straight into a race), `screen=hangar` /
+`cups` / `menu` / `options`, `auto` (the players' ships drive themselves), `demo` (the title's race only),
+`seed=N`, `sharp` (without a GPU: the picture drawn at its whole size).
+
 ### Games
 
 **Any window size.** tetris, snake, pong, life, minesweeper, same, sokoban, 2048, Solitaire, FreeCell, Pipes and
@@ -5747,6 +5829,7 @@ Quest, Pinball and Critters lay themselves out again instead (their board grows,
 | **Pinball** (`pinball`) | A pinball table with real physics: **←/Z** and **→/M** the flippers, **Space** (held) the plunger, **↑/N** nudge (three in 5 s: TILT), **P** pause — three tables (Space Station, Haunted Manor, Volcano) and any table written in a text file (`.table`), each with its goal, its rules and its top 5; a gamepad too; in English or **French**. Scores in `SD:/apps/pinball.app/scores.ini`. See §12, *Pinball*. |
 | **Critters** (`critters`) | Lead the little creatures from the hatch to the exit by giving some of them a role — climber, floater, blocker, builder, digger, exploder: **1**…**8** or a click on a slot chooses the role, a **click** on a creature (or **Tab** then **Enter**) gives it; **P** pause, **F** fast forward, **N** all explode, **−/+** the release rate, **←/→** scroll — twelve levels (six Training, six Expedition, each opened by the one before) and any level written in a text file (`.level`); in English or **French**. Progress in `SD:/apps/critters.app/progress.ini`. See §12, *Critters*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
+| **Cosmo Zoom!** (`cosmozoom`) | The 3D anti-gravity racer drawn by the GPU: its own section above. |
 | **Antigrav** (`antigrav`) | An anti-gravity racer in the manner of the mid-90s ones, **written in BASIC** (`SD:/basic/examples/antigrav.bas`) and made a native program (the app's `main` is the BASIC runtime with the compiled program inside: machine code, no `SD:/bin/basic` needed). **Everything is made by the program** -- no file read: six circuits generated from a number (they climb, dive and bank in their turns, with tunnels, arches, speed pads and weapon pads), the city around them, the craft, the pictures, the music (the General MIDI synthesizer: silent without the SoundFont package `generaluser-gs`, the sounds stay) and the sounds. **One to four players**, as many as **gamepads** are plugged in (the menu's PLAYERS; the first player has the keyboard too), the screen shared -- one above the other for two, the four corners for three or four (three: the fourth corner has the map and the order) --; the computer's pilots make **six craft** in all. Two classes (**Venom**, **Rapier**), one, three or five laps. **←/→** steer, **↑** or **X** thrust, **Z / C** the air brakes, **Space** fires the weapon picked up, **P** / **Esc** pause, **F** full screen on / off (it starts full screen). **Gamepad**: d-pad or left stick, **A** thrust, **X** fire, **L / R** air brakes, **Start** pause. Blue chevrons throw the craft forward; red pads give a weapon -- three **rockets**, a **missile** that follows the craft ahead, three **mines** dropped behind, a **shield**, a **turbo**. The best lap of each circuit and class: `SD:/apps/antigrav.app/times.txt`. `antigrav window` starts in a window, `antigrav fps` shows the pictures a second. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |

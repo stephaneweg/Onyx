@@ -3281,6 +3281,41 @@ layers (what is lit is its volume), the file written and read, supports that lea
 found — `FORGE_PM_REF=<a file of the printer's slicer>` checks that it is written back the same to the byte; `FORGE_SAMPLE=sdcard/docs/3d/bracket.3df` writes the sample). Screenshots:
 `sh tools/tests/desktop_sim/shots.sh 3dforge` (the scenes: `forge_scene.py` — its clicks are the tools' places in the bar: move a tool, move them). Icon: `tools/icons/3dforge_icon.py`.
 
+### Cosmo Zoom!, a 3D game on the GPU (`user/Apps/cosmozoom`)
+
+The anti-gravity racer (docs/04 "Cosmo Zoom!"; its design: `docs/cosmozoom/DESIGN.md`, its models:
+`docs/cosmozoom/MODELS.md`) is the model of a **3D game on the V3D GPU** without shaders of its own: everything is
+coloured triangles (and a few textures) handed to **`kapi_gpu_render`** (kapi v53/v54: `struct kapi_gpu_vertex3`,
+`struct kapi_gpu_batch` — each batch its 4 × 4 matrix, texture, blending, depth test, culling). One translation unit
+(`main.cpp`) and headers, each a layer that the PC's tests use as they are:
+
+| Header | What it is |
+|---|---|
+| `math3d.h` | vectors, 4 × 4 matrices in the GPU's layout (row by row, clip = M · (x y z 1)), perspective, look-at; y up, a model faces +Z, its left is +X |
+| `mesh.h` | the Wavefront `.obj` / `.mtl` reader (materials `paint1` / `paint2` recoloured, `*_glow` unlit and added, `glass` / `d < 1` see-through, `#@ name x y z` sockets, `o` groups), the soft light (smoothed normals, the creases kept), the black outline (the inverted hull) |
+| `gfx.h` | a frame: vertices and batches in the kernel's layout; the software picture of the same frame (the BASIC's renderer, `user/Libs/basic/bas3d.h`) |
+| `track.h` | a circuit: its `.trk` file, the Catmull-Rom centre line cut into 2 m segments with their frames (banked turns, loops spliced in, twists, tubes rolled down), the surface `surf (s, l, h)` everything stands on |
+| `race.h`, `parts.h` | the race (physics in the track's coordinates — along, across, above —, the computer's pilots, the capsules and gadgets, the laps, the places; events for the sounds), the ships' parts and stats, the gadgets' table |
+| `world.h` | the scenery made once per circuit, cut into pieces of 12 segments with a sphere each (only the pieces in front are sent): the road, the rails and force fields, the city, the ground, the sky |
+| `scene.h` | one view's frame: the sky, the visible pieces, the ships (built from their parts, `buildShip`), shadows, trails, flames, sparkles, glow passes; the chase camera |
+| `textures.h`, `audio.h`, `ui.h`, `draw2d.h` | the procedural textures, the music sequencer and the effects (AudioKit), the HUD and the menus' drawing |
+
+Each picture: per player, `Scene::view` fills one `Frame` (≈ 50–120 k vertices, 30–60 batches), then `render3d`
+(`main.cpp`) maps the game's texture numbers to the GPU's handles and calls `kapi_gpu_render` on that player's
+rectangle of the full-screen buffer (`kapi_gpu_frame.pixels` = its first pixel, `stride` the screen's); without a GPU
+(or `kapi_gpu_render` answering -1 / -3) `softRender` draws the same frame at half size. The HUD is drawn after, by
+the processor, on the same buffer (`ui.h`: UIKit's FreeType faces through a `Canvas` adopted on the buffer), then
+`kapi_present_fb`. Files are read through AppKit (`g_fileReader` = `kapi_open` / `kapi_read`); the race runs at a
+fixed 60 Hz step whatever the frame rate.
+
+The tests on the PC, all on the same headers: `tools/tests/cosmozoom/racesim.cpp` (a whole race of the computer's
+pilots: results, events — `g++ -std=gnu++17 -O2 -Iuser -Iuser/Libs`), `racepic.cpp` (pictures of a race by the
+software renderer), `objview.cpp` (a model as the game draws it, four sides: the modeller's preview),
+`trackmap.cpp` (a circuit seen from above), and `tools/tests/cosmozoom/sim.sh OUT.png "SCRIPT" [ARGS]` (the real app
+on the desktop simulator's stand-in kernel: menus, HUD, everything; `SIM_SCREEN=1920x1080` for a 1280 × 720 window).
+The models are made by Python scripts (`python3 tools/cosmozoom/models/build_all.py --sheets`), the icon by
+`tools/icons/cosmozoom_icon.sh`.
+
 ### Screenshot, the capture tool (`user/Apps/screenshot`)
 
 The screen capture tool (the study, the mock-ups and the user's decisions: `docs/screenshot/README.md`;

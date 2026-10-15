@@ -138,6 +138,7 @@ Two weaknesses, worth fixing:
 | Liberation, Gelasio, Selawik | `sdcard/res/fonts`, `third_party/fonts` | SIL OFL 1.1 | Keep the licences (they are there) |
 | GeneralUser GS 2.0.3 | `sdcard/res/soundfonts` (the package `generaluser-gs`) | Its own, free (also commercial) | Keep the licence (it is there) |
 | Freedoom | `sdcard/doom` | BSD-3 | Keep `FREEDOOM-COPYING.txt` (it is there) |
+| Cosmo Zoom!'s imported models: KayKit *Space Base Bits* (Kay Lousberg) and Kenney's *Toy Car Kit* (only props: modules, domes, rocks, trees, a cone) | `sdcard/apps/cosmozoom.app/models/kk_*.obj`, `kn_*.obj` (converted by `tools/cosmozoom/models/import_cc0.py`: the palette's colours baked into the vertices) | CC0 1.0 (public domain) | Nothing required; credited all the same (the files' headers, `docs/cosmozoom/MODELS.md`) |
 | Raspberry Pi firmware (`start4.elf`, `fixup4.dat`, the `.dtb`) | `sdcard/` | Broadcom's redistributable binary licence; the `.dtb` from Linux's device trees (GPL-2.0, most also MIT) | **Add `LICENCE.broadcom`** to the card |
 | `armstub8-rpi4.bin` | `sdcard/` | BSD-3 (raspberrypi/tools) | Add its notice |
 | Wi-Fi firmware (`brcmfmac4345*`) | `sdcard/firmware` | Cypress / Synaptics binary licence | **Add its licence file** (`LICENCE.cypress`) |

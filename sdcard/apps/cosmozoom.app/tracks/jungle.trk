@@ -1,0 +1,70 @@
+# Cosmo Zoom! -- Glow Jungle: made by tools/hoverkart/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Glow Jungle
+name_fr    = Jungle Lumineuse
+time       = night
+sky        = 0B2A4A 1F6A6A
+ground     = 0F3A2A 12442F
+groundkind = jungle
+road       = 1A2A6C 1F3278
+rails      = B8FF2E 22E6FF
+walls      = 16245E B8FF2E
+neon       = B8FF2E 22E6FF FF2BD6
+city       = 0.25
+width      = 15
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 1521 m, 38 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 40.7 40.7 0.0
+p = 81.4 81.4 0.0
+p = 122.0 122.0 0.0
+p = 140.5 149.6 0.0
+p = 146.9 182.1 0.0
+p = 140.5 214.7 0.0
+p = 122.0 242.2 0.0
+p = 81.3 283.0 0.0
+p = 49.9 301.1 0.0
+p = 13.7 301.1 0.0
+p = -17.7 283.0 0.0
+p = -40.4 260.3 0.2
+p = -63.1 237.6 0.8
+p = -81.5 210.0 1.7
+p = -88.0 177.5 2.8
+p = -81.5 144.9 4.2
+p = -63.1 117.4 5.7
+p = -27.0 81.3 8.0
+p = 9.1 45.2 10.3
+p = 45.2 9.1 12.2
+p = 81.3 -27.0 13.5
+p = 117.4 -63.1 14.0
+p = 135.8 -90.6 13.1
+p = 142.3 -123.2 11.0
+p = 135.8 -155.7 8.9
+p = 117.4 -183.3 8.0
+p = 94.7 -206.0 7.9
+p = 72.0 -228.7 7.7
+p = 40.6 -246.8 7.4
+p = 4.4 -246.8 7.1
+p = -27.0 -228.7 7.0
+p = -67.7 -188.0 7.0
+p = -86.2 -160.4 5.9
+p = -92.6 -127.8 3.5
+p = -86.2 -95.3 1.1
+p = -67.7 -67.7 0.0
+p = -33.9 -33.9 0.0
+
+# the features (t: 0..1 of the lap)
+items = 0.153
+boost = 0.570 0.00
+tunnel = 0.733 0.798
+jump = 0.876
+items = 0.259
+
+# the props
+scatter = kn_tree 60 2.2
+scatter = kn_tree_pine 40 2.8
+prop = kn_tree both 16 1.6
+scatter = kk_structure_tall 5 1.4

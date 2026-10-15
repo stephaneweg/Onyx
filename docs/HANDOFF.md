@@ -4,6 +4,28 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## Cosmo Zoom!, a native 3D anti-gravity racer on the GPU (2026-10-15): built, NOT run on a Pi yet
+
+The user asked for "a native 3D game: a wipEout like Antigrav, but cartoon, mixed with Mario Kart" -- ships chosen and
+customised, gadgets, several circuits and cups -- "first ask a designer, then a 3D expert for the .obj models". Done as a
+team: a designer agent (`docs/cosmozoom/DESIGN.md` + mock-ups by `tools/cosmozoom/mockups.py`), a 3D modeller agent (66
+models by Python, `tools/cosmozoom/models/`, `docs/cosmozoom/MODELS.md`), a level designer agent (the 13 circuits), the
+engine and the app here. **The art direction moved a lot during the session -- the user's last word is the reference**:
+not cute, not karts: a cel-shaded **neon city racer** (the user's generated pictures: night, and "the same by day"),
+ships from **the user's concept sheet** (six: Nova Streak, Comet Chaser, Star Drifter, Plasma Runner, Ringmaster, Manta
+Ray -- wipEout-like, sharp edges, vivid, side / detached podracer engines), the HUD of the user's reference picture,
+tube sections ridden **on the outside**, Moebius-like **twists**, a **deep-space** circuit, "everything polished like a
+AAA game".
+- **The app**: `user/Apps/cosmozoom/` (docs/03 "Cosmo Zoom!, a 3D game on the GPU" says the layers), `sdcard/apps/
+  cosmozoom.app/` (tracks/, models/, cups.ini, lang/fr.txt, icon). `user/Makefile`: an FT app (`FT_EXTRA_cosmozoom`).
+  docs/04 "Cosmo Zoom!" is the user's guide.
+- **Tested on the PC only**: `tools/tests/cosmozoom/` (racesim, racepic, objview, trackmap, sim.sh -- the real app on the
+  desktop simulator). **Not known**: the speed on the Pi's GPU (a view sends 50-120 k vertices a frame; `cosmozoom fps`
+  shows it; if too slow: fewer towers -- `city =` in the .trk --, the outlines off for the props, a lower draw
+  distance in `Scene::view`'s `visible`), the gamepads in game, the music's sound (the General MIDI SoundFont).
+- **Next ideas** (DESIGN.md has more): the ghost in Time Trial, the pilot animations, the start's fly-over, LOD for the
+  ships, the conveyor / geyser hazards of DESIGN.md 7.3, more sign textures (words) on the billboards.
+
 ## Antigrav, an anti-gravity racer in BASIC (2026-10-14): built, published, NOT run on a Pi yet
 
 The user first asked for wipeout-rewrite as a native game; ported (2026-10-13), then **removed at the user's request**

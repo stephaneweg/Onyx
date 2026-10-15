@@ -1,0 +1,78 @@
+# Cosmo Zoom! -- Star Carnival: made by tools/hoverkart/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Star Carnival
+name_fr    = Fête Spatiale
+time       = dusk
+sky        = 2A1A6A FF6FB0
+ground     = 3A2A5A 43325F
+groundkind = city
+road       = 2A3A7A 32427F
+rails      = FFE14D FF2BD6
+walls      = F2E8D8 FFE14D
+neon       = FFE14D FF2BD6 B8FF2E
+city       = 0.4
+width      = 16
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 1850 m, 47 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 0.0 46.9 0.0
+p = 0.0 93.8 0.1
+p = 0.0 140.7 0.3
+p = -9.4 175.7 0.4
+p = -35.0 201.3 0.6
+p = -79.3 226.9 0.9
+p = -98.2 245.0 1.0
+p = -106.6 269.7 1.2
+p = -102.7 295.6 1.4
+p = -87.2 316.7 1.6
+p = -58.0 341.1 1.9
+p = -28.8 365.6 2.2
+p = -10.3 393.1 2.5
+p = -9.2 426.1 2.8
+p = -25.7 454.8 3.1
+p = -54.9 470.3 3.4
+p = -87.9 468.0 3.8
+p = -131.2 452.2 4.2
+p = -174.5 436.5 4.7
+p = -217.8 420.7 5.2
+p = -251.2 395.1 5.6
+p = -263.8 354.9 6.0
+p = -263.8 309.1 6.5
+p = -263.8 263.3 6.9
+p = -273.7 230.3 7.2
+p = -300.0 208.2 7.6
+p = -334.2 204.2 7.9
+p = -367.6 200.5 8.1
+p = -393.8 179.5 8.4
+p = -404.6 147.7 8.7
+p = -396.6 115.1 8.9
+p = -371.4 71.3 9.2
+p = -346.1 27.6 9.5
+p = -320.9 -16.1 9.7
+p = -295.6 -59.9 9.9
+p = -270.4 -103.6 10.0
+p = -245.1 -147.3 10.0
+p = -223.0 -170.8 8.4
+p = -192.6 -181.9 5.6
+p = -160.5 -178.1 4.0
+p = -122.4 -164.2 3.8
+p = -84.2 -150.3 3.2
+p = -46.1 -136.4 2.4
+p = -12.7 -110.8 1.5
+p = -0.0 -70.7 0.6
+p = -0.0 -35.3 0.2
+
+# the features (t: 0..1 of the lap)
+items = 0.125
+jump = 0.165
+loop = 0.439
+boost = 0.418 0.00
+twist = 0.508 0.595 1
+tube = 0.633 0.797
+items = 0.926
+items = 0.948
+boost = 0.883 0.40
+decor = holo_ring -249.5 397.3 4.6 -143 1.30

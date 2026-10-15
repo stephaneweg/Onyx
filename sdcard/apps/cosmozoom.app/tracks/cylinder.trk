@@ -1,0 +1,85 @@
+# Cosmo Zoom! -- Hyper Cylinder: made by tools/hoverkart/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Hyper Cylinder
+name_fr    = Hyper Cylindre
+time       = day
+sky        = 1F6FEB BFE6FF
+ground     = FFFFFF F2F6FF
+groundkind = clouds
+road       = 6F86A8 788FB0
+rails      = FF2BD6 22E6FF
+walls      = F2F6FF FF2BD6
+neon       = FF2BD6 22E6FF B8FF2E
+city       = 0.7
+width      = 16
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 1911 m, 47 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 0.0 45.0 4.4
+p = 0.0 85.0 8.0
+p = -4.0 121.8 8.9
+p = -15.9 156.8 11.0
+p = -35.1 188.5 13.1
+p = -60.7 215.2 14.0
+p = -74.3 223.0 13.0
+p = -89.7 225.8 12.0
+p = -124.7 225.8 12.0
+p = -159.7 225.8 12.0
+p = -210.0 225.8 11.6
+p = -260.3 225.8 10.6
+p = -310.6 225.8 9.4
+p = -360.9 225.8 8.4
+p = -411.2 225.8 8.0
+p = -451.2 221.2 8.6
+p = -489.3 207.9 10.0
+p = -523.4 186.5 11.9
+p = -551.9 158.0 14.1
+p = -573.4 123.8 16.0
+p = -586.7 85.8 17.4
+p = -591.2 45.8 18.0
+p = -591.2 -5.5 18.2
+p = -591.2 -56.8 18.7
+p = -591.2 -108.1 19.3
+p = -591.2 -159.4 19.8
+p = -591.2 -210.7 20.0
+p = -585.2 -233.2 19.5
+p = -568.7 -249.6 18.5
+p = -546.2 -255.7 18.0
+p = -495.3 -255.7 17.6
+p = -444.5 -255.7 16.4
+p = -393.7 -255.7 14.9
+p = -342.8 -255.7 13.1
+p = -292.0 -255.7 11.6
+p = -241.1 -255.7 10.4
+p = -190.3 -255.7 10.0
+p = -154.9 -251.9 9.2
+p = -121.1 -241.0 7.2
+p = -90.4 -223.2 4.8
+p = -63.9 -199.4 2.8
+p = -43.1 -170.7 2.0
+p = -25.5 -140.3 1.0
+p = -8.0 -110.0 0.0
+p = -0.0 -80.0 0.0
+p = -0.0 -40.0 0.0
+
+# the features (t: 0..1 of the lap)
+tube = 0.047 0.122
+tube = 0.175 0.589
+tube = 0.626 0.942
+jump = 0.188
+items = 0.636
+boost = 0.084 -0.60
+boost = 0.662 0.60
+boost = 0.095 -0.30
+boost = 0.674 0.30
+boost = 0.107 0.00
+boost = 0.685 0.00
+boost = 0.118 0.30
+boost = 0.697 -0.30
+boost = 0.130 0.60
+boost = 0.708 -0.60
+boost = 0.963 0.00
+items = 0.238

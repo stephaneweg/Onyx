@@ -42,7 +42,7 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu cosmozoom
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
@@ -890,6 +890,11 @@ stickies.elf: Apps/notes/notesmodel.cpp Apps/notes/notesmodel.h Apps/notes/stick
 # gates.h, board.h, views.h, lessons.h are the window's own headers (one translation unit with main.cpp)
 FT_EXTRA_circuits = Apps/circuits/circuit.cpp
 circuits.elf: Apps/circuits/circuit.cpp $(wildcard Apps/circuits/*.h) Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h
+# Cosmo Zoom! (the anti-gravity racer, docs/cosmozoom/DESIGN.md): one translation unit, its pieces in Apps/cosmozoom/*.h;
+# its 3D drawn by the GPU (kapi_gpu_render), else by the BASIC's software renderer (Libs/basic/bas3d.h). AudioKit: the
+# music (the General MIDI synthesizer) and the sounds (the FM voices).
+FT_EXTRA_cosmozoom = lib/audiokit.imp.a
+cosmozoom.elf: $(wildcard Apps/cosmozoom/*.h) Libs/basic/bas3d.h Include/gamepad.h lib/audiokit.imp.a Kits/audiokit/audiokit.h Kits/filekit/kvtext.h
 # Pinball (AutoDev round 4): its core (the table loader, the physics, the rules, the scores) beside the window; draw.h,
 # panel.h, picker.h are the window's own headers. The same floating-point results as the host test
 # (tools/tests/run_pinball_test.sh): no fused multiply-add. Its sounds: game.h's sfx, AudioKit's voices.
