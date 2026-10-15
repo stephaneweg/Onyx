@@ -211,44 +211,51 @@ struct World
 
 			}
 		}
-		// the tunnel: a ribbed vault from the road's edges -- raised lighter rings every 6 m, darker toward its crown,
-		// lights along the top (the user's reference: a ribbed tube)
+		// the tunnel: the user's profile (2026-10-15, refs/road_profile/TunnelProfile.obj, drawn for a 15 m road): a
+		// round tube around the road, 8.5 m inside, its wall 0.5 m, its centre 4.3 m above the lanes; scaled with the
+		// road's width. Outside, a raised lighter ring every 6 m (the ribbed look); inside, darker at the crown, lights
 		if (tun)
 		{
-			const int K = 14;
-			float wa = A.w * 0.5f + 0.15f, wb = B.w * 0.5f + 0.15f, Ht = 7.5f;
+			const int K = 24;
+			float sa = A.w / 15.0f, sb = B.w / 15.0f;
 			bool rib = (i % 3) == 0;
-			float in = rib ? 0.35f : 0.0f;
-			auto VP = [&] (const Seg &S, float half, float a, float inset)
+			auto TP = [&] (const Seg &S, float sc, float a, float rad)
 			{
-				float x = cosf (a) * (half - inset), y = sinf (a) * (Ht - inset) + 0.2f;
-				V3 p; Track::surfOf (S.c, S.r, S.u, 0, x, y, &p, 0, 0); return p;
+				V3 p; Track::surfOf (S.c, S.r, S.u, 0, cosf (a) * rad * sc, 4.3f * sc + sinf (a) * rad * sc, &p, 0, 0); return p;
 			};
-			unsigned base = rib ? rgbMix (T.walls[0], 0xFFFFFF, 0.3f) : T.walls[0];
+			unsigned wall = T.walls[0], ribc = rgbMix (T.walls[0], 0xFFFFFF, 0.3f);
 			for (int k = 0; k < K; k++)
 			{
-				float a0 = PI * (float) k / K, a1 = PI * (float) (k + 1) / K;
-				float crown = sinf ((a0 + a1) * 0.5f);
-				unsigned c = rgbScale (base, 1.0f - 0.35f * crown);
-				V3 p0 = VP (A, wa, a0, in), p1 = VP (A, wa, a1, in), q0 = VP (B, wb, a0, in), q1 = VP (B, wb, a1, in);
-				V3 inward = A.u * (-sinf ((a0 + a1) * 0.5f)) - A.r * cosf ((a0 + a1) * 0.5f);
-				L.face (p0, q0, q1, p1, shade (c, inward), inward);
-				// the outside, a little bigger
-				V3 o0 = VP (A, wa, a0, -0.4f), o1 = VP (A, wa, a1, -0.4f), r0 = VP (B, wb, a0, -0.4f), r1 = VP (B, wb, a1, -0.4f);
-				L.face (o0, r0, r1, o1, shade (T.walls[0], -inward), -inward);
-				// a rib's sides (it stands out of the wall)
+				float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K, am = (a0 + a1) * 0.5f;
+				V3 out = A.r * cosf (am) + A.u * sinf (am);
+				// inside: darker toward the crown
+				unsigned ci = rgbScale (rib ? rgbMix (wall, 0xFFFFFF, 0.18f) : wall, 1.0f - 0.3f * fmaxf (0.0f, sinf (am)));	// (the rings show inside too)
+				L.face (TP (A, sa, a0, 8.5f), TP (B, sb, a0, 8.5f), TP (B, sb, a1, 8.5f), TP (A, sa, a1, 8.5f), shade (ci, -out), -out);
+				// outside, a rib raised every 6 m
+				float ro = rib ? 9.35f : 9.0f;
+				L.face (TP (A, sa, a0, ro), TP (B, sb, a0, ro), TP (B, sb, a1, ro), TP (A, sa, a1, ro), shade (rib ? ribc : wall, out), out);
 				if (rib)
 				{
-					V3 w0 = VP (A, wa, a0, 0), w1 = VP (A, wa, a1, 0);
-					L.face (w0, w1, p1, p0, shade (base, -A.f), -A.f);
-					V3 x0 = VP (B, wb, a0, 0), x1 = VP (B, wb, a1, 0);
-					L.face (x0, q0, q1, x1, shade (base, A.f), A.f);
+					L.face (TP (A, sa, a0, 9.0f), TP (A, sa, a1, 9.0f), TP (A, sa, a1, 9.35f), TP (A, sa, a0, 9.35f), shade (ribc, -A.f), -A.f);
+					L.face (TP (B, sb, a0, 9.0f), TP (B, sb, a1, 9.0f), TP (B, sb, a1, 9.35f), TP (B, sb, a0, 9.35f), shade (ribc, A.f), A.f);
+				}
+			}
+			// the tube's mouths: the wall's ring at its two ends
+			bool first = !(T.seg[(i + T.n - 1) % T.n].flags & F_TUNNEL), last = !(B.flags & F_TUNNEL) || !(T.seg[(i + 2) % T.n].flags & F_TUNNEL);
+			for (int e = 0; e < 2; e++)
+			{
+				if (!(e == 0 ? first : last)) continue;
+				const Seg &S = e == 0 ? A : B; float sc = e == 0 ? sa : sb; V3 n = e == 0 ? -A.f : B.f;
+				for (int k = 0; k < K; k++)
+				{
+					float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
+					L.face (TP (S, sc, a0, 8.5f), TP (S, sc, a1, 8.5f), TP (S, sc, a1, 9.0f), TP (S, sc, a0, 9.0f), shade (ribc, n), n);
 				}
 			}
 			// a light under the crown every 6 m
 			if (rib)
 			{
-				V3 c = VP (A, wa, PI / 2, in + 0.05f);
+				V3 c = TP (A, sa, PI / 2, 8.45f);
 				V3 dx = A.r * 1.4f, dz = A.f * 0.6f;
 				G.face (c - dx - dz, c + dx - dz, c + dx + dz, c - dx + dz, 0xFFF2C0, -A.u);
 			}
