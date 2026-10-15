@@ -31,7 +31,7 @@ CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's 
     ("pilot_zib", "hull_pod", "", "engine_star", ("#9BE03A", "#22C3B5")),
     ("pilot_kiki", "hull_cube", "", "engine_ring", ("#FFD23F", "#E63ACB")),
     ("pilot_pepper", "hull_manta", "", "engine_ion", ("#FF8A1F", "#22C3B5")),
-    ("pilot_beep", "hull_cube", "wing_ray", "engine_pods", ("#22C3B5", "#FFF6E0")),
+    ("pilot_beep", "hull_sprinter", "", "engine_ion", ("#E0D81A", "#5BD43A")),
     ("pilot_squiggle", "hull_needle", "wing_ray", "engine_star", ("#8C52FF", "#FF4F9A")),
 ]
 
@@ -106,8 +106,8 @@ def sheets(built=None):
         png = os.path.join(W, "sheet_%s.png" % h)
         info = pv.tri_info(pv.ship_png(h, w, e, pil, png, 400, paint))
         cells.append((png, "%s + %s + %s" % (h[5:], w[5:] or "no fins", e[7:]), info))
-    pv.sheet(cells, os.path.join(out, "ships.png"), 3, 0, 400, "Cosmo Zoom! -- the six hulls, assembled (front 3/4)")
-    pv.sheet(cells, os.path.join(out, "ships_back.png"), 3, 3, 400, "Cosmo Zoom! -- the six hulls (the chase camera's side)")
+    pv.sheet(cells, os.path.join(out, "ships.png"), 3, 0, 400, "Cosmo Zoom! -- the seven hulls, assembled (front 3/4)")
+    pv.sheet(cells, os.path.join(out, "ships_back.png"), 3, 3, 400, "Cosmo Zoom! -- the seven hulls (the chase camera's side)")
     # the engines on one hull, the wings on one hull
     cells = []
     for e in ("engine_ion", "engine_pods", "engine_twin", "engine_star", "engine_ring"):
