@@ -5,7 +5,7 @@
 # slate-navy canopies and intakes, glowing cores in the nozzles only. The six ships of the sheet:
 #   hull_needle  "Nova Streak"   a faceted arrowhead, a paint2 nose tip and side panels, white pinstripes
 #   hull_comet   "Comet Chaser"  a narrow fuselage, a stepped cabin, its two pods on struts (measured on its GLB)
-#   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe (+ engine_twin: big nacelles, lattice booms ahead)
+#   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe, banded nacelles, lattice booms (measured on its GLB)
 #   hull_pod     "Plasma Runner" a small cockpit block (+ engine_star: two chunky octagonal pods ahead, on cables)
 #   hull_cube    "Ringmaster"    an octagonal torpedo, a paint2 nose cone (+ engine_ring: a big ring round its back)
 #   hull_manta   "Manta Ray"     a wide flat delta, a slate intake in front, boxy pods at its tips
@@ -395,9 +395,9 @@ def _sd_boom(sx):
     corner = lambda k, z: (c(z)[0] + (1, -1, -1, 1)[k] * hx(z), c(z)[1] + (1, 1, -1, -1)[k] * hy(z), z)
     for k in range(4):
         p.add(_sd_bar(corner(k, -0.19), corner(k, 1.50), 0.035, "paint1"))
-    zs = np.linspace(-0.04, 1.44, 5)
+    zs = np.linspace(-0.04, 1.44, 6)
     for a, b in ((0, 1), (3, 2), (0, 3), (1, 2)):  # top and bottom in step, the two sides in step
-        for i in range(4):
+        for i in range(5):
             u, v = (a, b) if i % 2 == 0 else (b, a)
             p.add(_sd_bar(corner(u, zs[i]), corner(v, zs[i + 1]), 0.024, "paint1"))
     # the tip block: paint2, its front a chamfered frame round a recessed slate slot
@@ -412,9 +412,10 @@ def _sd_boom(sx):
 def _sd_nacelle(sx):
     """A nacelle (10 sides): a rounded intake lip round a recessed slate face, a paint2 band, the body, a paint2 band,
     the slate exhaust cone, hollow."""
-    prof = [(0.0, -0.19), (0.20, -0.19), (0.20, -0.10), (0.225, -0.075), (0.26, -0.075), (0.275, -0.09), (0.275, -0.245),
-            (0.30, -0.26), (0.30, -0.49), (0.315, -0.505), (0.315, -1.195), (0.30, -1.21), (0.30, -1.34), (0.26, -1.35),
-            (0.197, -1.80), (0.185, -1.85), (0.165, -1.865), (0.13, -1.865), (0.125, -1.60), (0.0, -1.60)]
+    prof = [(0.0, -0.19), (0.20, -0.19), (0.20, -0.10), (0.225, -0.075), (0.26, -0.075), (0.275, -0.09),
+            (0.275, -0.245), (0.30, -0.26), (0.30, -0.49), (0.315, -0.505), (0.315, -1.195), (0.30, -1.21),
+            (0.30, -1.34), (0.26, -1.35), (0.197, -1.80), (0.185, -1.85), (0.165, -1.865), (0.13, -1.865),
+            (0.125, -1.60), (0.0, -1.60)]
 
     def mat(i, j, c):
         if i == 0 or i >= 12:
@@ -426,7 +427,7 @@ def _sd_nacelle(sx):
 
 def hull_whale():
     m = Model("hull_whale", "Star Drifter: a long narrow fuselage, a paint2 stripe down its deck, a slate canopy, a "
-              "cabin hump, swept struts to two big banded nacelles with slate cones, lattice booms ahead with paint2 tips")
+              "cabin hump, swept struts to two big banded nacelles with slate cones, lattice booms with paint2 tips")
 
     def mat(i, j, c):
         lab = (_SD_LABS + _SD_LABS[::-1])[j]
@@ -453,8 +454,9 @@ def hull_whale():
     # the cabin hump: a paint2 ridge on its roof
     hump = lambda z, tr, tb: [(x, y, z) for x, y in _nv_mirror([(0.0, tr), (0.10, tr), (0.13, tb), (0.19, tb - 0.03),
                                                                  (0.29, 0.94), (0.29, 0.90), (0.0, 0.90)])]
-    hr = [hump(-0.43, 1.17, 1.17), hump(-0.55, 1.18, 1.17), hump(-0.68, 1.23, 1.18), hump(-0.95, 1.23, 1.16), hump(-1.10, 1.20, 1.12),
-          hump(-1.25, 1.14, 1.08), hump(-1.38, 1.10, 1.04)]
+    hr = [hump(z, tr, tb) for z, tr, tb in ((-0.43, 1.17, 1.17), (-0.55, 1.18, 1.17), (-0.68, 1.23, 1.18),
+                                            (-0.95, 1.23, 1.16), (-1.10, 1.20, 1.12), (-1.25, 1.14, 1.08),
+                                            (-1.38, 1.10, 1.04))]
     m.add(_shell(hr, lambda i, j, c: "paint2" if j in (0, 1, 10, 11) and 1 < i < 6 else "paint1"))
     for sx in (1, -1):
         # the strut: a chamfered plate swept back (its back paint2) and a thicker spar across it
@@ -472,7 +474,7 @@ def hull_whale():
     leg = lambda y, w, z0, z1: [(w, y, z0), (w, y, z1), (-w, y, z1), (-w, y, z0)]
     m.add(_shell([leg(0.20, 0.08, 0.77, 1.175), leg(0.24, 0.08, 0.77, 1.175), leg(0.33, 0.05, 0.885, 1.057),
                   leg(0.60, 0.05, 0.885, 1.057)], "paint1"))
-    return finish(m, (1.57, 0.72, -0.85), (0.0, 0.66, -0.30),
+    return finish(m, (1.57, 0.72, -0.85), (0.0, 0.76, -0.48),
                   [(0.30, 1.60), (-0.30, 1.60), (1.25, -0.90), (-1.25, -0.90)], -1.76, engine_y=0.78)
 
 
