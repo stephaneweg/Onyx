@@ -1,17 +1,17 @@
-# Cosmo Zoom! -- Glow Jungle: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# Cosmo Zoom! -- Jungle Isles: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 
-name       = Glow Jungle
-name_fr    = Jungle Lumineuse
-time       = night
-sky        = 0B2A4A 1F6A6A
-ground     = 0F3A2A 12442F
-groundkind = jungle
-road       = 1A2A6C 1F3278
-rails      = B8FF2E 22E6FF
-walls      = 16245E B8FF2E
-neon       = B8FF2E 22E6FF FF2BD6
-city       = 0.25
+name       = Jungle Isles
+name_fr    = Îles de la Jungle
+time       = day
+sky        = 4FB0E8 D8F4EC
+ground     = FFFFFF F4FAFF
+groundkind = islands
+road       = 6CCB8E 75D296
+rails      = FFF2A0 FFFFFF
+walls      = BDF2D5 FFF2A0
+neon       = FFF2A0 6CCB8E FFB3C7
+city       = 0.4
 width      = 15
 laps       = 3
 edge       = FFFFFF
