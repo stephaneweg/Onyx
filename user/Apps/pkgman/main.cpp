@@ -549,6 +549,21 @@ public:
 			}
 			if (kind == J_INSTALL && g_tab == T_UPDATES)		// keep the rows just updated in view
 				for (int i = 0; i < nd; i++) { Row *r = row_of (done[i]); if (r && !r->hasUpdate) { int k = (int) (r - g_rows); bool in = false; for (int j = 0; j < g_nvis; j++) if (g_vis[j] == k) in = true; if (!in && g_nvis < 512) g_vis[g_nvis++] = k; } }
+			// the Package Manager updated itself: its program is loaded whole, the one running is the old one (it
+			// would refuse what the new one allows -- the user, 2026-10-15: a service's update): it starts the new
+			// one, the update daemon too, and ends
+			if (kind == J_INSTALL)
+				for (int i = 0; i < nd; i++)
+				{
+					if (!eq (done[i], "pkgman")) continue;
+					bool failed = false; for (int k = 0; k < g_job.nfailed; k++) if (eq (g_job.failed[k], "pkgman")) failed = true;
+					if (failed) break;
+					set_status (TR ("The Package Manager updated itself: it starts again..."));
+					g_list->invalidate (true); draw (); uk_win_present ();
+					if (kapi_kill ("pkgd")) { kapi_msleep (300); kapi_exec ("SD:/apps/pkgd.app/main", ""); }
+					if (kapi_exec ("SD:/apps/pkgman.app/main", "")) kapi_exit (0);
+					break;
+				}
 			if (rc == OK && kind != J_INSTALL) status_idle ();
 			else if (rc == OK) set_status (any_staged () ? TR ("Done. The system update waits for the restart.") : TR ("Done: the apps open with their new version next time."));
 			else if (rc == E_CANCEL) set_status (TR ("Cancelled."));

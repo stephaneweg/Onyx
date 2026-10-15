@@ -2234,7 +2234,7 @@ a page.
 - **Updates** — the packages with a newer version: a box each, ticked (untick those to keep),
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
   is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
-  *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*) — but a **service** (a windowless program always running: `clockd`, `clipd`, `notifyd`, `printd`; its `app.txt` says `service = 1`, or it is in the Shell category and its name ends with a *d*) is stopped while its files change and started again after (*clockd restarted*).
+  *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*) — but a **service** (a windowless program always running: `clockd`, `clipd`, `notifyd`, `printd`; its `app.txt` says `service = 1`, or it is in the Shell category and its name ends with a *d*) is stopped while its files change and started again after (*clockd restarted*). The Package Manager that updates **itself** starts its new version at once (and the update daemon `pkgd`): the one running was the old one.
   A package whose **program is missing** from the card (Jet Browser on a card copied from the git
   repository's `sdcard/`: its 100 MB program is too big for git and comes with its package only) is
   shown here too, from version 0: install it to get the program.
