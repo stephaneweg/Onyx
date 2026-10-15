@@ -61,16 +61,18 @@ struct Craft
 	float energy;				// the shield's energy 0..100 (the hits take some; it comes back; at 0 the ship sputters)
 	// the computer's
 	float skill, laneBias, wobblePh, useDelay;
+	unsigned forkRight;			// the forks where it takes branch 1 (the right one at the split; a bit each)
+	int br;					// the fork's branch it is on (-1: one road)
 	// seen
 	float bob, squash, spin, roll;
 	bool useHeld;
 	float startCharge;			// (the throttle held at the right time: a boost at GO)
 };
 
-struct Proj { bool on; int kind, owner, target; float s, l, h, v, life; };
-struct Hazard { bool on; int kind, owner; float s, l, life, r, spin; };
-struct Box { float s, l, respawn; };
-struct Bit { float s, l, respawn; };
+struct Proj { bool on; int kind, owner, target; float s, l, h, v, life; int br; };	// (br: a fork's branch, -1 none)
+struct Hazard { bool on; int kind, owner; float s, l, life, r, spin; int br; };
+struct Box { float s, l, respawn; int br; };
+struct Bit { float s, l, respawn; int br; };
 
 struct Race
 {
@@ -93,16 +95,17 @@ struct Race
 	float assist;				// steering help for the humans (0..1)
 	bool autoThrottle;			// the humans accelerate by themselves (the youngest)
 	int nebulaOn; float nebulaS, nebulaL; int nebulaTarget; float nebulaT;	// the grumpy cloud on its way
+	unsigned seed0;				// (the race's seed: the computer's sides at the forks)
 
 	void emit (int kind, int craft, const V3 &at, int arg = 0) { if (nev < MAXEV) { Event &e = ev[nev++]; e.kind = kind; e.craft = craft; e.at = at; e.arg = arg; } }
-	V3 posOf (int i) const { return T->pointAt (c[i].s, c[i].l, c[i].h + 0.7f); }
+	V3 posOf (int i) const { return T->pointAtB (c[i].s, c[i].l, c[i].h + 0.7f, c[i].br); }
 	float classTop () const { return CLASSES[cls].top; }
 
 	// ---- the start ----------------------------------------------------------------------------------------
 	void start (const Track *track, int ncraft, int nlaps, int speedClass, unsigned seed, bool withItems = true)
 	{
 		T = track; n = ncraft > MAXCRAFT ? MAXCRAFT : ncraft; laps = nlaps; cls = clampi (speedClass, 0, NCLASS - 1);
-		items = withItems; rng = Rng (seed);
+		items = withItems; rng = Rng (seed); seed0 = seed;
 		time = -4.0f; count = 4; over = false; overT = 0; nev = 0; nfinished = 0; assist = 0.5f; autoThrottle = false;
 		memset (proj, 0, sizeof proj); memset (haz, 0, sizeof haz); nebulaOn = 0;
 		for (int i = 0; i < n; i++)
@@ -114,7 +117,7 @@ struct Race
 			float w = T->widthAt (C.s); if (w > 16) w = 16;
 			C.l = (col ? 1 : -1) * w * 0.22f + (row & 1 ? 0.8f : -0.8f);
 			C.h = 0; C.vh = 0; C.v = 0; C.ya = 0; C.yawRate = 0;
-			C.lap = 0; C.dist = C.s - T->length; C.lastS = C.s;
+			C.lap = 0; C.dist = C.s - T->length; C.lastS = C.s; C.br = -1;
 			C.finished = false; C.finishTime = 0; C.place = i;
 			C.lapStart = 0; C.bestLap = 0; for (int k = 0; k < 8; k++) C.lapTimes[k] = 0;
 			C.wrongWay = false; C.wrongT = 0;
@@ -126,19 +129,32 @@ struct Race
 			C.laneBias = rng.range (-0.25f, 0.25f);
 			C.bob = rng.range (0, 6.28f); C.squash = 0; C.spin = 0; C.roll = 0; C.useHeld = false; C.startCharge = 0;
 		}
-		// the item capsules: a row of 4 or 5 across the road at each "items"
+		forkSides ();
+		// the item capsules: a row of 4 or 5 across the road at each "items" (a fork: 3 on each branch)
 		nbox = 0;
 		for (int i = 0; i < T->n && items; i++)
 			if (T->seg[i].flags & F_ITEMS)
 			{
 				int k5 = T->seg[i].w > 20 ? 6 : T->seg[i].w > 12 ? 5 : 4;
+				if (T->seg[i].fork > 0)
+				{
+					float s = (float) i * SEG + SEG * 0.5f;
+					for (int k = 0; k < 6 && nbox < MAXBOX; k++)
+					{
+						Box &B = box[nbox++];
+						B.s = s; B.respawn = 0;
+						B.l = T->laneL (s, (k < 3 ? -1.0f : 1.0f) * (0.2f + 0.3f * (float) (k % 3)));
+						B.l = T->onRoad (s, B.l, 1.6f); B.br = T->branchOf (s, B.l, -1);
+					}
+					continue;
+				}
 				for (int k = 0; k < k5 && nbox < MAXBOX; k++)
 				{
 					Box &B = box[nbox++];
 					B.s = (float) i * SEG + SEG * 0.5f;
 					float span = fminf (T->seg[i].w * 0.5f - 2.0f, 9.0f);
 					B.l = (-1.0f + 2.0f * (float) k / (float) (k5 - 1)) * span;
-					B.respawn = 0;
+					B.respawn = 0; B.br = -1;
 				}
 			}
 		// the star bits: ten along the lap, weaving across
@@ -151,8 +167,27 @@ struct Race
 				Bit &B = bit[nbit++];
 				B.s = T->wrapS (s + (float) j * 3.0f);
 				B.l = sinf ((float) k * 1.7f) * T->widthAt (s) * 0.28f;
-				B.respawn = 0;
+				if (T->forkAt (B.s) > 0) B.l = T->onRoad (B.s, T->laneL (B.s, sinf ((float) k * 1.7f) * 0.56f), 1.5f);	// (a fork: on a branch)
+				B.respawn = 0; B.br = T->branchOf (B.s, B.l, -1);
 			}
+		}
+	}
+
+	// The computer's sides at the forks: from the seed (a hash, not the race's dice: the rest of the race the same),
+	// both sides taken at each fork
+	void forkSides ()
+	{
+		for (int i = 0; i < n; i++) c[i].forkRight = 0;
+		for (int k = 0; k < T->nfork && k < 32; k++)
+		{
+			int right = 0;
+			for (int i = 0; i < n; i++)
+			{
+				unsigned h = seed0 * 2654435761u ^ (unsigned) (k + 1) * 40503u ^ (unsigned) (i + 1) * 2246822519u;
+				h ^= h >> 15; h *= 2654435761u; h ^= h >> 13;
+				if (h & 0x100) { c[i].forkRight |= 1u << k; right++; }
+			}
+			if (n > 1 && (right == 0 || right == n)) c[(k + (int) (seed0 % 7)) % n].forkRight ^= 1u << k;	// (a mix of both)
 		}
 	}
 
@@ -287,7 +322,8 @@ struct Race
 		}
 		else yr = steer * turn * (C.v > 3 ? 1.0f : C.v / 3);
 		if (C.human) yr += assist * curv * C.v * 0.7f;	// the help: the track's turn followed in part
-		yr -= C.ya * (C.human ? 1.1f : 1.6f);		// it re-aligns with the road by itself a little (a toy)
+		float bya = T->branchYa (C.s, C.l, C.br);	// (a fork's branch: its own way)
+		yr -= (C.ya - bya) * (C.human ? 1.1f : 1.6f);	// it re-aligns with the road by itself a little (a toy)
 		if (C.bubbleT > 0) yr = 0;
 		C.yawRate = yr;
 		// ---- moving
@@ -299,7 +335,7 @@ struct Race
 		if (C.beamT > 0)
 		{
 			int t = nextAhead (i);
-			if (t >= 0) C.l += clampf (T->across (C.s, C.l, c[t].l), -4.0f * dt, 4.0f * dt);
+			if (t >= 0 && sameRoad (C.br, c[t].br)) C.l += clampf (T->across (C.s, C.l, c[t].l), -4.0f * dt, 4.0f * dt);
 		}
 		C.lastS = C.s;
 		C.s = T->wrapS (C.s + ds);
@@ -309,7 +345,9 @@ struct Race
 		if (cosf (C.ya) < -0.2f && C.v > 3) { C.wrongT += dt; if (C.wrongT > 1.0f) C.wrongWay = true; } else { C.wrongT = 0; C.wrongWay = false; }
 		// ---- the edges (a whole tube has none: across goes round it)
 		float half = T->widthAt (C.s) * 0.5f - 0.9f;
+		if (C.br >= 0 && T->forkAt (C.s) <= 0) C.br = -1;		// (out of a fork)
 		if (closed || T->closedAt (C.s)) C.l = T->wrapL (C.s, C.l);
+		else if (T->forkAt (C.s) > 0) { C.br = T->branchOf (C.s, C.l, C.br); forkWalls (i); }
 		else if (fabsf (C.l) > half)
 		{
 			float sgn = C.l > 0 ? 1.0f : -1.0f;
@@ -356,6 +394,27 @@ struct Race
 		if (usePress && C.item != IT_NONE && C.rollT <= 0 && !stunned && time > 0 && C.empT <= 0) useItem (i, I.back);
 	}
 
+	// A fork's walls: the branch's (or the wider road's) edges, which run aslant; a ship sliding along one is not
+	// knocked, one going into it (or onto the split's nose) bounces off
+	void forkWalls (int i)
+	{
+		Craft &C = c[i];
+		float lo, hi; T->limits (C.s, C.l, C.br, &lo, &hi);
+		lo += 0.9f; hi -= 0.9f;
+		if (C.l >= lo && C.l <= hi) return;
+		float sgn = C.l > hi ? 1.0f : -1.0f;
+		// the wall's slant (metres across a metre along) and the ship's speed into it
+		float a0, b0, a1, b1; T->limits (C.s - 1, C.l, C.br, &a0, &b0); T->limits (C.s + 1, C.l, C.br, &a1, &b1);
+		float slope = sgn > 0 ? (b1 - b0) * 0.5f : (a1 - a0) * 0.5f, wa = atanf (slope);
+		float into = (C.v * sinf (C.ya) - slope * C.v * cosf (C.ya)) * sgn;
+		C.l = sgn > 0 ? hi : lo;
+		if ((C.ya - wa) * sgn > 0) C.ya = wa - (C.ya - wa) * 0.4f;
+		if (into > 4.0f && C.wallT <= 0 && C.v > 6) { emit (EV_WALL, i, posOf (i)); C.wallT = 0.4f; C.v *= into > 12 ? 0.85f : 0.93f; C.squash = 0.5f; drain (i, into > 12 ? 4 : 2); }
+		if (C.driftDir && into > 4.0f) C.driftCharge *= 0.6f;
+	}
+	// Are things on branches a and b on the same road (not on the two branches of a fork, apart)? (-1: one road)
+	static bool sameRoad (int a, int b) { return a < 0 || b < 0 || a == b; }
+
 	void newLap (int i)
 	{
 		Craft &C = c[i];
@@ -398,6 +457,7 @@ struct Race
 				Craft &A = c[a], &B = c[b];
 				float ds = T->ahead (B.s, A.s), dl = T->across (A.s, A.l, B.l);
 				if (fabsf (ds) > 3.0f || fabsf (dl) > 2.2f || fabsf (A.h - B.h) > 1.5f) continue;
+				if (!sameRoad (A.br, B.br)) continue;		// (the two branches of a fork)
 				// the warp star and the shield push the others aside
 				bool aBig = A.warpT > 0, bBig = B.warpT > 0;
 				if (aBig && !bBig && B.invulT <= 0) { hit (b, a, HIT_SPIN); continue; }
@@ -458,10 +518,10 @@ struct Race
 			for (int i = 0; i < n; i++)
 			{
 				Craft &C = c[i];
-				if (fabsf (T->ahead (C.s, B.s)) < 1.9f && fabsf (T->across (C.s, C.l, B.l)) < 1.9f && C.h < 2)
+				if (fabsf (T->ahead (C.s, B.s)) < 1.9f && fabsf (T->across (C.s, C.l, B.l)) < 1.9f && C.h < 2 && sameRoad (C.br, B.br))
 				{
 					B.respawn = 2.0f;
-					emit (EV_BOX, i, T->pointAt (B.s, B.l, 1.3f));
+					emit (EV_BOX, i, T->pointAtB (B.s, B.l, 1.3f, B.br));
 					if (C.item == IT_NONE && C.rollT <= 0)
 					{
 						C.item = rollItem (i); C.itemCount = ITEMS[C.item].count;
@@ -482,11 +542,11 @@ struct Race
 			for (int i = 0; i < n; i++)
 			{
 				Craft &C = c[i];
-				if (fabsf (T->ahead (C.s, B.s)) < 1.6f && fabsf (T->across (C.s, C.l, B.l)) < 1.6f && C.h < 2)
+				if (fabsf (T->ahead (C.s, B.s)) < 1.6f && fabsf (T->across (C.s, C.l, B.l)) < 1.6f && C.h < 2 && sameRoad (C.br, B.br))
 				{
 					B.respawn = 10.0f;
 					if (C.bits < 10) C.bits++;
-					emit (EV_STARBIT, i, T->pointAt (B.s, B.l, 1.0f), C.bits);
+					emit (EV_STARBIT, i, T->pointAtB (B.s, B.l, 1.0f, B.br), C.bits);
 					break;
 				}
 			}
@@ -506,8 +566,8 @@ struct Race
 	}
 
 	// ---- using the gadget -----------------------------------------------------------------------------------------
-	Proj *newProj () { for (int k = 0; k < MAXPROJ; k++) if (!proj[k].on) { memset (&proj[k], 0, sizeof proj[k]); proj[k].on = true; return &proj[k]; } return 0; }
-	Hazard *newHaz () { for (int k = 0; k < MAXHAZ; k++) if (!haz[k].on) { memset (&haz[k], 0, sizeof haz[k]); haz[k].on = true; return &haz[k]; } return 0; }
+	Proj *newProj () { for (int k = 0; k < MAXPROJ; k++) if (!proj[k].on) { memset (&proj[k], 0, sizeof proj[k]); proj[k].on = true; proj[k].br = -1; return &proj[k]; } return 0; }
+	Hazard *newHaz () { for (int k = 0; k < MAXHAZ; k++) if (!haz[k].on) { memset (&haz[k], 0, sizeof haz[k]); haz[k].on = true; haz[k].br = -1; return &haz[k]; } return 0; }
 
 	void useItem (int i, bool back)
 	{
@@ -521,7 +581,7 @@ struct Race
 		case FX_SHOT:
 		{
 			Proj *P = newProj (); if (!P) break;
-			P->kind = it; P->owner = i; P->l = C.l; P->h = 0.9f; P->life = 4;
+			P->kind = it; P->owner = i; P->l = C.l; P->h = 0.9f; P->life = 4; P->br = C.br;
 			if (back) { P->s = T->wrapS (C.s - 3); P->v = fmaxf (C.v - 30, 8) ; }
 			else { P->s = T->wrapS (C.s + 3); P->v = fmaxf (C.v + 20, 60); }
 			P->target = -1;
@@ -530,14 +590,14 @@ struct Race
 		case FX_DROP:
 		{
 			Hazard *H = newHaz (); if (!H) break;
-			H->kind = it; H->owner = i; H->s = T->wrapS (C.s - 3.5f); H->l = C.l; H->life = 20; H->r = 1.5f;
+			H->kind = it; H->owner = i; H->s = T->wrapS (C.s - 3.5f); H->br = T->branchOf (H->s, C.l, C.br); H->l = T->onRoad (H->s, C.l, 1.0f, H->br); H->life = 20; H->r = 1.5f;
 			break;
 		}
 		case FX_WELL:
 		{
 			Hazard *H = newHaz (); if (!H) break;
-			H->kind = it; H->owner = i; H->s = T->wrapS (back ? C.s - 4 : C.s + 20); H->l = C.l; H->life = 6; H->r = 6;
-			emit (EV_WELL, i, T->pointAt (H->s, H->l, 0.5f));
+			H->kind = it; H->owner = i; H->s = T->wrapS (back ? C.s - 4 : C.s + 20); H->br = T->branchOf (H->s, C.l, C.br); H->l = T->onRoad (H->s, C.l, 1.0f, H->br); H->life = 6; H->r = 6;
+			emit (EV_WELL, i, T->pointAtB (H->s, H->l, 0.5f, H->br));
 			break;
 		}
 		case FX_BEAM:
@@ -574,20 +634,22 @@ struct Race
 			Proj &P = proj[k];
 			if (!P.on) continue;
 			P.life -= dt;
-			if (P.life <= 0) { P.on = false; emit (EV_POP, -1, T->pointAt (P.s, P.l, P.h)); continue; }
+			if (P.life <= 0) { P.on = false; emit (EV_POP, -1, T->pointAtB (P.s, P.l, P.h, P.br)); continue; }
 			P.s = T->wrapS (P.s + P.v * dt);
 			float half = T->widthAt (P.s) * 0.5f - 0.6f;
 			P.l = T->wrapL (P.s, P.l);
-			if (!T->closedAt (P.s) && fabsf (P.l) > half) { P.l = P.l > 0 ? half : -half; }	// (it slides along the rail)
+			if (T->forkAt (P.s) <= 0) P.br = -1;
+			if (T->forkAt (P.s) > 0) { P.br = T->branchOf (P.s, P.l, P.br); P.l = T->onRoad (P.s, P.l, 0.6f, P.br); }	// (a fork: along its branch)
+			else if (!T->closedAt (P.s) && fabsf (P.l) > half) { P.l = P.l > 0 ? half : -half; }	// (it slides along the rail)
 			for (int i = 0; i < n; i++)
 			{
 				if (i == P.owner && P.life > 3.7f) continue;
 				const Craft &C = c[i];
-				if (fabsf (T->ahead (C.s, P.s)) < 2.0f && fabsf (T->across (C.s, C.l, P.l)) < 1.8f && C.h < 2.5f)
+				if (fabsf (T->ahead (C.s, P.s)) < 2.0f && fabsf (T->across (C.s, C.l, P.l)) < 1.8f && C.h < 2.5f && sameRoad (C.br, P.br))
 				{
 					P.on = false;
 					hit (i, P.owner, HIT_BUBBLE);
-					emit (EV_POP, i, T->pointAt (P.s, P.l, P.h));
+					emit (EV_POP, i, T->pointAtB (P.s, P.l, P.h, P.br));
 					break;
 				}
 			}
@@ -600,12 +662,12 @@ struct Race
 			Hazard &H = haz[k];
 			if (!H.on) continue;
 			H.life -= dt; H.spin += dt;
-			if (H.life <= 0) { H.on = false; emit (EV_POP, -1, T->pointAt (H.s, H.l, 0.5f)); continue; }
+			if (H.life <= 0) { H.on = false; emit (EV_POP, -1, T->pointAtB (H.s, H.l, 0.5f, H.br)); continue; }
 			bool well = ITEMS[H.kind].effect == FX_WELL;
 			for (int i = 0; i < n; i++)
 			{
 				Craft &C = c[i];
-				if (C.h > 1.2f || C.warpT > 0) continue;
+				if (C.h > 1.2f || C.warpT > 0 || !sameRoad (C.br, H.br)) continue;
 				float ds = T->ahead (C.s, H.s), dl = T->across (C.s, C.l, H.l);
 				if (well)
 				{
@@ -684,37 +746,70 @@ struct Race
 		float half = fminf (T->widthAt (C.s + look), T->widthAt (C.s)) * 0.5f - 2.6f;
 		if (half > 9) half = 9;					// (a tube: stay near the top)
 		if (half < 1) half = 1;
-		float target = clampf (curvAhead * 18.0f, -1, 1) * half * 0.6f + C.laneBias * half * 0.6f;
+		// a fork near (150 m ahead, or in it): its side chosen -- the line kept on that branch, moved over in time
+		int fk = T->forkNear (C.s, 150), kb = -1;
+		float bc = 0;
+		if (fk >= 0)
+		{
+			// its branch (0: the left one at the split, 1 the right one); its centre ahead -- before they part, well
+			// over on its side
+			kb = C.br >= 0 ? C.br : (int) ((C.forkRight >> fk) & 1);
+			float w = T->widthAt (C.s + look), la = 0, lb = 0;
+			if (T->forkAt (C.s + look) > 0) T->branchAt (C.s + look, kb, &la, 0);
+			if (T->forkAt (C.s + look * 0.5f) > 0) T->branchAt (C.s + look * 0.5f, kb, &lb, 0);
+			bc = la;
+			if (!T->splitAt (C.s))
+			{
+				float sg = fabsf (la) > 0.5f ? (la > 0 ? 1.0f : -1.0f) : kb ? 1.0f : -1.0f;
+				bc = sg * fmaxf (fmaxf (fabsf (la), fabsf (lb)), w * 0.3f);
+			}
+			half = fminf (half, w * 0.5f - 2.6f);
+			if (half < 1) half = 1;
+		}
+		float target = bc + clampf (curvAhead * 18.0f, -1, 1) * half * 0.6f + C.laneBias * half * 0.6f;
 		C.wobblePh += dt * 0.7f;
 		target += sinf (C.wobblePh) * half * 0.1f;
 		for (float d = 8; d < 40; d += 2)
 		{
 			const Seg &S = T->seg[T->segAt (C.s + d)];
-			if (S.flags & F_BOOST) { target = S.lane * S.w * 0.5f; break; }
+			if (S.flags & F_BOOST)
+			{
+				if (fk < 0) { target = S.lane * S.w * 0.5f; break; }
+				float pl = T->laneL (C.s + d, S.lane);
+				if (sameRoad (T->branchOf (C.s + d, pl, -1), kb)) { target = pl; break; }	// (on the other branch: not for it)
+			}
 		}
 		if (C.item == IT_NONE)
 			for (int b = 0; b < nbox; b++)
 			{
 				float d = T->ahead (box[b].s, C.s);
-				if (d > 6 && d < 35 && box[b].respawn <= 0 && fabsf (T->across (C.s, C.l, box[b].l)) < 6) { target = box[b].l; break; }
+				if (d > 6 && d < 35 && box[b].respawn <= 0 && fabsf (T->across (C.s, C.l, box[b].l)) < 6 && sameRoad (box[b].br, kb)) { target = box[b].l; break; }
 			}
 		for (int k = 0; k < MAXHAZ; k++)
 			if (haz[k].on && haz[k].owner != i)
 			{
 				float d = T->ahead (haz[k].s, C.s);
 				float r = ITEMS[haz[k].kind].effect == FX_WELL ? 7.0f : 2.5f;
-				if (d > 0 && d < 25 && fabsf (haz[k].l - target) < r) target += (haz[k].l > C.l ? -1.4f : 1.4f) * r * (C.skill > 0.95f ? 1.0f : 0.6f);
+				if (d > 0 && d < 25 && fabsf (haz[k].l - target) < r && sameRoad (haz[k].br, kb)) target += (haz[k].l > C.l ? -1.4f : 1.4f) * r * (C.skill > 0.95f ? 1.0f : 0.6f);
 			}
 		for (int k = 0; k < n; k++)
 		{
 			if (k == i) continue;
 			float d = T->ahead (c[k].s, C.s);
-			if (d > 1 && d < 10 && fabsf (T->across (C.s, C.l, c[k].l)) < 2.4f) target += c[k].l > C.l ? -2.5f : 2.5f;
+			if (d > 1 && d < 10 && fabsf (T->across (C.s, C.l, c[k].l)) < 2.4f && sameRoad (C.br, c[k].br)) target += c[k].l > C.l ? -2.5f : 2.5f;
 		}
-		if (!closed) target = clampf (target, -half, half);
+		if (fk >= 0)
+		{
+			// kept on its branch, here and ahead
+			float lo, hi, lo2, hi2; T->limits (C.s + look, bc, kb, &lo, &hi); T->limits (C.s, C.l, C.br, &lo2, &hi2);
+			lo = fmaxf (lo, lo2) + 2.6f; hi = fminf (hi, hi2) - 2.6f;
+			if (lo < hi) target = clampf (target, lo, hi); else target = (lo + hi) * 0.5f;
+			if (!T->splitAt (C.s)) target = bc > 0 ? fmaxf (target, 3.0f) : fminf (target, -3.0f);	// (clear of the nose)
+		}
+		else if (!closed) target = clampf (target, -half, half);
 		float wantYa = atan2f (T->across (C.s, C.l, target), look);
 		const Seg &S = T->seg[T->segAt (C.s)];
-		float ff = S.curv * C.v + C.ya * 1.6f;		// what holds the line
+		float ff = S.curv * C.v + (C.ya - T->branchYa (C.s, C.l, C.br)) * 1.6f;		// what holds the line
 		float steer = (ff + (wantYa - C.ya) * 3.2f) / (C.st.turn + 0.01f);
 		I.steer = clampf (steer, -1, 1);
 		// too fast for the turn ahead: lift off (the computer is careful, more so in the easy class)
@@ -727,7 +822,7 @@ struct Race
 		}
 		if (help) return I;					// (the warp star drives: no drift, no gadget)
 		// the computer drifts in the long turns
-		if (fabsf (curvAhead) > 0.1f && C.v > 18 && C.skill > 0.95f && fabsf (C.l) < half * 0.5f) I.drift = true;
+		if (fabsf (curvAhead) > 0.1f && C.v > 18 && C.skill > 0.95f && fabsf (C.l - (T->splitAt (C.s) ? bc : 0)) < half * 0.5f) I.drift = true;
 		// the gadget
 		if (C.item != IT_NONE && C.rollT <= 0 && C.empT <= 0)
 		{

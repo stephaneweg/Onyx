@@ -192,16 +192,17 @@ struct Camera
 	{
 		const Craft &C = R.c[i];
 		const Track &T = *R.T;
-		V3 p, u; T.surf (C.s, C.l, C.h, &p, &u);
+		V3 p, u; T.surfB (C.s, C.l, C.h, C.br, &p, &u);
 		// along the track: tied to the ship; across and up: following it softly
 		float wantBack = 7.5f + C.v * 0.025f + (C.boostT > 0 ? 1.0f : 0);
 		if (!init) { camL = C.l; camH = C.h; camBack = wantBack; }
 		camL += T.wrapL (C.s, C.l - camL) * clampf (dt * 6, 0, 1);
 		camH += (C.h - camH) * clampf (dt * 5, 0, 1);
 		camBack += (wantBack - camBack) * clampf (dt * 3, 0, 1);
-		V3 want = T.pointAt (C.s - camBack, camL, camH * 0.7f + 3.5f);
-		V3 wantAt = T.pointAt (C.s + 9, camL * 0.5f + C.l * 0.5f, C.h * 0.8f + 1.3f);
-		if (look > 0) { want = T.pointAt (C.s + 7, C.l, C.h + 2.2f); wantAt = T.pointAt (C.s - 6, C.l, C.h + 0.8f); }
+		int side = C.br >= 0 ? C.br : T.forkAt (C.s) > 0 ? T.nearBranch (C.s, C.l, -1) : -1;	// (a fork: the ship's branch's height, wherever the camera lags)
+		V3 want = T.pointAtB (C.s - camBack, camL, camH * 0.7f + 3.5f, side);
+		V3 wantAt = T.pointAtB (C.s + 9, camL * 0.5f + C.l * 0.5f, C.h * 0.8f + 1.3f, side);
+		if (look > 0) { want = T.pointAtB (C.s + 7, C.l, C.h + 2.2f, side); wantAt = T.pointAtB (C.s - 6, C.l, C.h + 0.8f, side); }
 		if (!init || look > 0) { eye = want; at = wantAt; up = u; init = true; }
 		eye = want; at = wantAt;
 		up = norm (lerp (up, u, clampf (dt * 6, 0, 1)));
@@ -231,6 +232,7 @@ struct Scene
 	V3 eyeW;				// the camera, this frame (the chrome's reflections)
 	const Mesh *mBox = 0, *mBubble = 0, *mGoo = 0, *mSpring = 0, *mTraffic = 0, *mStar = 0, *mNebula = 0, *mWarp = 0;
 	float time = 0;
+	int ghostBr = -1;
 
 	void load (const Track &T, unsigned seed) { world.build (T, lib, seed); fx.clear (); mBox = lib.get ("itembox"); mBubble = lib.get ("bubble"); mGoo = lib.get ("goo"); mSpring = lib.get ("spring"); mTraffic = lib.get ("traffic_ship"); mStar = lib.get ("starbit"); mNebula = lib.get ("nebula"); mWarp = lib.get ("warpstar"); }
 	void ships (const Race &R) { for (int i = 0; i < R.n; i++) buildShip (ship[i], lib, R.c[i].build, R.c[i].pilot); }
@@ -241,7 +243,7 @@ struct Scene
 		const Craft &C = R.c[i];
 		float hover = 0.6f + sinf (C.bob) * 0.06f;
 		V3 p, u, r, f;
-		R.T->surf (C.s, C.l, C.h + hover, &p, &u, &r, &f);
+		R.T->surfB (C.s, C.l, C.h + hover, C.br, &p, &u, &r, &f);
 		f = norm (f - u * dot (f, u));
 		float yaw = C.ya + C.spin + (C.driftDir ? (float) C.driftDir * 0.32f : 0);
 		V3 fw = f * cosf (yaw) + r * sinf (yaw);
@@ -394,7 +396,7 @@ struct Scene
 		for (int i = 0; i < R.n; i++)
 		{
 			const Craft &C = R.c[i];
-			V3 p, u, r, f; T.surf (C.s, C.l, 0.06f, &p, &u, &r, &f);
+			V3 p, u, r, f; T.surfB (C.s, C.l, 0.06f, C.br, &p, &u, &r, &f);
 			// a soft round shadow: a fan, dark under the hull, clear at its rim (the ship's length and width)
 			float lift = 1 + C.h * 0.25f, a = 165 / (1 + C.h * 0.3f);
 			float hl = fmaxf (ship[i].length, 2.5f) * 0.55f * lift, hw = hl * 0.62f;
@@ -410,13 +412,14 @@ struct Scene
 			}
 		}
 		F.end ();
-		dynamic (F, R, VP);
+		dynamic (F, R, VP, cam.eye, fwd);
 		// the ghost: the best race's ship, see-through
 		{
 			Ghost::Sample g;
 			if (ghost.at (R.time, &g))
 			{
-				V3 p, u, r, f; T.surf (g.s, g.l, g.h + 0.6f, &p, &u, &r, &f);
+				ghostBr = T.forkAt (g.s) > 0 ? T.branchOf (g.s, g.l, ghostBr) : -1;	// (kept on its fork's branch, as a ship)
+				V3 p, u, r, f; T.surfB (g.s, g.l, g.h + 0.6f, ghostBr, &p, &u, &r, &f);
 				f = norm (f - u * dot (f, u));
 				V3 fw = f * cosf (g.ya) + r * sinf (g.ya), rt = r * cosf (g.ya) - f * sinf (g.ya);
 				M4 M = M4::frame (-rt, u, fw, p);
@@ -590,12 +593,13 @@ struct Scene
 			const Seg &S = T.seg[i];
 			if (!(S.flags & F_BOOST)) continue;
 			if (len (S.c - cam.eye) > 300) continue;
-			float lane = S.lane * S.w * 0.5f, s0 = (float) i * SEG;
+			float s0 = (float) i * SEG, lane = S.fork > 0 ? T.laneL (s0, S.lane) : S.lane * S.w * 0.5f;
 			// the chevrons scroll forward (the texture's t), pulsing
 			float sc = fmodf (time * 2.0f, 1.0f);
 			unsigned col = rgbMix (0x3FD8FF, 0xB8FFFF, 0.5f + 0.5f * sinf (time * 8));
-			V3 a = T.pointAt (s0, lane - 2.0f, 0.05f), b = T.pointAt (s0, lane + 2.0f, 0.05f);
-			V3 c = T.pointAt (s0 + SEG, lane + 2.0f, 0.05f), d = T.pointAt (s0 + SEG, lane - 2.0f, 0.05f);
+			int pb = S.fork > 0 ? T.nearBranch (s0, lane, -1) : -1;
+			V3 a = T.pointAtB (s0, lane - 2.0f, 0.05f, pb), b = T.pointAtB (s0, lane + 2.0f, 0.05f, pb);
+			V3 c = T.pointAtB (s0 + SEG, lane + 2.0f, 0.05f, pb), d = T.pointAtB (s0 + SEG, lane - 2.0f, 0.05f, pb);
 			float t0 = (float) (i % 3) / 3.0f - sc;
 			F.quad (a, b, c, d, col, 255, 0, t0 + 1.0f / 3, 1, t0);
 		}
@@ -607,7 +611,7 @@ struct Scene
 		const Box &B = R.box[b];
 		if (B.respawn > 0.5f) return false;
 		float grow = B.respawn > 0 ? clampf (1 - B.respawn * 2, 0, 1) : 1;
-		V3 p, u, r, f; R.T->surf (B.s, B.l, 1.3f + sinf (time * 3 + (float) b) * 0.2f, &p, &u, &r, &f);
+		V3 p, u, r, f; R.T->surfB (B.s, B.l, 1.3f + sinf (time * 3 + (float) b) * 0.2f, B.br, &p, &u, &r, &f);
 		float a = time * 1.6f + (float) b;
 		*M = M4::frame (-r, u, f, p) * M4::rotY (a) * M4::rotX (0.6f) * M4::rotZ (0.6f) * M4::scale (grow, grow, grow);
 		return true;
@@ -650,13 +654,15 @@ struct Scene
 		}
 	}
 
-	void dynamic (Frame &F, const Race &R, const M4 &VP)
+	void dynamic (Frame &F, const Race &R, const M4 &VP, const V3 &eye, const V3 &fwd)
 	{
 		const Track &T = *R.T;
-		// the item boxes: turning, bobbing
+		// the item boxes: turning, bobbing (the ones behind the camera or past the world's reach left out)
 		for (int b = 0; b < R.nbox; b++)
 		{
 			M4 M; if (!boxMatrix (R, b, &M)) continue;
+			V3 d = M.point (V3 ()) - eye;
+			if (dot (d, fwd) < -3 || dot (d, d) > 480.0f * 480.0f) continue;
 			F.begin (VP * M, 0, B_CULL);
 			if (mBox) chromeBox (F, *mBox, M, T);
 			else cube (F, 0.8f, time + (float) b);
@@ -667,7 +673,7 @@ struct Scene
 		{
 			const Bit &B = R.bit[b];
 			if (B.respawn > 0) continue;
-			V3 p, u, r, f; T.surf (B.s, B.l, 1.0f + sinf (time * 4 + (float) b) * 0.15f, &p, &u, &r, &f);
+			V3 p, u, r, f; T.surfB (B.s, B.l, 1.0f + sinf (time * 4 + (float) b) * 0.15f, B.br, &p, &u, &r, &f);
 			M4 M = M4::frame (-r, u, f, p) * M4::rotY (time * 3 + (float) b) * M4::scale (1.2f, 1.2f, 1.2f);
 			F.begin (VP * M, 0, B_CULL);
 			if (mStar) F.mesh (*mStar, M4::identity ()); else cube (F, 0.3f, time);
@@ -687,7 +693,7 @@ struct Scene
 		{
 			const Proj &P = R.proj[k];
 			if (!P.on) continue;
-			V3 p = T.pointAt (P.s, P.l, P.h + 0.3f);
+			V3 p = T.pointAtB (P.s, P.l, P.h + 0.3f, P.br);
 			M4 M = M4::translate (p) * M4::rotY (time * 4) * M4::scale (0.9f, 0.9f, 0.9f);
 			F.begin (VP * M, 0, B_CULL);
 			if (mBubble) F.mesh (*mBubble, M4::identity ()); else cube (F, 0.6f, time);
@@ -697,7 +703,7 @@ struct Scene
 		{
 			const Hazard &H = R.haz[k];
 			if (!H.on) continue;
-			V3 p, u, r, f; T.surf (H.s, H.l, 0.05f, &p, &u, &r, &f);
+			V3 p, u, r, f; T.surfB (H.s, H.l, 0.05f, H.br, &p, &u, &r, &f);
 			bool spring = ITEMS[H.kind].effect == FX_WELL;
 			float sq = 1 + 0.08f * sinf (time * 8 + (float) k);
 			M4 M = M4::frame (-r, u, f, p, sq, 2 - sq, sq) * M4::rotY (H.spin * (spring ? 3.0f : 0.3f));

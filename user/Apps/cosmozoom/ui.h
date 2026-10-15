@@ -199,7 +199,7 @@ static void fmtTime (float t, char *b, int cap)
 struct MiniMap
 {
 	enum { N = 160 };
-	float px[N], pz[N]; int n = 0;
+	float px[N], pz[N], rx[N], rz[N], bl[2][N], bh[2][N]; bool fk[N]; int n = 0;	// (a fork: its branches across, their heights)
 	float lox, loz, sc;
 	void make (const Track &T)
 	{
@@ -207,8 +207,11 @@ struct MiniMap
 		float x0 = 1e9f, z0 = 1e9f, x1 = -1e9f, z1 = -1e9f;
 		for (int k = 0; k < N; k++)
 		{
-			const V3 &p = T.seg[k * T.n / N].c;
+			const Seg &S = T.seg[k * T.n / N];
+			const V3 &p = S.c;
 			px[k] = p.x; pz[k] = p.z; n++;
+			V3 r = norm (V3 (S.r.x, 0, S.r.z)); rx[k] = r.x; rz[k] = r.z;
+			fk[k] = S.fork > 0; for (int b = 0; b < 2; b++) { bl[b][k] = S.bl[b]; bh[b][k] = S.bh[b]; }
 			x0 = fminf (x0, p.x); x1 = fmaxf (x1, p.x); z0 = fminf (z0, p.z); z1 = fmaxf (z1, p.z);
 		}
 		lox = (x0 + x1) * 0.5f; loz = (z0 + z1) * 0.5f; sc = fmaxf (x1 - x0, z1 - z0) * 0.5f + 1;
@@ -220,19 +223,29 @@ struct MiniMap
 	}
 	void draw (Surf &S, const Race &R, float cx, float cy, float r, int me)
 	{
-		for (int pass = 0; pass < 2; pass++)
-			for (int k = 0; k < n; k++)
-			{
-				float ax, ay, bx, by;
-				at (px[k], pz[k], cx, cy, r, &ax, &ay); at (px[(k + 1) % n], pz[(k + 1) % n], cx, cy, r, &bx, &by);
-				S.line (ax, ay, bx, by, pass ? r * 0.05f : r * 0.11f, pass ? C_WHITE : C_INK);
-			}
+		// (a fork: its two branches, thinner; the lower one first, the upper one over it where they cross)
+		for (int layer = 0; layer < 2; layer++)
+			for (int pass = 0; pass < 2; pass++)
+				for (int k = 0; k < n; k++)
+				{
+					int j = (k + 1) % n;
+					bool f = fk[k] || fk[j];
+					for (int b = 0; b < (f ? 2 : 1); b++)
+					{
+						if (f && (bh[b][k] > bh[1 - b][k] + 1.0f) != (layer == 1)) continue;
+						if (!f && layer) continue;
+						float ax, ay, bx, by, lk = f ? bl[b][k] : 0, lj = f ? bl[b][j] : 0;
+						at (px[k] + rx[k] * lk, pz[k] + rz[k] * lk, cx, cy, r, &ax, &ay); at (px[j] + rx[j] * lj, pz[j] + rz[j] * lj, cx, cy, r, &bx, &by);
+						float wd = f ? (pass ? r * 0.035f : r * 0.08f) : pass ? r * 0.05f : r * 0.11f;
+						S.line (ax, ay, bx, by, wd, pass ? C_WHITE : C_INK);
+					}
+				}
 		for (int pass = 0; pass < 2; pass++)
 			for (int i = 0; i < R.n; i++)
 			{
 				bool big = i == me || R.c[i].human;
 				if ((pass == 1) != big) continue;
-				V3 p = R.T->pointAt (R.c[i].s, 0, 0);
+				V3 p = R.T->pointAt (R.c[i].s, R.T->forkAt (R.c[i].s) > 0 ? R.c[i].l : 0, 0);	// (a fork: on its branch)
 				float x, y; at (p.x, p.z, cx, cy, r, &x, &y);
 				float d = big ? r * 0.1f : r * 0.065f;
 				S.disc (x, y, d + 2, C_INK);

@@ -119,7 +119,11 @@ struct World
 		// the user's road profile (2026-10-15, docs/cosmozoom/DESIGN.md: drawn at 150 mm for 15 m): three lanes split by
 		// small rounded grooves, a raised rounded border each side, 0.5 m thick; the lanes stretch with the width, the
 		// borders keep their shape. Tubes keep the plain rolled surface below.
-		if (tube <= 0.01f)
+		if (tube <= 0.01f && (A.fork > 0 || B.fork > 0))
+		{
+			forkRoad (T, i, A, B, start, L, G);
+		}
+		else if (tube <= 0.01f)
 		{
 			profileRoad (T, i, A, B, start, L);
 		}
@@ -290,24 +294,30 @@ struct World
 		*n = (int) (sizeof P / sizeof P[0]);
 		return P;
 	}
-	void profileRoad (const Track &T, int i, const Seg &A, const Seg &B, bool start, VList &L)
+	// (side, ca, cb: a fork's branch -- A and B its own, moved to its place -- cut at the centre line where the two
+	// still overlap: side 1 the right one, nothing left of -ca / -cb; side -1 the left one)
+	void profileRoad (const Track &T, int i, const Seg &A, const Seg &B, bool start, VList &L, int side = 0, float ca = 0, float cb = 0)
 	{
 		int n; const ProfPt *P = roadProfile (&n);
 		auto SP = [&] (const Seg &S, float l, float h) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, 0, 0); return p; };
+		float ha = A.w * 0.5f, hb = B.w * 0.5f;
 		// a drawing point -> (across, above the lanes) in metres at this segment's half width
-		auto M = [&] (const ProfPt &q, float half, float *l, float *h)
+		auto Mc = [&] (const ProfPt &q, float half, float c, float *l, float *h)
 		{
 			float inner = half - 0.5f, ax = fabsf (q.x);
 			float m = ax <= 70 ? ax / 70 * inner : inner + (ax - 70) * 0.1f;
 			*l = q.x < 0 ? -m : m; *h = (q.z - 5) * 0.1f;
+			if (side > 0 && *l < -c) *l = -c;
+			if (side < 0 && *l > c) *l = c;
 		};
-		float ha = A.w * 0.5f, hb = B.w * 0.5f;
+
 		unsigned band = T.road[0];		// (one colour all along: no darker stretches)
 		unsigned stripe = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f);	// (deeper than the files' pastels)
 		for (int k = 0; k + 1 < n; k++)
 		{
 			float la0, ha0, la1, ha1, lb0, hb0, lb1, hb1;
-			M (P[k], ha, &la0, &ha0); M (P[k + 1], ha, &la1, &ha1); M (P[k], hb, &lb0, &hb0); M (P[k + 1], hb, &lb1, &hb1);
+			Mc (P[k], ha, ca, &la0, &ha0); Mc (P[k + 1], ha, ca, &la1, &ha1); Mc (P[k], hb, cb, &lb0, &hb0); Mc (P[k + 1], hb, cb, &lb1, &hb1);
+			if (side && la0 == la1 && lb0 == lb1) continue;		// (cut away: the other branch's side)
 			V3 a0 = SP (A, la0, ha0), a1 = SP (A, la1, ha1), b0 = SP (B, lb0, hb0), b1 = SP (B, lb1, hb1);
 			// the outward normal: the profile's edge turned left (up for the top, out for the sides)
 			float dl = la1 - la0, dh = ha1 - ha0;
@@ -325,15 +335,154 @@ struct World
 		// the underside, flat
 		{
 			float l0, h0, l1, h1, m0, g0, m1, g1;
-			M (P[0], ha, &l0, &h0); M (P[n - 1], ha, &l1, &h1); M (P[0], hb, &m0, &g0); M (P[n - 1], hb, &m1, &g1);
+			Mc (P[0], ha, ca, &l0, &h0); Mc (P[n - 1], ha, ca, &l1, &h1); Mc (P[0], hb, cb, &m0, &g0); Mc (P[n - 1], hb, cb, &m1, &g1);
 			V3 nm = -A.u;
 			L.face (SP (A, l0, h0), SP (A, l1, h1), SP (B, m1, g1), SP (B, m0, g0), shade (rgbScale (T.road[0], 0.7f), nm), nm);
 		}
 		// a speed pad's darker panel under its glowing chevrons
-		if (A.flags & F_BOOST)
+		if ((A.flags & F_BOOST) && !side)
 		{
 			float la = A.lane * ha, lb = A.lane * hb, hw = 2.3f;
 			L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
+		}
+	}
+	// ---- a fork: its two branches, each the road's own profile, cut at the centre line while they still overlap; the
+	// speed pads on them; where they part (and meet again), a wedge between them in the rails' stripes, and at the split a
+	// little sign with its arrows to the left and to the right. The gap past the wedge stays open.
+	static Seg branchSeg (const Seg &S, int k)
+	{
+		Seg b = S;
+		b.c = S.c + S.r * S.bl[k] + S.u * S.bh[k];
+		return b;
+	}
+	static bool apart (const Seg &S) { return fabsf (S.bl[1] - S.bl[0]) > S.w || fabsf (S.bh[1] - S.bh[0]) > 2.5f; }
+	// a point of a fork's segment: across l from the centre line, h above branch k
+	static V3 forkPt (const Seg &S, float l, float h, int k)
+	{
+		V3 p; Track::surfOf (S.c + S.u * S.bh[k], S.r, S.u, 0, l, h, &p, 0, 0); return p;
+	}
+	void forkRoad (const Track &T, int i, const Seg &A, const Seg &B, bool start, VList &L, VList &G)
+	{
+		bool apA = apart (A), apB = apart (B);
+		for (int k = 0; k < 2; k++)
+		{
+			// (still touching: each cut at the centre line, the right one -- the greater across -- on its right)
+			const Seg &R = A.fork > 0 ? A : B;
+			int side = R.bl[k] > R.bl[1 - k] ? 1 : R.bl[k] < R.bl[1 - k] ? -1 : k ? 1 : -1;
+			profileRoad (T, i, branchSeg (A, k), branchSeg (B, k), start, L, side, apA ? 1e9f : fabsf (A.bl[k]), apB ? 1e9f : fabsf (B.bl[k]));
+		}
+		float sA = (float) i * SEG, sB = sA + SEG;
+		auto near = [&] (const Seg &S, float l) { return fabsf (l - S.bl[1]) < fabsf (l - S.bl[0]) || (S.bl[0] == S.bl[1] && l >= 0) ? 1 : 0; };
+		if (A.flags & F_BOOST)
+		{
+			float la = T.laneL (sA, A.lane), lb = T.laneL (sB, A.lane), hw = 2.3f;
+			int k = near (A, la);
+			L.face (forkPt (A, la - hw, 0.02f, k), forkPt (A, la + hw, 0.02f, k), forkPt (B, lb + hw, 0.02f, k), forkPt (B, lb - hw, 0.02f, k), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
+		}
+		// the wedge: from the nose (the gap opening) while the gap is under WG metres; at the meeting the same
+		const float WG = 8, TOP = 0.9f, BOT = -0.5f;
+		float gA = fabsf (A.bl[1] - A.bl[0]) - A.w, gB = fabsf (B.bl[1] - B.bl[0]) - B.w;
+		bool level = fabsf (A.bh[1] - A.bh[0]) < 0.5f && fabsf (B.bh[1] - B.bh[0]) < 0.5f;
+		if (level && (gA > 0 || gB > 0) && gA <= WG && gB <= WG)
+		{
+			float wa = fmaxf (gA, 0) * 0.5f, wb = fmaxf (gB, 0) * 0.5f;
+			float ma = (A.bl[0] + A.bl[1]) * 0.5f, mb = (B.bl[0] + B.bl[1]) * 0.5f;
+			int kl = A.bl[0] <= A.bl[1] ? 0 : 1, kr = 1 - kl;
+			unsigned stripe = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f), side2 = rgbScale (stripe, 0.85f);
+			V3 aL = forkPt (A, ma - wa, TOP, kl), aR = forkPt (A, ma + wa, TOP, kr), bL = forkPt (B, mb - wb, TOP, kl), bR = forkPt (B, mb + wb, TOP, kr);
+			V3 aM = (aL + aR) * 0.5f + A.u * 0.15f, bM = (bL + bR) * 0.5f + B.u * 0.15f;	// (a low ridge on top)
+			V3 nl = A.u + A.r * -0.5f, nr = A.u + A.r * 0.5f;
+			L.face (aL, aM, bM, bL, shade (stripe, nl), nl);
+			L.face (aM, aR, bR, bM, shade (rgbMix (stripe, 0xFFFFFF, 0.2f), nr), nr);
+			// its sides, down to the slab's underside
+			V3 aLb = forkPt (A, ma - wa, BOT, kl), aRb = forkPt (A, ma + wa, BOT, kr), bLb = forkPt (B, mb - wb, BOT, kl), bRb = forkPt (B, mb + wb, BOT, kr);
+			L.face (aLb, aL, bL, bLb, shade (side2, -A.r), -A.r);
+			L.face (aR, aRb, bRb, bR, shade (side2, A.r), A.r);
+			// its end where the gap goes on opening (the void past it)
+			const Seg &C = T.seg[(i + 2) % T.n], &Z = T.seg[(i + T.n - 1) % T.n];
+			bool endB = fabsf (C.bl[1] - C.bl[0]) - C.w > WG || fabsf (C.bh[1] - C.bh[0]) >= 0.5f;
+			bool endA = fabsf (Z.bl[1] - Z.bl[0]) - Z.w > WG || fabsf (Z.bh[1] - Z.bh[0]) >= 0.5f;
+			if (endA || endB)
+			{
+				V3 n = endB ? B.f : -A.f;
+				unsigned ec = shade (side2, n);
+				if (endB) { L.face (bLb, bRb, bR, bL, ec, n); L.face (bL, bR, bM, bM, ec, n); }
+				if (endA) { L.face (aLb, aRb, aR, aL, ec, -A.f); L.face (aL, aR, aM, aM, ec, -A.f); }
+			}
+			// the sign at the split: a panel on a post, its arrows pointing left and right
+			if (gB > gA && gA < 3.0f && gB >= 3.0f) forkSign (T, B, mb, B.bh[kl], L, G);
+		}
+		// a crossing: the upper branch a thick deck where it passes over the lower one (its edges in the rails'
+		// stripes), pillars at its edges clear of the lower road, a soft shadow on the lower road under it
+		for (int k = 0; k < 2; k++)
+		{
+			int o = 1 - k;
+			if (A.bh[k] < A.bh[o] + 2.5f || B.bh[k] < B.bh[o] + 2.5f) continue;
+			float dA = fabsf (A.bl[k] - A.bl[o]), dB = fabsf (B.bl[k] - B.bl[o]);
+			if (dA > A.w + 4 && dB > B.w + 4) continue;
+			const float DK = -1.6f;
+			float ea = A.w * 0.5f, eb = B.w * 0.5f;
+			unsigned stripe = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f), under = rgbScale (T.road[0], 0.62f);
+			for (int sd = -1; sd <= 1; sd += 2)
+			{
+				float s = (float) sd;
+				V3 a0 = forkPt (A, A.bl[k] + s * ea, -0.5f, k), a1 = forkPt (A, A.bl[k] + s * ea, DK, k);
+				V3 b0 = forkPt (B, B.bl[k] + s * eb, -0.5f, k), b1 = forkPt (B, B.bl[k] + s * eb, DK, k);
+				L.face (a0, a1, b1, b0, shade (stripe, A.r * s), A.r * s);
+			}
+			L.face (forkPt (A, A.bl[k] - ea, DK, k), forkPt (A, A.bl[k] + ea, DK, k), forkPt (B, B.bl[k] + eb, DK, k), forkPt (B, B.bl[k] - eb, DK, k), shade (under, -A.u), -A.u);
+			// the shadow below: where the deck overhangs the lower road
+			float oa0 = fmaxf (A.bl[k] - ea, A.bl[o] - ea + 0.6f), oa1 = fminf (A.bl[k] + ea, A.bl[o] + ea - 0.6f);
+			float ob0 = fmaxf (B.bl[k] - eb, B.bl[o] - eb + 0.6f), ob1 = fminf (B.bl[k] + eb, B.bl[o] + eb - 0.6f);
+			if (oa1 > oa0 && ob1 > ob0)
+				L.face (forkPt (A, oa0, 0.03f, o), forkPt (A, oa1, 0.03f, o), forkPt (B, ob1, 0.03f, o), forkPt (B, ob0, 0.03f, o), shade (rgbScale (T.road[0], 0.6f), A.u), A.u);
+			// pillars every 10 m, down to the ground, where the lower road is not under them
+			if ((i % 5) == 0)
+				for (int sd = -1; sd <= 1; sd += 2)
+				{
+					float l = A.bl[k] + (float) sd * (ea - 0.7f);
+					if (fabsf (l - A.bl[o]) < ea + 1.6f) continue;
+					V3 top = forkPt (A, l, DK, k), bot = top; bot.y = T.groundY;
+					box (L, top, bot, 0.45f, T.walls[0] ? T.walls[0] : 0xEEF0F8);
+				}
+		}
+	}
+	void forkSign (const Track &T, const Seg &S, float mid, float rise, VList &L, VList &G)
+	{
+		V3 base; Track::surfOf (S.c + S.u * rise, S.r, S.u, 0, mid, 0.9f, &base, 0, 0);
+		V3 r = S.r, u = S.u, f = S.f;
+		unsigned post = rgbMix (T.walls[0] ? T.walls[0] : 0xEEF0F8, 0xFFFFFF, 0.2f), panel = 0x2A3350;
+		// the post
+		V3 p0 = base - f * 0.2f, p1 = base + u * 2.4f - f * 0.2f;
+		for (int k = 0; k < 4; k++)
+		{
+			float a0 = PI * 0.5f * (float) k, a1 = a0 + PI * 0.5f;
+			V3 d0 = r * (cosf (a0) * 0.16f) + f * (sinf (a0) * 0.16f), d1 = r * (cosf (a1) * 0.16f) + f * (sinf (a1) * 0.16f), nm = d0 + d1;
+			L.face (p0 + d0, p0 + d1, p1 + d1, p1 + d0, shade (post, nm), nm);
+		}
+		// the panel: 3.2 x 1.3 m, a rim in the rails' colour
+		V3 c = base + u * 3.0f - f * 0.25f;
+		float hw = 1.6f, hh = 0.65f, dz = 0.12f;
+		V3 q[4] = { c - r * hw - u * hh, c + r * hw - u * hh, c + r * hw + u * hh, c - r * hw + u * hh };
+		L.face (q[0] - f * dz, q[1] - f * dz, q[2] - f * dz, q[3] - f * dz, shade (panel, -f), -f);
+		L.face (q[1] + f * dz, q[0] + f * dz, q[3] + f * dz, q[2] + f * dz, shade (panel, f), f);
+		for (int k = 0; k < 4; k++)
+		{
+			V3 a = q[k], b = q[(k + 1) % 4], nm = (a + b) * 0.5f - c;
+			L.face (a + f * dz, b + f * dz, b - f * dz, a - f * dz, shade (T.rails[0], nm), nm);
+		}
+		// the arrows, glowing: a chevron each way
+		unsigned ac = rgbMix (T.rails[1] == 0xFFFFFF ? T.rails[0] : T.rails[1], 0xFFFFFF, 0.35f);
+		for (int sd = -1; sd <= 1; sd += 2)
+		{
+			float s = (float) sd;
+			V3 tip = c + r * (s * 1.4f) - f * (dz + 0.02f), m = c + r * (s * 0.85f) - f * (dz + 0.02f);
+			V3 b0 = m + u * 0.5f, b1 = m - u * 0.5f, w = r * (s * -0.3f);
+			G.face (b0, b0 + w, tip + w, tip, ac, -f);
+			G.face (tip, tip + w, b1 + w, b1, ac, -f);
+			// and a bar to it: an arrow
+			V3 q0 = c + r * (s * 0.2f) - f * (dz + 0.02f);
+			G.face (q0 + u * 0.1f, tip + w * 0.6f + u * 0.1f, tip + w * 0.6f - u * 0.1f, q0 - u * 0.1f, ac, -f);
 		}
 	}
 	// the road far away (chunkLow): its top as one strip (a tube: 8 sides round), the borders' tops in their stripes, the
@@ -341,6 +490,27 @@ struct World
 	void roadLow (const Track &T, int i, const Seg &A, const Seg &B, float tube, VList &L)
 	{
 		auto SP = [&] (const Seg &S, float l, float h) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, 0, 0); return p; };
+		if (tube <= 0.01f && (A.fork > 0 || B.fork > 0))
+		{
+			// a fork: each branch a strip (cut at the centre line while they overlap), its borders, its underside
+			unsigned st = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f);
+			bool apA = apart (A), apB = apart (B);
+			for (int k = 0; k < 2; k++)
+			{
+				const Seg &R = A.fork > 0 ? A : B;
+				int sd = R.bl[k] > R.bl[1 - k] ? 1 : R.bl[k] < R.bl[1 - k] ? -1 : k ? 1 : -1;
+				Seg a = branchSeg (A, k), b = branchSeg (B, k);
+				float s = (float) sd, ea = A.w * 0.5f, eb = B.w * 0.5f;
+				float ia = -s * (apA ? ea : fminf (ea, fabsf (A.bl[k]))), ib = -s * (apB ? eb : fminf (eb, fabsf (B.bl[k])));	// (the inner edges, local)
+				float oa = s * ea, ob = s * eb;
+				L.face (SP (a, ia, 0), SP (a, oa, 0), SP (b, ob, 0), SP (b, ib, 0), shade (T.road[0], A.u), A.u);
+				L.face (SP (a, ia, -0.5f), SP (a, oa, -0.5f), SP (b, ob, -0.5f), SP (b, ib, -0.5f), shade (rgbScale (T.road[0], 0.7f), -A.u), -A.u);
+				L.face (SP (a, s * (ea - 0.5f), 0.2f), SP (a, oa, 0.2f), SP (b, ob, 0.2f), SP (b, s * (eb - 0.5f), 0.2f), shade (st, A.u), A.u);
+				if (apA && apB)
+					L.face (SP (a, -s * (ea - 0.5f), 0.2f), SP (a, -s * ea, 0.2f), SP (b, -s * eb, 0.2f), SP (b, -s * (eb - 0.5f), 0.2f), shade (st, A.u), A.u);
+			}
+			return;
+		}
 		float ea = A.w * 0.5f, eb = B.w * 0.5f;
 		int cols = tube > 0.01f ? 8 : 1;
 		for (int k = 0; k < cols; k++)
@@ -484,7 +654,7 @@ struct World
 		}
 		if (nearest) *nearest = bi;
 		if (dist) *dist = sqrtf (best);
-		float hw = T.seg[bi].w * 0.5f + margin;
+		float hw = T.seg[bi].w * 0.5f + T.seg[bi].fork + margin;	// (a fork: both its branches)
 		return best > hw * hw;
 	}
 
@@ -521,7 +691,7 @@ struct World
 					if (S.flags & (F_LOOP | F_TWIST)) continue;
 					for (int row = 0; row < 2; row++)
 					{
-						float d = S.w * 0.5f + 30 + (float) row * 40 + rng.range (0, 25);
+						float d = S.w * 0.5f + S.fork + 30 + (float) row * 40 + rng.range (0, 25);
 						V3 p = S.c + V3 (S.r.x, 0, S.r.z) * ((float) side * d);
 						p.y = baseY;
 						if (!clearOfRoad (T, p, 18)) continue;
@@ -538,7 +708,7 @@ struct World
 				const Seg &S = T.seg[i];
 				if (S.flags & (F_LOOP | F_TWIST | F_TUNNEL) || S.tube > 0) continue;
 				float side = (k & 1) ? 1.0f : -1.0f;
-				V3 p = S.c + V3 (S.r.x, 0, S.r.z) * (side * (S.w * 0.5f + 8)) - V3 (0, 6, 0);
+				V3 p = S.c + V3 (S.r.x, 0, S.r.z) * (side * (S.w * 0.5f + S.fork + 8)) - V3 (0, 6, 0);
 				if (!clearOfRoad (T, p, 4)) continue;
 				V3 face = norm (V3 (-S.f.x, 0, -S.f.z) * 0.8f + V3 (-S.r.x, 0, -S.r.z) * side * 0.6f);
 				const Mesh *m = lib.get ("billboard_pole", pastel (rng, T), T.neon[k % 3], 0);
@@ -585,7 +755,7 @@ struct World
 			clearOfRoad (T, p, 0, &ni, &dist);
 			float roadY = T.seg[ni].c.y;
 			// near the road: well below it or well above the ships; farther: anywhere
-			if (dist < T.seg[ni].w * 0.5f + 25) continue;
+			if (dist < T.seg[ni].w * 0.5f + T.seg[ni].fork + 25) continue;
 			p.y = dist < 60 ? roadY - rng.range (10, 30) : roadY + rng.range (-35, 30);
 			const char *nm = ISL[rng.n (3)];
 			const Mesh *m = lib.get (nm, 0xFF000000u, 0xFF000000u, 0);
@@ -610,7 +780,7 @@ struct World
 			V3 p (cx + rng.range (-rx * 1.4f, rx * 1.4f), T.lo.y + rng.range (-40, 70), cz + rng.range (-rz * 1.4f, rz * 1.4f));
 			int ni = 0; float dist = 0;
 			clearOfRoad (T, p, 0, &ni, &dist);
-			if (dist < T.seg[ni].w * 0.5f + 30 && fabsf (p.y - T.seg[ni].c.y) < 20) continue;
+			if (dist < T.seg[ni].w * 0.5f + T.seg[ni].fork + 30 && fabsf (p.y - T.seg[ni].c.y) < (T.seg[ni].fork > 0 ? 36 : 20)) continue;	// (a fork: its lower branch too)
 			float sc = rng.range (0.7f, 1.8f);
 			if (dist >= 110) { for (int j = 0; j < 3; j++) lowPuff (far, p + V3 (rng.range (-8, 8) * sc, 0, rng.range (-8, 8) * sc), 7 * sc); continue; }
 			const Mesh *m = lib.get ("cloud_puff", 0xFF000000u, 0xFF000000u, 0);
@@ -635,7 +805,7 @@ struct World
 					if (P.side && side != P.side) continue;
 					const Seg &S = T.seg[i];
 					if (S.flags & (F_TUNNEL | F_LOOP | F_GAP | F_TWIST) || S.tube > 0) continue;
-					float d = S.w * 0.5f + 4.0f + rng.f () * 3.0f + (m->hi.x - m->lo.x) * 0.5f * P.scale;
+					float d = S.w * 0.5f + S.fork + 4.0f + rng.f () * 3.0f + (m->hi.x - m->lo.x) * 0.5f * P.scale;
 					V3 p = S.c + V3 (S.r.x, 0, S.r.z) * ((float) side * d);
 					p.y = S.c.y - 2 > T.groundY ? T.groundY : S.c.y - 0.6f;
 					float yaw = atan2f (S.f.x, S.f.z) + (side > 0 ? -PI / 2 : PI / 2) + rng.range (-0.3f, 0.3f);

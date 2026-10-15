@@ -17,6 +17,14 @@
 //   loop = t                     a vertical loop (radius 12 m, its exit beside its entry)
 //   tube = t0 t1                 the road rolls down into a tube ridden on its outside (steering goes round it)
 //   twist = t0 t1 [turns]        the road turns over round its own line (a Moebius-like roll: the ships stay on it)
+//   fork = t0 t1 [gap [rise]]    the road splits into two branches, left and right, each the road's whole width, which
+//                                part (a gap of `gap` metres between them at most, 24 by default) and meet again; with
+//                                `rise`, the right one climbs and the left one dips by up to `rise` metres (< 0: the
+//                                other way). Eased over 75 m at each end; no tunnel, tube, loop, twist or jump in it.
+//   cross = t0 t1 [gap [depth]]  a fork whose branches change sides: the left one dips `depth` metres (10 by default, 9
+//                                to 20; < 0: the right one), passes under the other and climbs back on the far side, then
+//                                they meet again. At least 440 m long (part 75, dip 80, change sides 220, climb 80, meet 75,
+//                                overlapping).
 //   time = day | dusk | night | aurora | space      rails = left right      walls = wall trim (the buildings)
 //   neon = c1 c2 c3 (the signs)  city = 0..1 (how many buildings)      groundkind = city | water | sand | snow | rock |
 //   jungle | clouds | none
@@ -37,7 +45,7 @@ namespace cz {
 
 static const float SEG = 2.0f;			// metres a segment
 
-enum { F_BOOST = 1, F_ITEMS = 2, F_RAMP = 4, F_TUNNEL = 8, F_START = 16, F_LOOP = 32, F_GAP = 64, F_TUBE = 128, F_TWIST = 256 };
+enum { F_BOOST = 1, F_ITEMS = 2, F_RAMP = 4, F_TUNNEL = 8, F_START = 16, F_LOOP = 32, F_GAP = 64, F_TUBE = 128, F_TWIST = 256, F_FORK = 512 };
 
 struct Seg
 {
@@ -47,9 +55,12 @@ struct Seg
 	unsigned flags;			// F_*
 	float lane;			// the boost pad's place (-1..1)
 	float tube;			// 0 a flat road .. 1 a whole tube ridden on its outside (the road rolled down around it)
+	float fork;			// a fork: how far its branches reach from the centre line (0: one road)
+	float bl[2], bh[2];		// a fork: its branches' centres across (0 the left one at the split, 1 the right one) and heights
 };
 
 static const float TUBE_R = 7.0f;		// a tube's radius (its round: 44 m)
+static const float FORK_EASE = 75.0f;		// a fork's branches part (and meet) over this many metres
 
 struct PropLine { char model[24]; int side; float spacing, scale, t0, t1; };
 struct Scatter { char model[24]; int count; float scale; };
@@ -57,7 +68,7 @@ struct Decor { char model[24]; float x, z, y, yaw, scale; bool hasY; };
 
 struct Track
 {
-	enum { MAXP = 160, MAXSEG = 2400, MAXF = 64, MAXPROP = 16, MAXDECOR = 48 };
+	enum { MAXP = 160, MAXSEG = 2400, MAXF = 64, MAXPROP = 16, MAXDECOR = 48, MAXFORK = 8 };
 	char id[32], name[48], nameFr[48], theme[24];
 	unsigned sky[2], ground[2], road[2], curb[2], wall, edge;
 	// the look (docs/cosmozoom/DESIGN.md 7.4): the time of day, the rails, the buildings, the neon signs
@@ -71,7 +82,8 @@ struct Track
 	// the control points
 	V3 cp[MAXP]; float cpw[MAXP], cpbank[MAXP]; int ncp;
 	// the features (t of the lap)
-	struct Feat { int kind; float t0, t1, lane; } feat[MAXF]; int nfeat;
+	struct Feat { int kind; float t0, t1, lane, gap, rise; bool cross; } feat[MAXF]; int nfeat;
+	float forkS0[MAXFORK], forkS1[MAXFORK]; int nfork;	// the forks made (metres along: where they begin, end)
 	PropLine props[MAXPROP]; int nprops;
 	Scatter scat[MAXPROP]; int nscat;
 	Decor decor[MAXDECOR]; int ndecor;
@@ -156,6 +168,18 @@ struct Track
 						nfeat++;
 					}
 				}
+				else if ((!strcmp (key, "fork") || !strcmp (key, "cross")) && nfeat < MAXF)
+				{
+					Feat &F = feat[nfeat];
+					bool cr = key[0] == 'c';
+					float a = 0, b = 0, g = 24, r = cr ? 10 : 0;
+					if (sscanf (v, "%f %f %f %f", &a, &b, &g, &r) >= 2)
+					{
+						F.kind = F_FORK; F.cross = cr; F.t0 = a; F.t1 = b; F.lane = 0; F.gap = clampf (g, 2, 60);
+						F.rise = cr ? (r < 0 ? -1.0f : 1.0f) * clampf (fabsf (r), 9, 20) : clampf (r, -12, 12);
+						nfeat++;
+					}
+				}
 				else if (!strcmp (key, "prop") && nprops < MAXPROP)
 				{
 					PropLine &P = props[nprops];
@@ -190,7 +214,7 @@ struct Track
 		free (b);
 		if (!ok) return false;
 		if (mirror) for (int i = 0; i < ncp; i++) { cp[i].x = -cp[i].x; cpbank[i] = -cpbank[i]; }
-		for (int k = 0; mirror && k < nfeat; k++) feat[k].lane = -feat[k].lane;
+		for (int k = 0; mirror && k < nfeat; k++) { feat[k].lane = -feat[k].lane; feat[k].rise = -feat[k].rise; }
 		for (int k = 0; mirror && k < ndecor; k++) { decor[k].x = -decor[k].x; decor[k].yaw = -decor[k].yaw; }
 		if (reverse)
 		{
@@ -206,9 +230,10 @@ struct Track
 			for (int k = 0; k < nfeat; k++)
 			{
 				Feat &F = feat[k];
-				if (F.kind == F_TUNNEL || F.kind == F_TUBE) { float a = 1 - F.t1, c = 1 - F.t0; F.t0 = a; F.t1 = c; }
+				if (F.kind == F_TUNNEL || F.kind == F_TUBE || F.kind == F_FORK) { float a = 1 - F.t1, c = 1 - F.t0; F.t0 = a; F.t1 = c; }
 				else F.t0 = 1 - F.t0;
 				F.lane = -F.lane;
+				if (!F.cross) F.rise = -F.rise;		// (a crossing: its lower branch is the left one again, driven back)
 				if (F.kind == F_GAP || F.kind == F_RAMP || F.kind == F_LOOP) F.t0 -= 0.02f;	// (the kicker before the gap)
 			}
 		}
@@ -265,7 +290,7 @@ struct Track
 			seg[i].c = lerp (fine[j], fine[j + 1], f);
 			seg[i].w = lerpf (fw[j], fw[j + 1], f);
 			seg[i].lane = lerpf (fb[j], fb[j + 1], f);	// (the extra bank, for now)
-			seg[i].flags = 0; seg[i].tube = 0;
+			seg[i].flags = 0; seg[i].tube = 0; seg[i].fork = 0; seg[i].bl[0] = seg[i].bl[1] = seg[i].bh[0] = seg[i].bh[1] = 0;
 		}
 		free (fine); free (fw); free (fb); free (acc);
 		spliceLoops ();
@@ -328,7 +353,7 @@ struct Track
 			}
 			else if (F.kind == F_BOOST) { for (int d = 0; d < 3; d++) { seg[(i0 + d) % n].flags |= F_BOOST; seg[(i0 + d) % n].lane = F.lane; } }
 			else if (F.kind == F_GAP) { seg[i0].flags |= F_RAMP; for (int d = 3; d < 7; d++) seg[(i0 + d) % n].flags |= F_GAP; }
-			else if (F.kind == F_LOOP) {}
+			else if (F.kind == F_LOOP || F.kind == F_FORK) {}
 			else seg[i0].flags |= (unsigned) F.kind;
 		}
 		// the twists: r and u turned round f, smoothly, by turns x 2 pi over the span
@@ -355,15 +380,73 @@ struct Track
 				S.r = norm (lerp (S.r, right, S.tube)); S.u = norm (lerp (S.u, up, S.tube));
 				S.w = lerpf (S.w, 2 * PI * TUBE_R, S.tube);
 			}
+		forks ();
 		seg[0].flags |= F_START;
 		lo = V3 (1e9f, 1e9f, 1e9f); hi = V3 (-1e9f, -1e9f, -1e9f);
 		for (int i = 0; i < n; i++)
 		{
 			const V3 &p = seg[i].c;
 			if (p.x < lo.x) lo.x = p.x; if (p.y < lo.y) lo.y = p.y; if (p.z < lo.z) lo.z = p.z;
+			float dip = fminf (seg[i].bh[0], seg[i].bh[1]); if (p.y + dip < lo.y) lo.y = p.y + dip;	// (a fork's lower branch)
 			if (p.x > hi.x) hi.x = p.x; if (p.y > hi.y) hi.y = p.y; if (p.z > hi.z) hi.z = p.z;
 		}
 		groundY = lo.y - ((!strcmp (groundKind, "clouds") || !strcmp (groundKind, "islands")) ? 55.0f : 3.0f);	// (a sea of clouds: far below the floating track)
+	}
+
+	// The forks: from t0 to t1 the road's two branches part -- their centres at -c and +c, eased from 0 to
+	// (gap + width) / 2 over FORK_EASE metres at each end -- and meet again; overlapping (2 c < width) they make one
+	// wider road. A plain fork's rise follows the gap's opening (no step where the branches still touch). A crossing:
+	// parted, the lower branch dips, the two change sides (the lower under the other), it climbs back, they meet. Not
+	// where the road is a tunnel, a tube, a loop, a twist or a gap: the fork is left out there.
+	static void forkShape (const Feat &F, float x, float len, float w, float *bl, float *bh)
+	{
+		const float E = FORK_EASE, LD = 80, LX = 220;
+		float C = (F.gap + w) * 0.5f;
+		float m = x < E ? smooth01 (x / E) : x > len - E ? smooth01 ((len - x) / E) : 1;
+		m *= C;
+		bh[0] = bh[1] = 0;
+		if (!F.cross)
+		{
+			bl[0] = -m; bl[1] = m;
+			float open = 2 * m - w;
+			if (open > 0) { bh[1] = F.rise * smooth01 (open / F.gap); bh[0] = -bh[1]; }
+			return;
+		}
+		// (part; dip; change sides -- under while they pass, the dip whole by then; climb; meet: 390 m and the rest in holds)
+		float hold = fmaxf (0, len - (2 * E + 1.5f * LD + 0.75f * LX)) * 0.25f;
+		float b0 = E + hold, c0 = b0 + LD * 0.5f + hold, d0 = c0 + LX * 0.75f + hold;
+		float q = smooth01 ((x - c0) / LX), dip = smooth01 ((x - b0) / LD) - smooth01 ((x - d0) / LD);
+		bl[0] = -m * cosf (PI * q); bl[1] = m * cosf (PI * q);
+		bh[F.rise > 0 ? 0 : 1] = -fabsf (F.rise) * dip;
+	}
+	void forks ()
+	{
+		nfork = 0;
+		for (int k = 0; k < nfeat && nfork < MAXFORK; k++)
+		{
+			const Feat &F = feat[k];
+			if (F.kind != F_FORK) continue;
+			int i0 = ((int) (F.t0 * (float) n) % n + n) % n, i1 = ((int) (F.t1 * (float) n) % n + n) % n;
+			int len = (i1 - i0 + n) % n, ramp = (int) (FORK_EASE / SEG);
+			if (len < 2 * ramp + 4 || len > n / 2 || (F.cross && (float) len * SEG < 440)) continue;
+			bool clash = false;
+			for (int d = 0; d <= len && !clash; d++)
+			{
+				const Seg &S = seg[(i0 + d) % n];
+				if ((S.flags & (F_TUNNEL | F_TUBE | F_LOOP | F_TWIST | F_GAP)) || S.tube > 0 || S.fork > 0 || (i0 + d) % n == 0) clash = true;
+			}
+			if (clash) continue;
+			for (int d = 0; d <= len; d++)
+			{
+				Seg &S = seg[(i0 + d) % n];
+				forkShape (F, (float) d * SEG, (float) len * SEG, S.w, S.bl, S.bh);
+				S.fork = fmaxf (fabsf (S.bl[0]), fabsf (S.bl[1]));
+				if (S.fork > 0) S.flags |= F_FORK;
+				// a speed pad in it: on a branch, never astride the gap
+				if ((S.flags & F_BOOST) && S.fork > 0 && fabsf (S.lane) < 0.2f) S.lane = S.lane < 0 ? -0.5f : 0.5f;
+			}
+			forkS0[nfork] = (float) i0 * SEG; forkS1[nfork] = (float) ((i0 + len) % n) * SEG; nfork++;
+		}
 	}
 
 	// The loops: at each one's place, the centre line goes round a vertical circle (radius R), drifting sideways by
@@ -390,7 +473,7 @@ struct Track
 				float side = off * smooth01 ((float) j / (float) (N + 1));
 				Seg &S = seg[i0 + j];
 				S.c = B + F * (R * sinf (th)) + Up * (R * (1 - cosf (th))) + Rt * side;
-				S.w = w; S.flags = F_LOOP; S.lane = 0; S.tube = 0;
+				S.w = w; S.flags = F_LOOP; S.lane = 0; S.tube = 0; S.fork = 0; S.bl[0] = S.bl[1] = S.bh[0] = S.bh[1] = 0;
 				V3 centre = B + Up * R + Rt * side;
 				S.u = norm (centre - S.c);
 			}
@@ -471,12 +554,27 @@ struct Track
 		if (nrm) *nrm = n;
 		if (lat) *lat = r * cp2 - u * sp;
 	}
-	void surf (float s, float l, float h, V3 *p, V3 *nrm = 0, V3 *lat = 0, V3 *fwd = 0) const
+	void surf (float s, float l, float h, V3 *p, V3 *nrm = 0, V3 *lat = 0, V3 *fwd = 0) const { surfB (s, l, h, -1, p, nrm, lat, fwd); }
+	// the same on a fork's branch br (-1: the one under l)
+	void surfB (float s, float l, float h, int br, V3 *p, V3 *nrm = 0, V3 *lat = 0, V3 *fwd = 0) const
 	{
 		V3 c, f, r, u; frameAt (s, &c, &f, &r, &u);
+		if (forkAt (s) > 0)
+		{
+			// up or down its branch: lifted, its normal tilted with the slope
+			int k = nearBranch (s, l, br);
+			float h0, h1, hb; branchAt (s, k, 0, &hb); branchAt (s - 1, k, 0, &h0); branchAt (s + 1, k, 0, &h1);
+			c += u * hb;
+			float slope = (h1 - h0) * 0.5f;
+			surfOf (c, r, u, tubeAt (s), l, h, p, nrm, lat);
+			if (nrm) *nrm = norm (*nrm - f * slope);
+			if (fwd) *fwd = norm (f + u * slope);
+			return;
+		}
 		surfOf (c, r, u, tubeAt (s), l, h, p, nrm, lat);
 		if (fwd) *fwd = f;
 	}
+	V3 pointAtB (float s, float l, float h, int br) const { V3 p; surfB (s, l, h, br, &p); return p; }
 	V3 pointAt (float s, float l, float h) const { V3 p; surf (s, l, h, &p); return p; }
 	// l brought back into the tube's round (closed) -- or as it is
 	float wrapL (float s, float l) const
@@ -490,6 +588,101 @@ struct Track
 	// b's distance across from a (the short way round a tube)
 	float across (float s, float a, float b) const { return wrapL (s, b - a); }
 	float widthAt (float s) const { float w; frameAt (s, 0, 0, 0, 0, &w); return w; }
+	// ---- the forks ----
+	// how far its branches reach from the centre line (0: one road)
+	float forkAt (float s) const
+	{
+		s = wrapS (s);
+		int i = (int) (s / SEG); if (i >= n) i = n - 1;
+		const Seg &A = seg[i], &B = seg[(i + 1) % n];
+		if (A.fork <= 0 && B.fork <= 0) return 0;
+		return lerpf (A.fork, B.fork, (s - (float) i * SEG) / SEG);
+	}
+	// branch k at s: its centre across, its height
+	void branchAt (float s, int k, float *l, float *h) const
+	{
+		s = wrapS (s);
+		int i = (int) (s / SEG); if (i >= n) i = n - 1;
+		const Seg &A = seg[i], &B = seg[(i + 1) % n];
+		float f = (s - (float) i * SEG) / SEG;
+		if (l) *l = lerpf (A.bl[k], B.bl[k], f);
+		if (h) *h = lerpf (A.bh[k], B.bh[k], f);
+	}
+	// Are the branches apart here (a gap between them, or one under the other)?
+	bool splitAt (float s) const
+	{
+		if (forkAt (s) <= 0) return false;
+		float l0, l1, h0, h1; branchAt (s, 0, &l0, &h0); branchAt (s, 1, &l1, &h1);
+		return fabsf (l1 - l0) > widthAt (s) || fabsf (h1 - h0) > 2.5f;
+	}
+	// The branch a thing at l is on: -1 one road (no fork, or its branches still touching); `was` kept once apart
+	int branchOf (float s, float l, int was) const
+	{
+		if (!splitAt (s)) return -1;
+		if (was == 0 || was == 1) return was;
+		float l0, l1; branchAt (s, 0, &l0, 0); branchAt (s, 1, &l1, 0);
+		return fabsf (l - l1) < fabsf (l - l0) ? 1 : 0;
+	}
+	// the branch under l (one road: the nearer one's centre side)
+	int nearBranch (float s, float l, int br) const
+	{
+		if (br == 0 || br == 1) return br;
+		float l0, l1; branchAt (s, 0, &l0, 0); branchAt (s, 1, &l1, 0);
+		return fabsf (l - l1) < fabsf (l - l0) || (l0 == l1 && l >= 0) ? 1 : 0;
+	}
+	// the road's height at (s, l) above the centre line's frame: a fork's branch's (0 elsewhere)
+	float heightOf (float s, float l, int br) const
+	{
+		if (forkAt (s) <= 0) return 0;
+		float h; branchAt (s, nearBranch (s, l, br), 0, &h); return h;
+	}
+	// The road under l at s, wall to wall: [lo, hi] -- one road, the wider one where a fork's branches still touch, or
+	// branch br (-1: the nearer one)
+	void limits (float s, float l, int br, float *lo, float *hi) const
+	{
+		float w = widthAt (s);
+		if (forkAt (s) <= 0) { *lo = -(w * 0.5f); *hi = w * 0.5f; return; }
+		float l0, l1; branchAt (s, 0, &l0, 0); branchAt (s, 1, &l1, 0);
+		if (!splitAt (s)) { *lo = fminf (l0, l1) - w * 0.5f; *hi = fmaxf (l0, l1) + w * 0.5f; return; }
+		float bc = nearBranch (s, l, br) ? l1 : l0;
+		*lo = bc - w * 0.5f; *hi = bc + w * 0.5f;
+	}
+	// l brought onto the road (pad metres inside its walls): out of a fork's gap onto the nearer branch (or br)
+	float onRoad (float s, float l, float pad, int br = -1) const
+	{
+		if (forkAt (s) <= 0) return l;
+		float lo, hi; limits (s, l, br, &lo, &hi);
+		return clampf (l, lo + pad, hi - pad);
+	}
+	// A lane (-1..1 across the road, 0 its middle) as l: in a fork, -1..0 across the branch on the left and 0..1 across
+	// the one on the right (0.5: a branch's middle) once they part
+	float laneL (float s, float lane) const
+	{
+		float w = widthAt (s);
+		if (forkAt (s) <= 0) return lane * w * 0.5f;
+		float l0, l1; branchAt (s, 0, &l0, 0); branchAt (s, 1, &l1, 0);
+		float a = fminf (l0, l1), b = fmaxf (l0, l1);
+		if (!splitAt (s)) return (a + b) * 0.5f + lane * ((b - a) * 0.5f + w * 0.5f);
+		return lane < 0 ? a + (lane + 0.5f) * w : b + (lane - 0.5f) * w;
+	}
+	// the way a branch goes, against the centre line's (radians, > 0: to the right)
+	float branchYa (float s, float l, int br = -1) const
+	{
+		if (forkAt (s) <= 0) return 0;
+		int k = nearBranch (s, l, br);
+		float a, b; branchAt (s - 1, k, &a, 0); branchAt (s + 1, k, &b, 0);
+		return atanf ((b - a) * 0.5f);
+	}
+	// the fork at s or within `before` metres ahead (-1: none)
+	int forkNear (float s, float before) const
+	{
+		for (int k = 0; k < nfork; k++)
+		{
+			float d0 = ahead (forkS0[k], s), d1 = ahead (forkS1[k], s);
+			if (d0 <= before && d1 >= 0) return k;
+		}
+		return -1;
+	}
 	const char *title (bool fr) const { return fr && nameFr[0] ? nameFr : name; }
 };
 

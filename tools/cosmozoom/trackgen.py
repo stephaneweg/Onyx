@@ -226,7 +226,35 @@ class Course:
     def t(self, name, d=0.0):
         return ((self.marks[name] + d) % self.total) / self.total
 
+    def checkForks(self):
+        """A fork (or a crossing) must not overlap a tunnel, a tube, a twist, a loop, a jump, another fork or the start
+        line (track.h leaves it out); a fork is at least 158 m long, a crossing 400 m."""
+        L = self.total
+        spans = []
+        for kind, a, da, b, db, extra in self.feats:
+            s0 = (self.marks[a] + da) % L
+            if kind in ("tunnel", "tube", "twist", "fork", "cross"):
+                s1 = (self.marks[b] + db) % L
+                spans.append((kind, s0, s1 if s1 >= s0 else s1 + L))
+            elif kind == "jump":
+                spans.append((kind, s0, s0 + 16))
+            elif kind == "loop":
+                spans.append((kind, s0, s0 + 90))
+        for kind, f0, f1 in spans:
+            if kind not in ("fork", "cross"):
+                continue
+            least = 444 if kind == "cross" else 2 * 75 + 8
+            if f1 > L or f0 < 20 or f1 - f0 < least:
+                raise SystemExit("%s: the %s at %.0f-%.0f m crosses the start line or is too short (%.0f m: at least %d)" % (self.id, kind, f0, f1, f1 - f0, least))
+            for k2, g0, g1 in spans:
+                if (k2, g0, g1) == (kind, f0, f1):
+                    continue
+                for sh in (-L, 0, L):
+                    if g0 + sh < f1 + 10 and g1 + sh > f0 - 10:
+                        raise SystemExit("%s: the %s at %.0f-%.0f m overlaps a %s at %.0f-%.0f m" % (self.id, kind, f0, f1, k2, g0, g1))
+
     def write(self):
+        self.checkForks()
         o = ["# Cosmo Zoom! -- %s: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it)." % self.head[0][1],
              "# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).", ""]
         for k, v in self.head:
@@ -256,6 +284,12 @@ class Course:
                 t0, t1 = self.t(a, da), self.t(b, db)
                 if kind == "twist":
                     o.append("twist = %.3f %.3f %s" % (t0, t1, extra or 1))
+                elif kind == "fork":
+                    gap, rise = extra or (24, 0)
+                    o.append("fork = %.3f %.3f %g %g" % (t0, t1, gap, rise) if rise else "fork = %.3f %.3f %g" % (t0, t1, gap))
+                elif kind == "cross":
+                    gap, depth = extra or (16, 10)
+                    o.append("cross = %.3f %.3f %g %g" % (t0, t1, gap, depth))
                 else:
                     o.append("%s = %.3f %.3f" % (kind, t0, t1))
         if self.lines:
@@ -831,6 +865,68 @@ def ribbon():
     gate(c, "loop1", 40, 1.3)
     gate(c, "top", 70, 1.3)
     gate(c, "top", 200, 1.3)
+    return c
+
+
+@circuit
+def junction():
+    # 14. Turbo Junction: a candy-coloured boost park above the clouds by day -- rows and chains of speed pads, three
+    # forks (left or right: the straight one's pads or its capsules, the curve's short inside or its padded outside,
+    # and the crossing, where the left branch dives under the right one and comes up on the other side), a slalom of
+    # pads, two jumps.
+    c = Course("junction")
+    header(c, name="Turbo Junction", name_fr="Carrefour Turbo", time="day", sky="5AB0F5 FFE4F2", ground="FFFFFF FFF2F8", groundkind="clouds", road="8C9CF0 94A4F2", rails="FFE066 FF8FC8", walls="FFF4FA FF8FC8", neon="FF8FC8 7FE0DC FFE066", city="0.7", width="16", laps="3", edge="FFFFFF")
+    c.S(170, m="s1")                            # the start: a row of three pads
+    c.R(90, 70)
+    c.S(460, m="fork1")                         # fork 1, straight: the pads on the right, the capsules on the left
+    c.R(70, 90)
+    c.S(200, m="slalom")                        # the slalom of pads
+    c.L(80, 70, m="sbend")
+    c.R(80, 70)
+    c.S(60)
+    c.R(150, 90, m="fork2")                     # fork 2, round the curve: the short inside, the padded outside
+    c.S(170, m="dash")                          # the dash: a chain of pads, then a jump
+    c.R(120, 20)
+    c.S(500, free=True, m="cross")              # the crossing: over or under
+    c.R(80, 90)
+    c.S(300, free=True, m="home")
+    for d in (55, 80, 105):
+        c.feat("boost", "s1", d, 0)
+    # fork 1
+    c.span("fork", "fork1", "fork1", 5, 265, (22, 0))
+    for d in (95, 125, 155):
+        c.feat("boost", "fork1", d, 0.5)
+    c.feat("items", "fork1", 140)
+    c.feat("boost", "fork1", 285, 0)             # (just after it meets again)
+    # the slalom
+    for k, d in enumerate((25, 65, 105, 145)):
+        c.feat("boost", "slalom", d, -0.45 if k % 2 == 0 else 0.45)
+    c.feat("items", "sbend", 60)
+    # fork 2: round the curve (the inside, right, is the shorter)
+    c.span("fork", "fork2", "dash", -40, 30, (24, 0))
+    for d in (70, 110, 150):
+        c.feat("boost", "fork2", d, -0.5)
+    c.feat("boost", "dash", 50, 0)
+    c.feat("boost", "dash", 75, -0.3)
+    c.feat("boost", "dash", 100, 0.3)
+    c.feat("jump", "dash", 135)
+    # the crossing: the left branch dips 10 m, passes under the right one, climbs back on the right
+    c.span("cross", "cross", "cross", 5, 470, (16, 10))
+    c.feat("boost", "cross", 60, -0.5)           # (before they change sides: a pad on each)
+    c.feat("boost", "cross", 60, 0.5)
+    c.feat("boost", "cross", 395, -0.5)
+    c.feat("boost", "cross", 395, 0.5)
+    c.feat("boost", "cross", 490, 0)             # (just after they meet again)
+    c.feat("boost", "home", 40, -0.4)
+    c.feat("boost", "home", 40, 0.4)
+    c.feat("items", "home", 70)
+    c.feat("jump", "home", 110)
+    c.line("scatter = holo_ring 8 1.4")
+    c.line("scatter = kk_landingpad 6 1.4")
+    c.line("scatter = traffic_ship 5 6")
+    gate(c, "s1", 30, 1.4)
+    gate(c, "dash", 20, 1.4)
+    gate(c, "home", 70, 1.4)
     return c
 
 

@@ -5783,8 +5783,16 @@ trophy in the last cup). **Options**: the music, the sounds, a **steering help**
 track's turns by itself in part) and **auto-accelerate** (off, on, or for the Orbit class only — the default: the
 youngest just steer).
 
-**The circuits and the cups.** Thirteen circuits in four cups (the last cup's first three are circuits driven the
-other way round, the *Remixes*); a cup opens with a trophy in the one before (the first two are open):
+**Forks.** Some circuits split into **two branches, left and right**, that meet again: steer to the side you want
+before the split's sign (← →) -- the middle runs into its nose, a bump. On a **crossing** the left branch dives and
+passes **under** the right one, and the two come back on the other's side before they meet. The map shows both
+branches.
+
+**The circuits and the cups.** Fourteen circuits: thirteen in four cups (the last cup's first three are circuits
+driven the other way round, the *Remixes*); a cup opens with a trophy in the one before (the first two are open).
+The fourteenth, **Turbo Junction** (*Carrefour Turbo*), is for the single races and the time trials: the most speed
+pads -- rows of three, a slalom of pads, chains along the straights --, three forks (one of them a crossing over
+and under) and two jumps.
 
 ![Cosmo Zoom!: choosing a cup](../screenshots/cosmozoom-cups.png)
 

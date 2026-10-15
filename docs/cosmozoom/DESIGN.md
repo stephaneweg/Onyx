@@ -476,6 +476,42 @@ vertical circle of radius 12 m.
 
 ![Tube](mockups/race_tube.png)
 
+### 7.2.1 Forks and crossings (the user, 2026-10-15)
+
+*« Des endroits où ça part en bifurcations, on peut choisir droite ou gauche »* -- and then *« une bifurcation
+où l'un des deux côtés se rapproche ensuite mais vers le bas et passe en dessous de l'autre (2 étages) »*.
+
+- **`fork = t0 t1 [gap [rise]]`** (the track file, `track.h`): from t0 to t1 the road splits into **two branches**,
+  each the road's whole width, its own profile, borders and stripes. Their centres ease from the centre line out
+  to ±(gap + width) / 2 over **75 m**, and back over 75 m at the end. While they still overlap they make one
+  wider road; once they part, a **gap** opens between them (at most `gap` metres, 24 by default): the void, the
+  clouds below. With `rise`, the right branch climbs and the left one dips by up to `rise` metres, eased with the
+  gap's opening (< 0: the other way).
+- **`cross = t0 t1 [gap [depth]]`**: a fork whose branches **change sides**. Parted, the left branch dips `depth`
+  metres (10 by default; 9 to 20; < 0: the right one), the two cross -- the lower one **under** the other, with
+  about 9 m of clearance below the deck --, the lower one climbs back on the far side, and they meet again.
+  At least 440 m: part 75 m, dip 80 m, change sides 220 m, climb 80 m, meet 75 m (overlapping; the rest of
+  the length is spread in level stretches between).
+- No tunnel, tube, loop, twist, jump or start line inside a fork: `trackgen.py` refuses it, `track.h` leaves
+  such a fork out.
+- **The split**: a low wedge between the branches' inner edges (in the rails' stripes) for the first 8 m of
+  the gap, a sign on a post with two glowing arrows, ← and →; the same wedge where they meet again.
+- **The crossing**: the upper branch is a thicker deck over the lower one (its edges in the rails' stripes, a
+  darker underside), with pillars down to the ground at its edges where the lower road is not beneath, and a
+  soft shadow on the lower road under it.
+- **Physics** (`race.h`): each ship has a **branch** (`Craft.br`, -1 on one road), chosen where the branches
+  part -- the nearer one -- and kept until they meet: its walls, its height, its up vector come from that branch,
+  never from the sign of `l`. The branches' edges run aslant: a ship sliding along one is not knocked; one
+  driven into it, or onto the split's nose, bounces off (a bump). The ship re-aligns with its branch's way, not
+  the centre line's. Ships, capsules, star bits, bubbles and goo touch only on the same branch; the beam does
+  not pull across.
+- **Pads and capsules in a fork** land on a branch: a pad's lane -1..0 is across the left branch, 0..1 across the
+  right one (±0.5 its middle); a capsule row puts three capsules on each branch.
+- **The computer's pilots** pick a branch per fork from the race's seed (a hash: both branches are taken at
+  every fork), move over to its side 150 m before, keep on it and follow it across a crossing.
+- **The camera** follows the ship's branch's height (under the deck when the ship is); the **map** draws both
+  branches, the upper one over the lower.
+
 ### 7.3 The circuits
 
 (The look of each circuit is in §7.4.)
@@ -497,6 +533,7 @@ vertical circle of radius 12 m.
 | 11 | **Star Carnival** / Fête Spatiale | a pastel amusement park at sunset | 2600 m | **one loop** through a giant ring, a **tube** around the ferris wheel's axle, a bumper zone | lit ferris wheel, carousel rings, fireworks | bumper saucers |
 | 12 | **Aurora Forest** / Forêt Aurore | a forest of giant crystal trees under a soft aurora night (the only night) | 2500 m | a root tunnel, root jumps, a **tube** along a giant trunk, a shortcut through a hollow log | crystal trees, light-pods, lit walkways | falling seed-pods (slow puddles) |
 | 13 | **Starlight Ribbon** / Ruban d'Étoiles | the final: a ribbon through a pastel galaxy | 3200 m | **two loops**, a long **spiral tube**, the most jumps, boost chains | the league's stadium, giant ring gates, the city far below | none: speed is the hazard |
+| 14 | **Turbo Junction** / Carrefour Turbo | a candy boost park above the clouds by day (lilac road, lemon and pink rails) | 2530 m | **the most speed pads** (24: rows of three, a slalom of pads, chains on the straights, a pad after each fork), **three forks** (§7.2.1): a straight one (pads on the right, capsules on both), one round a curve (the short inside, or the padded outside), and a **crossing** (the left branch dives under the right one and comes up on the other side); two jumps | ring gates, landing pads, capsule towers | none: single race and time trial only (the cups are full) |
 
 **Remix** circuits (cup 4) are the same tracks **driven in reverse**, at dusk. Their boost pads
 and capsule rows are rearranged. Nothing new needs to be modelled.
