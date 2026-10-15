@@ -7,7 +7,7 @@
 #   hull_comet   "Comet Chaser"  a narrow fuselage, a stepped cabin, its two pods on struts (measured on its GLB)
 #   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe, banded nacelles, lattice booms (measured on its GLB)
 #   hull_pod     "Plasma Runner" two chunky pods ahead, a plasma arc, cables back to a small cockpit (measured on its GLB)
-#   hull_cube    "Ringmaster"    an octagonal torpedo, a paint2 nose cone (+ engine_ring: a big ring round its back)
+#   hull_cube    "Ringmaster"    a torpedo, paint2 nose and tail cones, a big spinning ring on struts (measured on its GLB)
 #   hull_manta   "Manta Ray"     a wide flat delta, a slate intake in front, boxy pods at its tips
 # The wings: four small chamfered fins. The engines: slate nozzles with a soft glowing core.
 #
@@ -581,19 +581,82 @@ def hull_pod():
                   [(0.98, 1.80), (-0.98, 1.80), (0.22, -1.40), (-0.22, -1.40)], -1.80, engine_y=0.67)
 
 
-def hull_cube():
-    m = Model("hull_cube", "Ringmaster: an octagonal torpedo, a paint2 nose cone, a slate canopy")
-    sts = [S(-1.30, 0.40, 0.40, 0.17, 0, 0.62), S(1.20, 0.40, 0.40, 0.17, 0, 0.62), S(1.70, 0.27, 0.27, 0.11, 0, 0.62),
-           S(2.00, 0.12, 0.12, 0.05, 0, 0.62)]
+# Ringmaster, measured on the user's generated model (sections every 0.05 m): a long torpedo of rounded-octagon
+# sections, a paint2 nose cone round a recessed slate intake, a slate canopy into a dorsal block, a round paint2 tail
+# cone set a little higher, a big flat ring round the rear body on two side struts (the ring spins about Z)
+_RM_BODY = [  # (z, axis y, half width, half height)
+    (2.24, 0.933, 0.226, 0.160), (2.19, 0.932, 0.235, 0.173), (2.00, 0.923, 0.275, 0.224),
+    (1.80, 0.916, 0.307, 0.261), (1.60, 0.9125, 0.331, 0.290), (1.42, 0.910, 0.353, 0.307),
+    (1.00, 0.8985, 0.368, 0.3145), (0.45, 0.8935, 0.388, 0.3175), (0.00, 0.889, 0.386, 0.325),
+    (-0.85, 0.893, 0.379, 0.320)]
+_RM_SEC = [(0.0, 1.0), (0.62, 1.0), (0.93, 0.78), (1.0, 0.35), (1.0, -0.19), (0.88, -0.62), (0.66, -0.885),
+           (0.0, -1.0)]        # the section's right half, in (half width, half height)
+_RM_TAIL = [  # (z, axis y, radius): round (12 sides), a slate exhaust recessed in its flat end
+    (-0.84, 0.980, 0.352), (-0.90, 0.982, 0.352), (-1.05, 0.986, 0.338), (-1.25, 0.994, 0.302),
+    (-1.50, 1.002, 0.250), (-1.70, 1.009, 0.205), (-1.80, 1.011, 0.180), (-1.845, 1.012, 0.155),
+    (-1.86, 1.012, 0.130), (-1.86, 1.012, 0.090), (-1.83, 1.012, 0.090)]
+_RM_RC = (0.0, 1.017, -0.6865)       # the ring's centre
+_RM_RING = (0.676, 0.828, -0.855, -0.518, 0.04)   # its inner and outer radii, back and front z, the chamfer
 
-    def mat(lab, i, c):
-        if c[2] > 1.20:
-            return "paint2"
-        return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.04, c1=0.04))
-    m.add(canopy(-0.55, 0.20, 0.92, 1.20, 0.22, 0.40))
-    return finish(m, (0.40, 0.55, -0.20), (0.0, 0.74, -0.15),
-                  [(0.28, 1.00), (-0.28, 1.00), (0.28, -1.00), (-0.28, -1.00)], -1.30)
+
+def _rm_ring(z, cy=None, W=None, H=None):
+    c, w, h = _lerp_tab(_RM_BODY, z)
+    cy, W, H = cy if cy is not None else c, W or w, H or h
+    return [(x * W, cy + y * H, z) for x, y in _nv_mirror(_RM_SEC)]
+
+
+def _rm_deck(z, top, tw, bw, foot, base=1.17):
+    """A ring of the canopy or the dorsal block: a flat top, sloped flanks down to the deck (foot), sunk to base."""
+    return [(x, y, z) for x, y in _nv_mirror([(0.0, top), (tw, top), (bw, foot), (bw, base), (0.0, base)])]
+
+
+def _rm_band(segs=24):
+    """The ring: a flat band (a chamfered rectangle in section), its axis Z through _RM_RC."""
+    R0, R1, z0, z1, c = _RM_RING
+    sec = [(R1, z0 + c), (R1, z1 - c), (R1 - c, z1), (R0 + c, z1), (R0, z1 - c), (R0, z0 + c), (R0 + c, z0),
+           (R1 - c, z0)]
+    k = 1.0 / math.cos(PI / segs / 2)       # (the corners a little out: the flats' mean on the circle)
+    rings = [[(k * r * math.cos(a), _RM_RC[1] + k * r * math.sin(a), z) for r, z in sec]
+             for a in (2 * PI * (i + 0.5) / segs for i in range(segs))]
+    p = loft(rings + rings[:1], "paint1", cap0=False, cap1=False, orient=False)
+    n = segs * len(sec)
+    p.v = p.v[:n]
+    p.f = [(tuple(i % n for i in idx), mt) for idx, mt in p.f]
+    return p.orient()
+
+
+def hull_cube():
+    m = Model("hull_cube", "Ringmaster: a long torpedo, a paint2 nose cone round a slate intake, a slate canopy into "
+              "a dorsal block, a paint2 tail cone, a big ring round its rear body on two struts")
+    # the body: the slate intake recessed in the nose's rim, the paint2 cone to z 1.42
+    inset = lambda z: _rm_ring(z, 0.93, 0.160, 0.100)
+    rings = [inset(2.20), inset(2.238)] + [_rm_ring(r[0]) for r in _RM_BODY]
+    m.add(_shell(rings, lambda i, j, c: SL if i == 0 else "paint2" if c[2] > 1.42 else "paint1"))
+    # the tail cone
+    tr = [[(1.01 * r * math.cos(a), cy + 1.01 * r * math.sin(a), z) for a in (2 * PI * k / 12 for k in range(12))]
+          for z, cy, r in _RM_TAIL]
+    m.add(_shell(tr, lambda i, j, c: SL if i >= 9 else "paint2"))
+    # the canopy, rising back into the dorsal block
+    m.add(_shell([_rm_deck(z, t, tw, bw, 1.212) for z, t, tw, bw in
+                  ((0.34, 1.218, 0.10, 0.15), (0.25, 1.26, 0.13, 0.18), (0.15, 1.31, 0.14, 0.19),
+                   (0.00, 1.36, 0.14, 0.195), (-0.18, 1.39, 0.14, 0.195), (-0.42, 1.402, 0.14, 0.195))], "tint"))
+    m.add(_shell([_rm_deck(z, t, tw, bw, 1.23) for z, t, tw, bw in
+                  ((-0.40, 1.40, 0.14, 0.22), (-0.47, 1.437, 0.155, 0.25), (-0.80, 1.437, 0.155, 0.25),
+                   (-0.85, 1.41, 0.12, 0.24))], "paint1"))
+    # the two struts (fixed) and the ring (it spins about Z round its socket)
+    for sx in (1, -1):
+        st = lambda x, zf: [(sx * x, y, z) for z, y, _ in oct_ring((zf - 0.80) / 2, 0.9375, 0.0, (zf + 0.80) / 2,
+                                                                   0.1075, 0.03)]
+        m.add(_shell([st(0.36, -0.47), st(0.60, -0.555), st(0.72, -0.555)], "paint1"))   # (its root swept forward)
+    m.add(_rm_band(), "ring")
+    m.socket("ring", *_RM_RC)
+    # its engine is built in: the engine part is not drawn (its stats count), the flame leaves its tail's exhaust;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 0.0, 1.012, -1.870)
+    return finish(m, (0.385, 0.85, 0.20), (0.0, 1.21, -0.10),
+                  [(0.25, 1.40), (-0.25, 1.40), (0.25, -1.20), (-0.25, -1.20)], -1.86, engine_y=1.01)
 
 
 def tip_pod(x, y, z0, z1, w, h, mat="paint2"):
