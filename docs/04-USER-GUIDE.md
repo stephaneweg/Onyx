@@ -5751,8 +5751,8 @@ the circuit, and the race: 3, 2, 1, GO — **holding the throttle when "1" shows
 | Pause (Resume, Restart, Quit the race) | **P** or **Esc** | **Start** |
 | Menus | arrows, **Enter**, **Esc**; **R** a random ship in the hangar | d-pad, **A**, **B**; **Y** random |
 
-**The hangar.** A ship is a **hull** (six: *Comet Chaser*, *Nova Streak*, *Star Drifter*, *Manta Ray*,
-*Plasma Runner*, *Ringmaster*), **wings** (four), an **engine** (five: a central jet, side pods, nacelles on truss
+**The hangar.** A ship is a **hull** (eight: *Comet Chaser*, *Nova Streak*, *Star Drifter*, *Manta Ray*,
+*Plasma Runner*, *Ringmaster*, *Nebula Sprinter*, *Sonic Wave*), **wings** (four, or none), an **engine** (five: a central jet, side pods, nacelles on truss
 arms, detached *Plasma Pods* joined by an energy arc, a ring drive) and a **paint** (a colour, a trim, a pattern).
 Each part moves the four stats — **Speed**, **Acceleration**, **Handling**, **Weight** (who pushes whom) — by a point
 at most; some have a perk (longer jumps, faster drift charges, longer boosts). The **pilot** (eight racers in

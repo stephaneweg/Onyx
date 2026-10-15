@@ -61,7 +61,7 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
 game drew everything in software (4 fps). Now: the far scenery is cheap (low clouds and islands far away, fewer far
 towers); the sky's clouds are a **skybox band** (`TX_CLOUDS`, painted once at start-up: 96 vertices instead of 22,000);
 the chunks are drawn nearest first, whole within 130 m and **simplified** beyond (`chunkLow`: the road a strip with its
-borders' stripes, each prop a box in its average colours, no trees), within a budget of 138,000 vertices for the world;
+borders' stripes, each prop a box in its average colours, no trees), within a budget of 112,000 vertices for the world (the eight ships, the glows and the trails come after it: the busiest track peaks at about 182,000);
 `render3d` leaves out the last batches if a frame still goes past the limit, rather than falling back to the software.
 
 ### 1.0 The road's profile (the user, 2026-10-15)
@@ -98,7 +98,7 @@ above and behind, a cool sky fill, a darker underside, a glossy highlight).
 - **Tubes and loops**: teal ribbed tubes and loops arching over the track, in the same colour as the road.
 - **World**: **rounded pastel capsule towers** (pill-shaped buildings with stripes and caps), **floating grassy
   islands** with round low-poly trees and boulders, little arched bridges, and distant floating rocks.
-- **Ships**: the same six ships (§4.1), after the user's **reference sheet of the six ships** (2026-10-15):
+- **Ships**: the ships of §4.1, after the user's **reference sheet of the six ships** (2026-10-15):
   **chamfered** low-poly — flat faces and crisp 45° bevels rather than round ones — vivid solid paint, wings in the body's colour (they read as part of the hull), opaque
   **slate-navy canopies, intakes and nozzles**, soft glowing exhaust plumes. Nova Streak a faceted arrowhead,
   Comet Chaser a narrow fuselage between two long boxes, Star Drifter big nacelles with lattice booms ahead,
@@ -269,16 +269,18 @@ engine, wings and colours (§4.1). The player can then change the parts and the 
   of the hull or beside it, joined to it by glowing energy tethers.
 - All designs are original: no copy of an existing ship.
 
-### 4.1 The six ships (hulls) — the model files keep their names
+### 4.1 The eight ships (hulls) — the model files keep their names
 
 | # | Ship EN / FR | Model file | Look (default parts and colours) | Speed | Accel | Handling | Weight | Role |
 |---|---|---|---|---|---|---|---|---|
-| 1 | **Nova Streak** / Nova Streak | `hull_comet.obj` | a **magenta wedge with an orange nose**, short swept fins, central jet | 3 | 3 | 3 | 3 | all-rounder (default) |
-| 2 | **Comet Chaser** / Chasseur de Comètes | `hull_needle.obj` | a long **cyan** dart with **side pods** attached along its flanks | 5 | 2 | 3 | 2 | top speed |
+| 1 | **Nova Streak** / Nova Streak | `hull_needle.obj` | a **magenta wedge with an orange nose**, short swept fins, central jet | 5 | 2 | 3 | 2 | top speed |
+| 2 | **Comet Chaser** / Chasseur de Comètes | `hull_comet.obj` | a long **cyan** dart with **side pods** attached along its flanks | 3 | 3 | 3 | 3 | all-rounder (default) |
 | 3 | **Star Drifter** / Dériveur Stellaire | `hull_whale.obj` | a heavy **orange/yellow** racer with two engine nacelles on **open truss struts** | 4 | 2 | 2 | 5 | bruiser |
 | 4 | **Manta Ray** / Raie Manta | `hull_manta.obj` | a wide **orange delta** with **teal** wingtip pods | 2 | 3 | 5 | 1 | cornering |
 | 5 | **Plasma Runner** / Coureur Plasma | `hull_pod.obj` | a compact **lime/teal** cockpit towed by **detached podracer pods**, joined by a **pink lightning arc** | 3 | 5 | 2 | 2 | quick starts |
 | 6 | **Ringmaster** / Maître de l'Anneau | `hull_cube.obj` | an angular **yellow/magenta** racer with a **big ring over its tail** | 4 | 3 | 1 | 5 | tough |
+| 7 | **Nebula Sprinter** / Sprinter Nébuleuse | `hull_sprinter.obj` | a **yellow** arrowhead with a nose intake, **green** bands and **blue** piping, a raised cockpit block, three slate engines and side pods (the user's GLB, 2026-10-15) | 4 | 4 | 3 | 2 | fast off the line (Zara) |
+| 8 | **Sonic Wave** / Onde Sonique | `hull_wave.obj` | a **purple** fighter arrow with big swept delta wings, swept tail wings and **coral** stripes, two square coral nozzles (the user's GLB, 2026-10-15) | 5 | 3 | 3 | 2 | rides the shock wave (Mika) |
 
 **Default parts** (the pilots' ships, `parts.h` PILOTS; in the colours of the user's models, plain -- the main
 colour on the model's main parts, the accent on its accent parts; the patterns only add touches to the main colour): every pilot starts on **No Fins** — the clean hulls of the
@@ -370,9 +372,9 @@ The team names are translated. The pilots are cosmetic (no stats).
 | 2 | **Lumi Sato** | Zenith / Zénith | white `#F2F6FF` | cyan | 01 | Comet Chaser |
 | 3 | **Aya Okafor** | Volt / Volt | yellow `#FFD21F` | navy | 22 | Plasma Runner |
 | 4 | **Nils Berg** | Glacier / Glacier | cyan `#3DE0FF` | white | 14 | Manta Ray |
-| 5 | **Zara Haddad** | Orchid / Orchidée | magenta `#FF2E9A` | white | 09 | Comet Chaser |
+| 5 | **Zara Haddad** | Orchid / Orchidée | magenta `#FF2E9A` | white | 09 | Nebula Sprinter |
 | 6 | **Teo Rossi** | Verde / Verde | lime `#7CF06A` | navy | 33 | Star Drifter |
-| 7 | **Mika Lind** | Nebula / Nébuleuse | violet `#7A5CFF` | pink | 18 | Manta Ray |
+| 7 | **Mika Lind** | Nebula / Nébuleuse | violet `#7A5CFF` | pink | 18 | Sonic Wave |
 | 8 | **Ravi Kapoor** | Sunburst / Soleil | orange `#FF8A1F` | yellow | 42 | Ringmaster |
 
 ![Pilots](mockups/pilots.png)

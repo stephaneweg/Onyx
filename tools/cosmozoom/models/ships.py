@@ -10,6 +10,7 @@
 #   hull_cube    "Ringmaster"    a torpedo, paint2 nose and tail cones, a big spinning ring on struts (measured on its GLB)
 #   hull_manta   "Manta Ray"     a flat slab, a faceted centre, a slate slot and canopy, boxy pods (measured on its GLB)
 #   hull_sprinter "Nebula Sprinter" a delta, green stripes, blue piping, a cockpit block, side pods, three engines (its GLB)
+#   hull_wave    "Sonic Wave"    an arrow, paint2 stripes, a canopy ramp and hump, two wings a side, two nozzles (its GLB)
 # The wings: four small chamfered fins. The engines: slate nozzles with a soft glowing core.
 #
 # Conventions (the game's): metres, +Y up, +Z forward, the ship's left is +X. A hull's origin is the ship's centre,
@@ -852,6 +853,121 @@ def hull_sprinter():
                   [(0.30, 1.30), (-0.30, 1.30), (0.90, -1.00), (-0.90, -1.00)], -1.30, engine_y=0.88)
 
 
+# Sonic Wave, measured on the user's generated model (sections every 0.05 m): a purple arrow, a flat belly, a deck
+# sloping to low sides, paint2 stripes and a deck panel, a slate canopy ramp into a cockpit hump, two swept wings a side
+# (the upper with a paint2 band, the lower drooping with a paint2 patch under it), two square paint2 nozzles
+_SW_TAB = [  # (z, deck y, deck half, shoulder x, y, slope foot x, y, side x, side top y, belly y)
+    (1.86, 0.850, 0.11, 0.150, 0.825, 0.160, 0.80, 0.175, 0.77, 0.700),
+    (1.80, 0.870, 0.13, 0.180, 0.840, 0.190, 0.80, 0.206, 0.77, 0.680),
+    (1.60, 0.900, 0.15, 0.215, 0.860, 0.245, 0.81, 0.264, 0.78, 0.671),
+    (1.42, 0.930, 0.16, 0.230, 0.890, 0.300, 0.82, 0.320, 0.79, 0.668),
+    (1.00, 0.984, 0.18, 0.300, 0.925, 0.430, 0.83, 0.455, 0.80, 0.667),
+    (0.94, 0.995, 0.18, 0.310, 0.930, 0.455, 0.83, 0.480, 0.80, 0.667),
+    (0.60, 1.050, 0.18, 0.340, 0.965, 0.555, 0.83, 0.587, 0.79, 0.667),
+    (0.15, 1.100, 0.15, 0.290, 1.050, 0.690, 0.83, 0.740, 0.78, 0.667),
+    (0.00, 1.110, 0.15, 0.260, 1.100, 0.750, 0.82, 0.796, 0.78, 0.667),
+    (-0.20, 1.130, 0.20, 0.260, 1.115, 0.765, 0.80, 0.805, 0.77, 0.667),
+    (-0.50, 1.140, 0.25, 0.500, 0.985, 0.760, 0.80, 0.800, 0.77, 0.667),
+    (-1.30, 1.150, 0.30, 0.500, 0.990, 0.750, 0.80, 0.790, 0.77, 0.667),
+    (-1.45, 1.150, 0.30, 0.470, 1.040, 0.690, 0.85, 0.720, 0.82, 0.667),
+    (-1.62, 1.150, 0.36, 0.490, 1.030, 0.570, 0.93, 0.600, 0.89, 0.665),
+    (-1.70, 1.150, 0.38, 0.480, 1.050, 0.520, 0.99, 0.550, 0.95, 0.660),
+    (-1.90, 1.160, 0.33, 0.450, 1.045, 0.470, 1.00, 0.480, 0.96, 0.665),
+    (-2.16, 1.150, 0.30, 0.390, 1.050, 0.410, 1.01, 0.420, 0.97, 0.685)]
+_SW_ST1 = [(1.45, 0.235, 0.235), (1.42, 0.235, 0.245), (1.00, 0.26, 0.31), (0.60, 0.28, 0.36), (0.15, 0.31, 0.43),
+           (0.00, 0.42, 0.42)]
+_SW_ST2 = [(0.96, 0.43, 0.43), (0.94, 0.43, 0.445), (0.60, 0.49, 0.535), (0.15, 0.58, 0.67), (0.00, 0.66, 0.73),
+           (-0.20, 0.72, 0.75), (-0.50, 0.73, 0.755), (-0.52, 0.74, 0.74)]   # (z, the stripes' edges x)
+_SW_LABS = ["panel", "deck", "shoulder", "st1", "slope", "st2", "slope", "chamfer", "side", "bevel", "belly"]
+
+
+def _sw_ring(z):
+    """A section: the deck, a shoulder and a slope (their crease at S) carrying the two stripes, a low side, a bevel,
+    the flat belly; out of a stripe's run its edges sit on the crease."""
+    T, D, Sx, Sy, Bx, By, W, Yw, Yb = _lerp_tab(_SW_TAB, z)
+    on = lambda x: (x, float(np.interp(x, [D, Sx, Bx], [T, Sy, By])))
+    xs, lo = [], D
+    for tab in (_SW_ST1, _SW_ST2):          # the stripes' edges, kept on the slope and in order
+        for x in (_lerp_tab(tab, z) if tab[-1][0] <= z <= tab[0][0] else (Sx, Sx)):
+            lo = min(max(x, lo + 0.002), Bx - 0.004)
+            xs.append(lo)
+    right = [(0.0, T), (0.12, T), (D, T)] + [on(x) for x in xs] + \
+            [(Bx, By), (W, Yw), (W, Yb + 0.035), (W - 0.05, Yb), (0.0, Yb)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _sw_body():
+    labs = _SW_LABS + _SW_LABS[::-1]
+
+    def mat(i, j, c):
+        lab, z = labs[j], c[2]
+        if lab == "panel" and 0.15 < z < 0.94 or lab == "st1" and 0.0 < z < 1.42 or lab == "st2" and -0.5 < z < 0.94:
+            return "paint2"
+        return "paint1"
+    return _shell([_sw_ring(r[0]) for r in _SW_TAB], mat)
+
+
+def _sw_wing(sts, band_top, mat_band):
+    """A flat swept wing along +X: stations (x, z leading, z trailing, centre y, half thick, band z0, z1) -- the band
+    a paint2 strip across its top (band_top) or its bottom; the tip cap paint2."""
+    rings = []
+    for x, zl, zt, yc, h, b0, b1 in sts:
+        top = [(yc + h, zl - 0.05), (yc + h, b0 if band_top else zl - 0.06), (yc + h, b1 if band_top else zl - 0.07),
+               (yc + h, zt + 0.03)]
+        bot = [(yc - h, zt + 0.03), (yc - h, zt + 0.04 if band_top else b1), (yc - h, zt + 0.05 if band_top else b0),
+               (yc - h, zl - 0.05)]
+        rings.append([(x, yc, zl)] + [(x, y, z) for y, z in top] + [(x, yc, zt)] + [(x, y, z) for y, z in bot])
+    n = len(sts)
+
+    def mat(i, j, c):
+        if i == n - 1 and j == 0:
+            return "paint2"                     # the tip
+        if mat_band(i) and (j == 2 if band_top else j == 7):
+            return "paint2"
+        return "paint1"
+    return _shell(rings, mat)
+
+
+def _sw_nozzle(sx):
+    r = lambda z, w, ch: [(sx * x, y, z) for x, y, _ in oct_ring(0.21, 0.905, z, w, w, ch)]
+    return _shell([r(-2.27, 0.075, 0.025), r(-2.34, 0.075, 0.025), r(-2.34, 0.15, 0.045), r(-2.14, 0.15, 0.045)],
+                  lambda i, j, c: SL if i == 0 else "paint2")
+
+
+def hull_wave():
+    m = Model("hull_wave", "Sonic Wave: a purple arrow, a flat belly, paint2 stripes and deck panel, a slate canopy "
+              "ramp into a cockpit hump, two swept wings a side, two square paint2 nozzles")
+    m.add(_sw_body())
+    # the canopy: a slate ramp along the deck, into the cockpit hump (its front slate too)
+    cs = lambda t: [(0.0, t), (0.12, t), (0.16, t - 0.03), (0.19, 1.14), (0.19, 1.05), (0.0, 1.05)]
+    m.add(_ns_deck([(z, t) for z, t in ((-0.03, 1.12), (-0.30, 1.222), (-0.60, 1.34), (-0.75, 1.36), (-1.02, 1.37))],
+                   cs, lambda i, j, c: SL if j in (0, 1, 2, 8, 9, 10) else "paint1"))
+    hs = lambda t, tw, bw: [(0.0, t), (tw, t), (bw, 1.155), (bw, 1.10), (0.0, 1.10)]
+    m.add(_ns_deck([(-1.00, 1.412, 0.165, 0.29), (-1.55, 1.405, 0.165, 0.29), (-1.70, 1.37, 0.16, 0.27),
+                    (-1.90, 1.33, 0.15, 0.24), (-2.16, 1.25, 0.12, 0.20)], hs,
+                   lambda i, j, c: SL if i == 0 and c[2] > -1.01 else "paint1"))
+    for sx in (1, -1):
+        # the upper wing (a paint2 band behind its leading edge) and the lower one (drooping, a paint2 patch under it)
+        up = _sw_wing([(0.35, -0.245, -1.669, 1.07, 0.048, -0.50, -0.55),
+                       (0.48, -0.345, -1.669, 1.08, 0.048, -0.50, -0.64),
+                       (1.40, -1.050, -1.669, 1.145, 0.046, -1.30, -1.42),
+                       (1.586, -1.200, -1.669, 1.155, 0.044, -1.45, -1.45)], True, lambda i: i == 1)
+        lo = _sw_wing([(0.70, 0.138, -1.38, 0.735, 0.053, -0.68, -1.15),
+                       (0.83, -0.054, -1.41, 0.725, 0.052, -0.68, -1.15),
+                       (1.40, -0.898, -1.554, 0.625, 0.048, -1.38, -1.38),
+                       (1.58, -1.164, -1.60, 0.605, 0.045, -1.45, -1.45)], False, lambda i: i == 1)
+        for p in (up, lo, _sw_nozzle(1)):
+            m.add(p.sc(sx, 1, 1) if sx < 0 else p)
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave the two nozzles;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 0.21, 0.905, -2.30)
+    m.socket("flame2", -0.21, 0.905, -2.30)
+    return finish(m, (1.58, 0.605, -1.40), (0.0, 1.15, -0.60),
+                  [(0.30, 1.20), (-0.30, 1.20), (0.60, -1.30), (-0.60, -1.30)], -2.34, engine_y=0.905)
+
+
 # (the "No Fins" wing has no model: the game and the previews draw nothing for it -- parts.h, WINGS[4])
 
 
@@ -1020,6 +1136,7 @@ ALL = {
     "hull_cube": hull_cube,
     "hull_manta": hull_manta,
     "hull_sprinter": hull_sprinter,
+    "hull_wave": hull_wave,
     "wing_stubby": wing_stubby,
     "wing_ray": wing_ray,
     "wing_solar": wing_solar,

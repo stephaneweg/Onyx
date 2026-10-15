@@ -349,7 +349,7 @@ struct Scene
 				if (visible (world.chunk[i])) { ord[no] = i; od[no] = len (world.chunk[i].centre - cam.eye); no++; }
 			for (int a = 1; a < no; a++) { int ki = ord[a]; float kd = od[a]; int b = a - 1; while (b >= 0 && od[b] > kd) { ord[b + 1] = ord[b]; od[b + 1] = od[b]; b--; } ord[b + 1] = ki; od[b + 1] = kd; }
 			// near: the whole chunk; past LOD_NEAR its simplified one (the road a strip, the props boxes)
-			const int BUDGET = 138000;	// (of KAPI_GPU_MAX_VERTS 196608: the ships, the glows, the trails after)
+			const int BUDGET = 112000;	// (of KAPI_GPU_MAX_VERTS 196608: the ships, the glows, the trails after)
 			const float LOD_NEAR = 130;
 			nearN = 0;
 			for (int a = 0; a < no; a++)
