@@ -172,3 +172,6 @@ sdcard5/etc/clock
 sdcard5/res/wallpaper.*
 sdcard5_lite/res/wallpaper.*
 tools/onyxrun/build/
+
+# Cosmo Zoom!: the generated GLB sources of the imported ships (15-25 MB each; their OBJ are committed)
+tools/cosmozoom/models/glb/

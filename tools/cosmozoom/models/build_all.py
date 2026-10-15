@@ -26,7 +26,7 @@ for opt in ("items", "city", "nature", "props"):
 # The pilots' own ships (DESIGN.md 5) and colours, for the sheets.
 CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's six ships, then two more
     ("pilot_bolt", "hull_needle", "", "engine_ion", ("#E63ACB", "#FF8A1F")),
-    ("pilot_bloop", "hull_comet", "", "engine_pods", ("#3FD7EE", "#9DEFFA")),
+    ("pilot_bloop", "hull_comet", "", "engine_ion", ("#3FD7EE", "#9DEFFA")),
     ("pilot_bruno", "hull_whale", "", "engine_twin", ("#FF8A1F", "#FFD23F")),
     ("pilot_zib", "hull_pod", "", "engine_star", ("#9BE03A", "#22C3B5")),
     ("pilot_kiki", "hull_cube", "", "engine_ring", ("#FFD23F", "#E63ACB")),
@@ -42,6 +42,14 @@ def build():
     for mod in MODULES:
         for name, (ntri, mdl) in mod.build().items():
             built[name] = (ntri, mdl, mod.SCRIPT)
+    try:                      # the hulls generated from the user's references (their GLB sources may be absent)
+        import import_glb
+        made = import_glb.build()
+        for name in import_glb.IMPORTS:
+            ntri = made.get(name) or sum(1 for ln in open(os.path.join(cz.OUT_DIR, name + ".obj")) if ln.startswith("f "))
+            built[name] = (ntri, None, "import_glb.py")
+    except ImportError as e:
+        print("(GLB imports skipped: %s)" % e)
     try:
         import import_cc0
         for name, info in import_cc0.build().items():

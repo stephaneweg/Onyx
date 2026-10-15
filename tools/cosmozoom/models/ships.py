@@ -490,9 +490,10 @@ ALL = {
 
 
 def build(names=None):
+    from import_glb import IMPORTS          # (the hulls imported from the user's generated GLB: not built here)
     out = {}
     for n, fn in ALL.items():
-        if names and n not in names:
+        if (names and n not in names) or n in IMPORTS:
             continue
         mdl = fn()
         out[n] = (mdl.write(script=SCRIPT), mdl)
