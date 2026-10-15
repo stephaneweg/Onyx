@@ -349,22 +349,131 @@ def hull_comet():
                   [(0.22, 1.75), (-0.22, 1.75), (1.24, -0.50), (-1.24, -0.50)], -1.84, engine_y=0.93)
 
 
-def hull_whale():
-    m = Model("hull_whale", "Star Drifter: a long thin pointed fuselage, a paint2 stripe down its back, yellow struts")
-    sts = [S(-1.91, 0.41, 0.24, 0.10, 0, 0.55), S(1.00, 0.41, 0.24, 0.10, 0, 0.55), S(1.70, 0.25, 0.17, 0.07, 0, 0.52),
-           S(2.10, 0.08, 0.08, 0.03, 0, 0.50)]
+# Star Drifter, measured on the user's generated model (sections every 0.1 m): a long narrow fuselage, a raised paint2
+# stripe down its deck, a slate canopy before a cabin hump, swept struts to two big banded nacelles with slate cones,
+# a square lattice boom ahead of each nacelle to a paint2 tip block
+_SD_BODY = [  # (z, deck top y, stripe half, its step, side half width, side bottom y, bottom flat half, bottom y)
+    (2.30, 0.85, 0.10, 0.0, 0.20, 0.69, 0.15, 0.66), (2.20, 0.88, 0.12, 0.0, 0.22, 0.67, 0.16, 0.65),
+    (2.00, 0.88, 0.13, 0.0, 0.23, 0.67, 0.16, 0.64), (1.60, 0.90, 0.15, 0.0, 0.26, 0.66, 0.20, 0.62),
+    (1.00, 0.94, 0.16, 0.03, 0.30, 0.65, 0.22, 0.59), (0.60, 0.97, 0.18, 0.05, 0.335, 0.63, 0.23, 0.58),
+    (0.20, 0.98, 0.21, 0.05, 0.37, 0.61, 0.25, 0.56), (0.00, 0.975, 0.23, 0.04, 0.39, 0.60, 0.28, 0.55),
+    (-0.40, 0.96, 0.25, 0.01, 0.41, 0.59, 0.28, 0.54), (-1.25, 0.96, 0.25, 0.01, 0.41, 0.60, 0.32, 0.56),
+    (-1.45, 0.94, 0.22, 0.0, 0.36, 0.63, 0.29, 0.59), (-1.75, 0.91, 0.17, 0.0, 0.30, 0.67, 0.24, 0.65)]
+_SD_LABS = ["deck", "step", "ledge", "slope", "bevel", "side", "chamfer", "bottom"]
+_SD_NX, _SD_NY = 1.255, 0.716        # the +X nacelle's axis
 
-    def mat(lab, i, c):
-        if lab == "bottom":
+
+def _sd_ring(z):
+    T, D, s, W, Ys, Wb, B = _lerp_tab(_SD_BODY, z)
+    L = min(D + 0.06, W - 0.06)
+    right = [(0.0, T), (D, T), (D + 0.01, T - s), (L, T - s - 0.01), (W - 0.02, 0.86), (W, 0.81), (W, Ys), (Wb, B),
+             (0.0, B)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _sd_bar(a, b, r, mat, n=4):
+    """A thin straight bar from a to b: n flat sides (the first face up), both ends closed."""
+    a, b = np.array(a, float), np.array(b, float)
+    d = (b - a) / np.linalg.norm(b - a)
+    u = np.cross(d, (0.0, 1.0, 0.0))
+    u = u / np.linalg.norm(u) if np.linalg.norm(u) > 1e-6 else np.array([1.0, 0.0, 0.0])
+    v = np.cross(u, d)
+    ring = [u * math.cos(PI / n + 2 * PI * k / n) + v * math.sin(PI / n + 2 * PI * k / n) for k in range(n)]
+    p = Part(np.array([a + r * q for q in ring] + [b + r * q for q in ring]))
+    p.f = [((k, (k + 1) % n, n + (k + 1) % n, n + k), mat) for k in range(n)]
+    p.f += [((0, k + 1, k), mat) for k in range(1, n - 1)] + [((n, n + k, n + k + 1), mat) for k in range(1, n - 1)]
+    return p.orient()
+
+
+def _sd_boom(sx):
+    """The square lattice boom from inside the nacelle's intake to the tip block: four rails converging forward, a
+    zigzag of struts on each face."""
+    p = Part()
+    c = lambda z: (sx * 1.245, 0.705 + 0.0106 * z)
+    hx = lambda z: 0.116 - 0.031 * z
+    hy = lambda z: 0.117 - 0.0218 * z
+    corner = lambda k, z: (c(z)[0] + (1, -1, -1, 1)[k] * hx(z), c(z)[1] + (1, 1, -1, -1)[k] * hy(z), z)
+    for k in range(4):
+        p.add(_sd_bar(corner(k, -0.19), corner(k, 1.50), 0.035, "paint1"))
+    zs = np.linspace(-0.04, 1.44, 5)
+    for a, b in ((0, 1), (3, 2), (0, 3), (1, 2)):  # top and bottom in step, the two sides in step
+        for i in range(4):
+            u, v = (a, b) if i % 2 == 0 else (b, a)
+            p.add(_sd_bar(corner(u, zs[i]), corner(v, zs[i + 1]), 0.024, "paint1"))
+    # the tip block: paint2, its front a chamfered frame round a recessed slate slot
+    x, y = sx * 1.244, 0.712
+    r = lambda z, w, h, ch: oct_ring(x, y, z, w, h, ch)
+    p.add(_shell([r(1.45, 0.118, 0.130, 0.03), r(1.55, 0.122, 0.135, 0.03), r(1.76, 0.100, 0.125, 0.03),
+                  r(1.82, 0.085, 0.108, 0.025), r(1.82, 0.045, 0.080, 0.015), r(1.80, 0.045, 0.080, 0.015)],
+                 lambda i, j, cc: SL if i >= 4 else "paint2"))
+    return p
+
+
+def _sd_nacelle(sx):
+    """A nacelle (10 sides): a rounded intake lip round a recessed slate face, a paint2 band, the body, a paint2 band,
+    the slate exhaust cone, hollow."""
+    prof = [(0.0, -0.19), (0.20, -0.19), (0.20, -0.10), (0.225, -0.075), (0.26, -0.075), (0.275, -0.09), (0.275, -0.245),
+            (0.30, -0.26), (0.30, -0.49), (0.315, -0.505), (0.315, -1.195), (0.30, -1.21), (0.30, -1.34), (0.26, -1.35),
+            (0.197, -1.80), (0.185, -1.85), (0.165, -1.865), (0.13, -1.865), (0.125, -1.60), (0.0, -1.60)]
+
+    def mat(i, j, c):
+        if i == 0 or i >= 12:
             return SL
-        if lab == "top1" and -1.09 < c[2] < 1.66:
-            return "paint2"                         # the stripe down the back
+        return "paint2" if i in (6, 7, 11) else "paint1"
+    prof = [(r * 1.05, z) for r, z in prof]   # (radii across the flats: the ten corners on the sides)
+    return revolve_z(prof, 10, mat).tr(sx * _SD_NX, _SD_NY, 0)
+
+
+def hull_whale():
+    m = Model("hull_whale", "Star Drifter: a long narrow fuselage, a paint2 stripe down its deck, a slate canopy, a "
+              "cabin hump, swept struts to two big banded nacelles with slate cones, lattice booms ahead with paint2 tips")
+
+    def mat(i, j, c):
+        lab = (_SD_LABS + _SD_LABS[::-1])[j]
+        z = c[2]
+        if lab == "deck" and -0.45 < z < 1.72:
+            return "paint2"                         # the stripe down the deck
+        if lab == "bottom" and -0.35 < z < 2.25:
+            return "paint2"                         # its twin underneath
+        if lab == "side" and (0.0 < z < 2.20 or -1.75 < z < -1.35):
+            return "paint2"                         # the side panels
         return "paint1"
-    m.add(ch_loft(sts, mat, top=(0.30, 0.70), c0=0.06, c1=0.02))
-    m.add(canopy(-0.85, -0.10, 0.72, 1.00, 0.20, 0.40))
-    m.add(ch_box(-0.05, 0.05, 0.10, 0.34, -1.40, -0.90, 0.02, "paint1"))      # a little keel below
-    return finish(m, (0.41, 0.55, -1.20), (0.0, 0.54, -0.45),
-                  [(0.30, 1.00), (-0.30, 1.00), (0.30, -1.30), (-0.30, -1.30)], -1.91)
+    zs = sorted([r[0] for r in _SD_BODY] + [1.72], reverse=True)   # (1.72: the stripe's front end)
+    nose = [(x * 0.85, 0.74 + (y - 0.755) * 0.6, 2.34) for x, y, _ in _sd_ring(2.30)]
+    tail = [(x * 0.8, 0.78 + (y - 0.78) * 0.75, -1.80) for x, y, _ in _sd_ring(-1.75)]
+    m.add(_shell([nose] + [_sd_ring(z) for z in zs] + [tail], mat))
+    # the canopy: a slate wedge on the stripe, rising back into the cabin hump
+    cr = []
+    for z, top, wt, wb in ((0.18, 0.985, 0.05, 0.12), (0.10, 1.00, 0.10, 0.16), (0.00, 1.04, 0.14, 0.18),
+                           (-0.20, 1.10, 0.15, 0.20), (-0.40, 1.14, 0.16, 0.22), (-0.50, 1.15, 0.16, 0.23)):
+        yd = _lerp_tab(_SD_BODY, z)[0]
+        right = [(0.0, top), (wt, top), (wb, yd), (wb, yd - 0.06), (0.0, yd - 0.06)]
+        cr.append([(x, y, z) for x, y in _nv_mirror(right)])
+    m.add(_shell(cr, "tint"))
+    # the cabin hump: a paint2 ridge on its roof
+    hump = lambda z, tr, tb: [(x, y, z) for x, y in _nv_mirror([(0.0, tr), (0.10, tr), (0.13, tb), (0.19, tb - 0.03),
+                                                                 (0.29, 0.94), (0.29, 0.90), (0.0, 0.90)])]
+    hr = [hump(-0.43, 1.17, 1.17), hump(-0.55, 1.18, 1.17), hump(-0.68, 1.23, 1.18), hump(-0.95, 1.23, 1.16), hump(-1.10, 1.20, 1.12),
+          hump(-1.25, 1.14, 1.08), hump(-1.38, 1.10, 1.04)]
+    m.add(_shell(hr, lambda i, j, c: "paint2" if j in (0, 11) and 1 < i < 6 else "paint1"))
+    for sx in (1, -1):
+        # the strut: a chamfered plate swept back (its back paint2) and a thicker spar across it
+        def plate(x, zf, zb):
+            pts = [(zf, 0.75), (zf - 0.04, 0.80), (-0.90, 0.80), (zb + 0.04, 0.80), (zb, 0.75), (zb + 0.04, 0.70),
+                   (-0.90, 0.70), (zf - 0.04, 0.70)]
+            return [(sx * x, y, z) for z, y in pts]
+        m.add(_shell([plate(0.36, -0.33, -1.26), plate(1.00, -0.54, -1.13)],
+                     lambda i, j, c: "paint2" if c[2] < -0.90 else "paint1"))
+        a, b = sorted((sx * 0.36, sx * 1.00))
+        m.add(ch_box(a, b, 0.66, 0.83, -0.90, -0.675, 0.02, "paint1"))
+        m.add(_sd_nacelle(sx))
+        m.add(_sd_boom(sx))
+    # the ventral leg: a post on a flared foot
+    leg = lambda y, w, z0, z1: [(w, y, z0), (w, y, z1), (-w, y, z1), (-w, y, z0)]
+    m.add(_shell([leg(0.20, 0.08, 0.77, 1.175), leg(0.24, 0.08, 0.77, 1.175), leg(0.33, 0.05, 0.885, 1.057),
+                  leg(0.60, 0.05, 0.885, 1.057)], "paint1"))
+    return finish(m, (1.57, 0.72, -0.85), (0.0, 0.66, -0.30),
+                  [(0.30, 1.60), (-0.30, 1.60), (1.25, -0.90), (-1.25, -0.90)], -1.76, engine_y=0.78)
 
 
 def hull_pod():
