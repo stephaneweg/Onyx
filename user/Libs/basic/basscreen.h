@@ -20,12 +20,13 @@ enum { K_BACKSPACE = 8, K_TAB = 9, K_ENTER = 13, K_UP = 0x100, K_DOWN, K_LEFT, K
 	K_PGUP, K_PGDN, K_DEL, K_F1 = 0x110 };
 
 // QBasic's screen modes: size, text cell height, pages, colours, display scale.
+// (SCREEN 12 and 13 have a second page here, QBasic's had one: a game draws its frame out of sight, then PCOPY 1, 0.)
 struct ModeInfo { int mode, w, h, cellH, pages, colors, sx, sy; };
 static const ModeInfo MODES[] = {
 	{ 0, 640, 400, 16, 8, 256, 1, 1 }, { 1, 320, 200, 8, 1, 4, 2, 2 }, { 2, 640, 200, 8, 1, 2, 1, 2 },
 	{ 7, 320, 200, 8, 8, 16, 2, 2 }, { 8, 640, 200, 8, 4, 16, 1, 2 }, { 9, 640, 350, 14, 2, 16, 1, 1 },
-	{ 10, 640, 350, 14, 2, 4, 1, 1 }, { 11, 640, 480, 16, 1, 2, 1, 1 }, { 12, 640, 480, 16, 1, 16, 1, 1 },
-	{ 13, 320, 200, 8, 1, 256, 2, 2 }, { -1, 0, 0, 0, 0, 0, 0, 0 } };
+	{ 10, 640, 350, 14, 2, 4, 1, 1 }, { 11, 640, 480, 16, 1, 2, 1, 1 }, { 12, 640, 480, 16, 2, 16, 1, 1 },
+	{ 13, 320, 200, 8, 2, 256, 2, 2 }, { -1, 0, 0, 0, 0, 0, 0, 0 } };
 static inline const ModeInfo *modeInfo (int m) { for (int i = 0; MODES[i].mode >= 0; i++) if (MODES[i].mode == m) return &MODES[i]; return 0; }
 
 // The VGA default palette: the 16 EGA colours, 16 greys, 9 rings of 24 hues, black.
