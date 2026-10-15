@@ -157,9 +157,19 @@ static void render3d (Frame &F, int x, int y, int w, int h, unsigned clear, bool
 	if (w <= 0 || h <= 0) return;
 	if (g_gpu && F.b.n <= KAPI_GPU_MAX_BATCHES)
 	{
-		for (int i = 0; i < F.b.n; i++) { g_bat[i] = F.b.p[i]; g_bat[i].texture = F.b.p[i].texture > 0 ? g_hTex[F.b.p[i].texture] : -1; }
+		// (the GPU takes KAPI_GPU_MAX_VERTS at most: past it, the last batches are left out -- else the call is
+		//  refused and the software would draw every frame, far slower)
+		int nb = 0; unsigned nv = 0;
+		for (int i = 0; i < F.b.n; i++)
+		{
+			const auto &B = F.b.p[i];
+			if (B.first + B.count > KAPI_GPU_MAX_VERTS) break;
+			g_bat[nb] = B; g_bat[nb].texture = B.texture > 0 ? g_hTex[B.texture] : -1;
+			if (B.first + B.count > nv) nv = B.first + B.count;
+			nb++;
+		}
 		struct kapi_gpu_frame f = { g_px + (long) y * g_stride + x, w, h, g_stride, clear, keep ? KAPI_GPU_F_KEEP : 0u };
-		int r = kapi_gpu_render (&f, (const struct kapi_gpu_vertex3 *) F.v.p, (unsigned) F.v.n, (const struct kapi_gpu_batch *) g_bat, (unsigned) F.b.n);
+		int r = kapi_gpu_render (&f, (const struct kapi_gpu_vertex3 *) F.v.p, nv, (const struct kapi_gpu_batch *) g_bat, (unsigned) nb);
 		if (r == 0) return;
 		if (r == -1 || r == -3) g_gpu = false;		// (no GPU / it stopped: the software from now on)
 	}
@@ -1085,11 +1095,15 @@ static void saveBuilds ()
 }
 static void loadBuilds ()
 {
+	// (the ships' colours of before 1.0.5 -- not the user's models' -- forgotten once: the defaults again)
+	bool fresh = saveInt ("options", "builds", 0) < 2;
+	if (fresh) setInt ("options", "builds", 2);
 	for (int p = 0; p < 4; p++)
 	{
 		char sec[8]; snprintf (sec, sizeof sec, "p%d", p + 1);
 		g_pilot[p] = clampi (saveInt (sec, "pilot", p), 0, NPILOT - 1);
 		Build d = PILOTS[g_pilot[p]].build;
+		if (fresh) { g_build[p] = d; continue; }
 		g_build[p].hull = clampi (saveInt (sec, "hull", d.hull), 0, NHULL - 1);
 		g_build[p].wing = clampi (saveInt (sec, "wing", d.wing), 0, NWING - 1);
 		g_build[p].engine = clampi (saveInt (sec, "engine", d.engine), 0, NENGINE - 1);

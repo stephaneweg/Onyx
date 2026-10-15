@@ -64,11 +64,13 @@ struct World
 {
 	enum { CHUNK = 12, MAXCH = Track::MAXSEG / CHUNK + 4 };
 	VList chunk[MAXCH]; int nch = 0;	// the solid pieces
+	VList chunkLow[MAXCH];			// the same, simplified: drawn far away (the road a strip, the props boxes)
 	VList glow[MAXCH];			// what glows: drawn after, added (no depth written)
 	VList clear[MAXCH];			// what is see-through: the force fields (alpha, no depth written)
 	VList signs[MAXCH];			// the billboards' pictures (added, the TX_SIGNS texture)
 	VList far, farGlow;			// the ground, the far city, the hills (always drawn)
-	VList sky, skyGlow, skyObj;		// around the camera (drawn without its position): the dome; the stars, the suns (TX_GLOW); the planets, the clouds
+	VList sky, skyGlow, skyObj;		// around the camera (drawn without its position): the dome; the stars, the suns (TX_GLOW); the planets
+	VList skyBand;				// the skybox's clouds: a band textured with TX_CLOUDS round the horizon
 	float glowK = 1;			// the light streaks' strength (1 at night .. 0.5 by day)
 	unsigned fogCol = 0;
 	struct Traffic { V3 c; float r, h, speed, ph; unsigned col; } traffic[16]; int ntraffic = 0;
@@ -77,8 +79,8 @@ struct World
 
 	void build (const Track &T, ModelLib &lib, unsigned seed)
 	{
-		for (int i = 0; i < MAXCH; i++) { chunk[i].v.clear (); glow[i].v.clear (); clear[i].v.clear (); signs[i].v.clear (); }
-		far.v.clear (); farGlow.v.clear (); sky.v.clear (); skyGlow.v.clear (); skyObj.v.clear (); ntraffic = 0;
+		for (int i = 0; i < MAXCH; i++) { chunk[i].v.clear (); chunkLow[i].v.clear (); glow[i].v.clear (); clear[i].v.clear (); signs[i].v.clear (); }
+		far.v.clear (); farGlow.v.clear (); sky.v.clear (); skyGlow.v.clear (); skyObj.v.clear (); skyBand.v.clear (); ntraffic = 0;
 		nch = (T.n + CHUNK - 1) / CHUNK;
 		if (nch > MAXCH) nch = MAXCH;
 		glowK = T.timeOfDay == Track::T_DAY ? 0.5f : T.timeOfDay == Track::T_DUSK ? 0.7f : 1.0f;
@@ -92,7 +94,7 @@ struct World
 		makeSky (T, lib, rng);
 		for (int i = 0; i < nch; i++)
 		{
-			chunk[i].bound ();
+			chunk[i].bound (); chunkLow[i].bound ();
 			VList *o[3] = { &glow[i], &clear[i], &signs[i] };
 			for (VList *L : o) { L->bound (); if (chunk[i].radius > L->radius) { L->centre = chunk[i].centre; L->radius = chunk[i].radius; } }
 		}
@@ -110,6 +112,7 @@ struct World
 		if (A.flags & F_GAP) { if (!(T.seg[(i + T.n - 1) % T.n].flags & F_GAP)) gapEdge (T, A, L); return; }
 		float tube = fmaxf (A.tube, B.tube);
 		bool closed = A.tube > 0.985f && B.tube > 0.985f;
+		roadLow (T, i, A, B, tube, chunkLow[i / CHUNK]);
 		bool tun = (A.flags & F_TUNNEL) != 0 && tube <= 0;
 		bool start = (A.flags & F_START) || i == T.n - 1;
 		auto SP = [&] (const Seg &S, float l, float h, V3 *n = 0, V3 *lat = 0) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, n, lat); return p; };
@@ -333,6 +336,74 @@ struct World
 			L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
 		}
 	}
+	// the road far away (chunkLow): its top as one strip (a tube: 8 sides round), the borders' tops in their stripes, the
+	// underside; a tunnel's tube as 8 sides
+	void roadLow (const Track &T, int i, const Seg &A, const Seg &B, float tube, VList &L)
+	{
+		auto SP = [&] (const Seg &S, float l, float h) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, 0, 0); return p; };
+		float ea = A.w * 0.5f, eb = B.w * 0.5f;
+		int cols = tube > 0.01f ? 8 : 1;
+		for (int k = 0; k < cols; k++)
+		{
+			float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
+			V3 a0 = SP (A, f0 * ea, 0), a1 = SP (A, f1 * ea, 0), b0 = SP (B, f0 * eb, 0), b1 = SP (B, f1 * eb, 0);
+			V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
+			L.face (a0, a1, b1, b0, shade (T.road[0], nm), nm);
+			if (tube <= 0.985f) L.face (SP (A, f0 * ea, -0.5f), SP (A, f1 * ea, -0.5f), SP (B, f1 * eb, -0.5f), SP (B, f0 * eb, -0.5f), shade (rgbScale (T.road[0], 0.7f), -nm), -nm);
+		}
+		if (tube <= 0.01f)
+			for (int sd = -1; sd <= 1; sd += 2)
+			{
+				float s0 = (float) sd;
+				unsigned st = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f);
+				L.face (SP (A, s0 * (ea - 0.5f), 0.2f), SP (A, s0 * ea, 0.2f), SP (B, s0 * eb, 0.2f), SP (B, s0 * (eb - 0.5f), 0.2f), shade (st, A.u), A.u);
+			}
+		if ((A.flags & F_TUNNEL) && tube <= 0)
+		{
+			const int K = 8; float sa = A.w / 15.0f, sb = B.w / 15.0f;
+			for (int k = 0; k < K; k++)
+			{
+				float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K, am = (a0 + a1) * 0.5f;
+				auto TP = [&] (const Seg &S, float sc, float a) { V3 p; Track::surfOf (S.c, S.r, S.u, 0, cosf (a) * 9.0f * sc, 1.8f * sc + sinf (a) * 9.0f * sc, &p, 0, 0); return p; };
+				V3 out = A.r * cosf (am) + A.u * sinf (am);
+				L.face (TP (A, sa, a0), TP (B, sb, a0), TP (B, sb, a1), TP (A, sa, a1), shade (T.walls[0], out), out);
+			}
+		}
+	}
+	// a model far away (chunkLow): its box -- turned and scaled as it is -- in its own average colours (the top, the
+	// sides); the small ones (trees, lamps) left out
+	struct LowCol { const Mesh *m; unsigned side, top; };
+	LowCol lowCols[128]; int nLowCols = 0;
+	void lowCols_of (const Mesh *m, unsigned *side, unsigned *top)
+	{
+		for (int i = 0; i < nLowCols; i++) if (lowCols[i].m == m) { *side = lowCols[i].side; *top = lowCols[i].top; return; }
+		float sr = 0, sg = 0, sb = 0, sw = 0, tr = 0, tg = 0, tb = 0, tw = 0;
+		for (int i = 0; i < m->tris.n; i++)
+		{
+			const Tri &T = m->tris[i];
+			V3 n = cross (T.p[1] - T.p[0], T.p[2] - T.p[0]); float a = len (n); if (a <= 0) continue;
+			unsigned c = T.col[0]; float r = (float) ((c >> 16) & 255), g = (float) ((c >> 8) & 255), b = (float) (c & 255);
+			if (n.y / a > 0.6f) { tr += r * a; tg += g * a; tb += b * a; tw += a; } else { sr += r * a; sg += g * a; sb += b * a; sw += a; }
+		}
+		*side = sw > 0 ? (unsigned) (sr / sw) << 16 | (unsigned) (sg / sw) << 8 | (unsigned) (sb / sw) : 0xC0C0C0;
+		*top = tw > 0 ? (unsigned) (tr / tw) << 16 | (unsigned) (tg / tw) << 8 | (unsigned) (tb / tw) : *side;
+		if (nLowCols < 128) lowCols[nLowCols++] = { m, *side, *top };
+	}
+	void placeLow (const Mesh *m, const M4 &M, VList &L)
+	{
+		V3 lo = m->lo, hi = m->hi;
+		V3 c[8];
+		for (int k = 0; k < 8; k++) c[k] = M.point (V3 (k & 1 ? hi.x : lo.x, k & 2 ? hi.y : lo.y, k & 4 ? hi.z : lo.z));
+		if (len (c[7] - c[0]) < 9) return;
+		unsigned side, top; lowCols_of (m, &side, &top);
+		// (its colours are lit already: the faces only darkened a little by their side)
+		V3 up = c[2] - c[0], ex = c[1] - c[0], ez = c[4] - c[0];
+		L.face (c[2], c[3], c[7], c[6], top, up);
+		L.face (c[0], c[1], c[3], c[2], rgbScale (side, 0.92f), -ez);
+		L.face (c[4], c[5], c[7], c[6], rgbScale (side, 1.0f), ez);
+		L.face (c[0], c[4], c[6], c[2], rgbScale (side, 0.85f), -ex);
+		L.face (c[1], c[5], c[7], c[3], rgbScale (side, 0.97f), ex);
+	}
 	// the end of the road before / after a gap: a striped lip, glowing
 	void gapEdge (const Track &T, const Seg &S, VList &L)
 	{
@@ -375,6 +446,7 @@ struct World
 	void place (const Mesh *m, const M4 &M, int chunkIdx, unsigned signCol = 0)
 	{
 		if (!m) return;
+		if (chunkIdx >= 0 && chunkIdx < nch) placeLow (m, M, chunkLow[chunkIdx]);
 		VList &L = chunkIdx >= 0 && chunkIdx < nch ? chunk[chunkIdx] : far;
 		VList &G = chunkIdx >= 0 && chunkIdx < nch ? glow[chunkIdx] : farGlow;
 		VList &S = chunkIdx >= 0 && chunkIdx < nch ? signs[chunkIdx] : farGlow;
@@ -477,9 +549,9 @@ struct World
 			{
 				float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
 				float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 150;
-				for (int k = 0; k < 36; k++)
+				for (int k = 0; k < 24; k++)
 				{
-					float a = 2 * PI * (float) k / 36 + rng.range (-0.05f, 0.05f), rr = R + rng.range (0, 140);
+					float a = 2 * PI * (float) k / 24 + rng.range (-0.05f, 0.05f), rr = R + rng.range (0, 140);
 					V3 p (cx + cosf (a) * rr, baseY, cz + sinf (a) * rr);
 					{ unsigned tc = pastel (rng, T); place (lib.get (TOWERS[rng.n (6)], tc, rgbMix (tc, 0xFFFFFF, 0.22f), 0), at (p, rng.range (0, 6.28f), 1.5f, rng.range (1.2f, 2.4f), 1.5f), -1); }
 				}
@@ -520,10 +592,11 @@ struct World
 			if (!m) break;
 			float sc = rng.range (0.8f, 1.6f), yaw = rng.range (0, 6.28f);
 			int ch = dist < 110 ? ni / CHUNK : -1;
+			if (ch < 0) { lowIsland (far, p, (m->hi.x - m->lo.x) * 0.5f * sc, (m->hi.y - m->lo.y) * sc); k++; continue; }	// (far: a cheap one)
 			place (m, at (p, yaw, sc, sc, sc), ch);
-			// trees and rocks on the grass
+			// trees and rocks on the grass (the near islands only: the far ones too small to see them)
 			float r = (m->hi.x - m->lo.x) * 0.3f * sc;
-			int nt = 1 + rng.n (4);
+			int nt = ch < 0 ? 0 : 1 + rng.n (4);
 			for (int t = 0; t < nt; t++)
 			{
 				float a = rng.range (0, 6.28f), d = rng.range (0, r);
@@ -538,10 +611,11 @@ struct World
 			int ni = 0; float dist = 0;
 			clearOfRoad (T, p, 0, &ni, &dist);
 			if (dist < T.seg[ni].w * 0.5f + 30 && fabsf (p.y - T.seg[ni].c.y) < 20) continue;
+			float sc = rng.range (0.7f, 1.8f);
+			if (dist >= 110) { for (int j = 0; j < 3; j++) lowPuff (far, p + V3 (rng.range (-8, 8) * sc, 0, rng.range (-8, 8) * sc), 7 * sc); continue; }
 			const Mesh *m = lib.get ("cloud_puff", 0xFF000000u, 0xFF000000u, 0);
 			if (!m) break;
-			float sc = rng.range (0.7f, 1.8f);
-			place (m, at (p, rng.range (0, 6.28f), sc, sc * 0.8f, sc), dist < 110 ? ni / CHUNK : -1);
+			place (m, at (p, rng.range (0, 6.28f), sc, sc * 0.8f, sc), ni / CHUNK);
 		}
 	}
 
@@ -625,13 +699,11 @@ struct World
 			}
 		// a sea of clouds: round cloud banks on it (it reads as clouds far below, not as a floor)
 		if (clouds)
-			for (int k = 0; k < 70; k++)
+			for (int k = 0; k < 28; k++)		// (cheap puffs: they are far below -- the GPU's budget)
 			{
-				const Mesh *m = lib.get ("cloud_puff", 0xFF000000u, 0xFF000000u, 0);
-				if (!m) break;
 				V3 p (cx + rng.range (-R, R) * 0.8f, y + rng.range (2, 8), cz + rng.range (-R, R) * 0.8f);
-				float sc = rng.range (1.5f, 3.5f);
-				place (m, at (p, rng.range (0, 6.28f), sc, sc * 0.6f, sc), -1);
+				float r = rng.range (12, 26);
+				for (int j = 0; j < 3; j++) lowPuff (far, p + V3 (rng.range (-r, r), 0, rng.range (-r, r)), r * rng.range (0.6f, 1.0f));
 			}
 		// land: soft hills round the edge in the horizon's colour
 		if (!clouds && !water)
@@ -640,6 +712,38 @@ struct World
 				float a = 2 * PI * (float) k / 30 + rng.range (-0.05f, 0.05f), rr = R * rng.range (0.75f, 0.95f);
 				V3 c (cx + cosf (a) * rr, y, cz + sinf (a) * rr);
 				mound (far, c, rng.range (50, 110), rng.range (30, 90), rgbMix (T.ground[0], T.sky[1], rng.range (0.2f, 0.5f)));
+			}
+	}
+	// a cheap floating island (far away): a grass disc with a soft rim over a rocky cone, 8 sides
+	void lowIsland (VList &L, const V3 &c, float r, float h)
+	{
+		const int S = 8;
+		V3 tip = c - V3 (0, h, 0);
+		for (int k = 0; k < S; k++)
+		{
+			float a0 = 2 * PI * (float) k / S, a1 = 2 * PI * (float) (k + 1) / S;
+			V3 e0 (cosf (a0) * r, 0, sinf (a0) * r), e1 (cosf (a1) * r, 0, sinf (a1) * r);
+			V3 i0 = e0 * 0.85f + V3 (0, 0.6f, 0), i1 = e1 * 0.85f + V3 (0, 0.6f, 0);
+			L.face (c + i0, c + i1, c + V3 (0, 0.6f, 0), c + V3 (0, 0.6f, 0), shade (0x7CCB4E, V3 (0, 1, 0)), V3 (0, 1, 0));
+			V3 sn = (e0 + e1) * 0.5f;
+			L.face (c + e0, c + e1, c + i1, c + i0, shade (0x6BBF45, sn + V3 (0, r, 0)), sn + V3 (0, r, 0));
+			L.face (c + e0 - V3 (0, 1.2f, 0), c + e1 - V3 (0, 1.2f, 0), c + e1, c + e0, shade (0x5AAE3C, sn), sn);
+			L.tri (c + e0 - V3 (0, 1.2f, 0), tip, c + e1 - V3 (0, 1.2f, 0), shade (0xA27E66, sn - V3 (0, r * 0.4f, 0)));
+		}
+	}
+	// a cheap cloud ball (far away): 8 sides, 3 rings, white on top, bluish below
+	void lowPuff (VList &L, const V3 &c, float r)
+	{
+		const int S = 8, Rr = 3;
+		for (int j = 0; j < Rr; j++)
+			for (int k = 0; k < S; k++)
+			{
+				float e0 = -0.3f + (PI / 2 + 0.3f) * (float) j / Rr, e1 = -0.3f + (PI / 2 + 0.3f) * (float) (j + 1) / Rr;
+				float a0 = 2 * PI * (float) k / S, a1 = 2 * PI * (float) (k + 1) / S;
+				auto P = [&] (float a, float e) { return c + V3 (cosf (a) * cosf (e) * r, sinf (e) * r * 0.7f, sinf (a) * cosf (e) * r); };
+				unsigned col = rgbMix (0xD3E0F4, 0xFFFFFF, (float) (j + 1) / Rr);
+				L.tri (P (a0, e0), P (a1, e1), P (a1, e0), col);
+				L.tri (P (a0, e0), P (a0, e1), P (a1, e1), col);
 			}
 	}
 	void mound (VList &L, const V3 &c, float r, float h, unsigned col)
@@ -742,23 +846,22 @@ struct World
 				planet (c, r, T.neon[k % 3], k == 0);
 			}
 		}
-		// clouds by day / dusk: round cumulus -- a big ball and smaller ones around it, a flat bluish underside
+		// clouds by day / dusk: the skybox's band (the user: lighter than 3D clouds) -- a ring round the horizon textured
+		// with TX_CLOUDS (round cumulus painted once), the texture twice round, tinted at dusk
 		if (tod <= Track::T_DUSK)
-			for (int k = 0; k < 18; k++)
+		{
+			const int K = 16;
+			const float e0 = 0.03f, e1 = 0.40f, rr = 800;
+			unsigned tint = tod == Track::T_DUSK ? 0xFFD8C4 : 0xFFFFFF;
+			for (int k = 0; k < K; k++)
 			{
-				float a = rng.range (0, 2 * PI), e = rng.range (0.06f, 0.34f);
-				V3 c = V3 (cosf (a) * cosf (e), sinf (e), sinf (a) * cosf (e)) * 800;
-				V3 side = norm (V3 (-sinf (a), 0, cosf (a)));
-				unsigned col = tod == Track::T_DUSK ? 0xFFD8C4 : 0xFFFFFF;
-				float R0 = rng.range (34, 58);
-				puff (c, R0, col);
-				int n = 3 + (int) rng.range (0, 3);
-				for (int j = 0; j < n; j++)
-				{
-					float t = rng.range (-1, 1);
-					puff (c + side * (t * R0 * 1.5f) + V3 (0, -R0 * 0.25f * fabsf (t), 0), R0 * rng.range (0.5f, 0.75f), col);
-				}
+				float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
+				auto P = [&] (float a, float e) { return V3 (cosf (a) * cosf (e) * rr, sinf (e) * rr, sinf (a) * cosf (e) * rr); };
+				float s0 = 2.0f * (float) k / K, s1 = 2.0f * (float) (k + 1) / K;
+				// (quadUV: a b c d with a, b at the bottom: t1 there, t0 at the top)
+				skyBand.quadUV (P (a0, e0), P (a1, e0), P (a1, e1), P (a0, e1), tint, s0, 0.0f, s1, 1.0f);
 			}
+		}
 		(void) lib;
 	}
 	void planet (const V3 &c, float r, unsigned col, bool ringed)
@@ -793,7 +896,7 @@ struct World
 	void puff (const V3 &c, float r, unsigned col)
 	{
 		// a ball of cloud cut flat underneath: white on top, a soft blue-grey below
-		const int S = 12, Rr = 6;
+		const int S = 9, Rr = 4;
 		const float e00 = -0.35f;
 		for (int j = 0; j < Rr; j++)
 			for (int k = 0; k < S; k++)

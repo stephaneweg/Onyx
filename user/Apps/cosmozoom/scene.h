@@ -53,14 +53,16 @@ static unsigned paintOf (const Tri &T, const Build &b, const Mesh &m)
 	V3 c = (T.p[0] + T.p[1] + T.p[2]) * (1.0f / 3);
 	V3 sz = m.hi - m.lo;
 	float u = sz.z > 0 ? (c.z - m.lo.z) / sz.z : 0, v = sz.y > 0 ? (c.y - m.lo.y) / sz.y : 0, w = sz.x > 0 ? (c.x - m.lo.x) / sz.x : 0;
+	// the patterns touch the main colour only, in touches: the model's own parts in the accent stay its accent,
+	// the main colour stays the main one (the user, 2026-10-15)
 	switch (b.pattern)
 	{
-	case 1: return fabsf (v - 0.55f) < 0.12f ? c2 : c1;				// a stripe along
-	case 2: return v < 0.45f ? c2 : c1;						// two-tone
-	case 3: return fabsf (w - 0.5f) < 0.12f ? c2 : c1;				// a racing stripe
-	case 4: return (((int) (u * 6) + (int) (w * 4)) & 1) ? c2 : c1;			// checks
-	case 5: return hueColor (u * 0.85f);						// rainbow
-	case 6: return w < 0.5f ? c2 : c1;						// split left / right
+	case 1: return fabsf (v - 0.55f) < 0.06f ? c2 : c1;				// a thin stripe along
+	case 2: return v < 0.22f ? c2 : c1;						// two-tone: the underside
+	case 3: return fabsf (w - 0.5f) < 0.06f && v > 0.5f ? c2 : c1;			// a racing stripe on top
+	case 4: return u > 0.85f && (((int) (u * 24) + (int) (w * 8)) & 1) ? c2 : c1;	// checks on the nose
+	case 5: return rgbMix (c1, hueColor (u * 0.85f), 0.45f);				// rainbow, over the main colour
+	case 6: return w < 0.5f && v > 0.5f ? rgbMix (c1, c2, 0.35f) : c1;		// split: a tinted half on top
 	}
 	return c1;
 }
@@ -308,6 +310,7 @@ struct Scene
 	}
 
 	// ---- one view -----------------------------------------------------------------------------------------------------
+	int nearIdx[World::MAXCH], nearN = 0;		// the chunks drawn whole this frame (their glows, glass, signs too)
 	void view (Frame &F, const Race &R, const Camera &cam, int w, int h, int me)
 	{
 		const Track &T = *R.T;
@@ -318,6 +321,7 @@ struct Scene
 		F.begin (P * Vs, 0, B_NOZWRITE | B_ZALWAYS); F.add (world.sky); F.end ();
 		if (world.skyGlow.v.n) { F.begin (P * Vs, TX_GLOW, B_NOZWRITE | B_ZALWAYS | B_ADD | B_LINEAR | B_CLAMP); F.add (world.skyGlow); F.end (); }
 		if (world.skyObj.v.n) { F.begin (P * Vs, 0, B_NOZWRITE | B_ZALWAYS | B_CULL); F.add (world.skyObj); F.end (); }
+		if (world.skyBand.v.n) { F.begin (P * Vs, TX_CLOUDS, B_ALPHA | B_NOZWRITE | B_ZALWAYS | B_LINEAR); F.add (world.skyBand); F.end (); }
 		// the world's pieces in front
 		V3 fwd = norm (cam.at - cam.eye);
 		auto visible = [&] (const VList &L) -> bool
@@ -325,7 +329,7 @@ struct Scene
 			if (!L.v.n) return false;
 			V3 d = L.centre - cam.eye;
 			float dist = len (d);
-			if (dist - L.radius > 650) return false;
+			if (dist - L.radius > 480) return false;
 			if (dot (d, fwd) < -L.radius) return false;
 			float cl[4]; VP.clip (L.centre, cl);
 			if (cl[3] > 0)
@@ -335,9 +339,27 @@ struct Scene
 			}
 			return true;
 		};
+		// the chunks nearest first, as many as the GPU takes in one frame (KAPI_GPU_MAX_VERTS for everything: the
+		// rest -- ships, glows, trails -- keeps its share); the farthest left out past it
 		F.begin (VP, 0, B_CULL);
 		F.add (world.far);
-		for (int i = 0; i < world.nch; i++) if (visible (world.chunk[i])) F.add (world.chunk[i]);
+		{
+			static int ord[World::MAXCH]; static float od[World::MAXCH]; int no = 0;
+			for (int i = 0; i < world.nch; i++)
+				if (visible (world.chunk[i])) { ord[no] = i; od[no] = len (world.chunk[i].centre - cam.eye); no++; }
+			for (int a = 1; a < no; a++) { int ki = ord[a]; float kd = od[a]; int b = a - 1; while (b >= 0 && od[b] > kd) { ord[b + 1] = ord[b]; od[b + 1] = od[b]; b--; } ord[b + 1] = ki; od[b + 1] = kd; }
+			// near: the whole chunk; past LOD_NEAR its simplified one (the road a strip, the props boxes)
+			const int BUDGET = 138000;	// (of KAPI_GPU_MAX_VERTS 196608: the ships, the glows, the trails after)
+			const float LOD_NEAR = 130;
+			nearN = 0;
+			for (int a = 0; a < no; a++)
+			{
+				const VList &L = od[a] - world.chunk[ord[a]].radius * 0.5f < LOD_NEAR ? world.chunk[ord[a]] : world.chunkLow[ord[a]];
+				if (F.v.n + L.v.n > BUDGET) break;
+				F.add (L);
+				if (&L == &world.chunk[ord[a]] && nearN < World::MAXCH) nearIdx[nearN++] = ord[a];
+			}
+		}
 		F.end ();
 		// the traffic in the sky: ships flying round
 		if (mTraffic)
@@ -401,7 +423,7 @@ struct Scene
 		}
 		// the force fields, the ships' glass
 		F.begin (VP, 0, B_ALPHA | B_NOZWRITE);
-		for (int i = 0; i < world.nch; i++) if (visible (world.clear[i])) F.add (world.clear[i]);
+		for (int j = 0; j < nearN; j++) F.add (world.clear[nearIdx[j]]);
 		F.end ();
 		for (int i = 0; i < R.n; i++)
 		{
@@ -415,11 +437,11 @@ struct Scene
 			F.begin (VP * M, 0, B_ADD | B_NOZWRITE); F.mesh (ship[i].mesh, M4::identity (), 255, 0, 2); F.end ();
 		}
 		F.begin (VP, TX_SIGNS, B_LINEAR | B_CLAMP);
-		for (int i = 0; i < world.nch; i++) if (visible (world.signs[i])) F.add (world.signs[i]);
+		for (int j = 0; j < nearN; j++) F.add (world.signs[nearIdx[j]]);
 		F.end ();
 		F.begin (VP, 0, B_ADD | B_NOZWRITE);
 		F.add (world.farGlow);
-		for (int i = 0; i < world.nch; i++) if (visible (world.glow[i])) F.add (world.glow[i]);
+		for (int j = 0; j < nearN; j++) F.add (world.glow[nearIdx[j]]);
 		F.end ();
 		F.begin (VP, TX_CHEVRON, B_ADD | B_NOZWRITE | B_LINEAR);
 		boostPads (F, R, cam);

@@ -55,6 +55,15 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
 
 ## 1. Art direction
 
+### 0.9 The GPU's budget (2026-10-15)
+
+`kapi_gpu_render` takes 196,608 vertices a frame at most (`KAPI_GPU_MAX_VERTS`); past it the call is refused and the
+game drew everything in software (4 fps). Now: the far scenery is cheap (low clouds and islands far away, fewer far
+towers); the sky's clouds are a **skybox band** (`TX_CLOUDS`, painted once at start-up: 96 vertices instead of 22,000);
+the chunks are drawn nearest first, whole within 130 m and **simplified** beyond (`chunkLow`: the road a strip with its
+borders' stripes, each prop a box in its average colours, no trees), within a budget of 138,000 vertices for the world;
+`render3d` leaves out the last batches if a frame still goes past the limit, rather than falling back to the software.
+
 ### 1.0 The road's profile (the user, 2026-10-15)
 
 The road is the user's parametric profile, drawn at 150 mm for 15 m (`refs/road_profile/`, the five pieces as OBJ):
@@ -271,7 +280,8 @@ engine, wings and colours (§4.1). The player can then change the parts and the 
 | 5 | **Plasma Runner** / Coureur Plasma | `hull_pod.obj` | a compact **lime/teal** cockpit towed by **detached podracer pods**, joined by a **pink lightning arc** | 3 | 5 | 2 | 2 | quick starts |
 | 6 | **Ringmaster** / Maître de l'Anneau | `hull_cube.obj` | an angular **yellow/magenta** racer with a **big ring over its tail** | 4 | 3 | 1 | 5 | tough |
 
-**Default parts** (the pilots' ships, `parts.h` PILOTS): every pilot starts on **No Fins** — the clean hulls of the
+**Default parts** (the pilots' ships, `parts.h` PILOTS; in the colours of the user's models, plain -- the main
+colour on the model's main parts, the accent on its accent parts; the patterns only add touches to the main colour): every pilot starts on **No Fins** — the clean hulls of the
 user's reference sheet — with the hull's own engine: Nova Streak + Ion Jet, Comet Chaser + Side Pods, Star Drifter +
 Twin Nacelles, Manta Ray + Ion Jet (its pods are part of the hull), Plasma Runner + Plasma Pods, Ringmaster + Ring
 Drive. The planforms follow the user's top view of the six ships, their heights its side view (2026-10-15).

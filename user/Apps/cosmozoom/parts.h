@@ -131,15 +131,17 @@ static const ItemInfo ITEMS[IT_COUNT] = {
 // ---- the pilots: eight racers in closed helmets, one a team (DESIGN.md 5) ------------------------------------------
 struct Pilot { const char *name, *team, *teamFr; unsigned color, trim; const char *model; Build build; const char *number; };
 enum { NPILOT = 8 };
+// (their ships in the colours of the user's models, plain: the main colour where the model has it, the accent on
+// its accent parts -- the Ringmaster yellow with a magenta nose and tail)
 static const Pilot PILOTS[NPILOT] = {
-	{ "Kai Moreno",  "Ember",    "Braise",     0xF2384B, 0xF4F4F8, "pilot_pepper",   { 1, 4, 0, 8, 9, 1 }, "07" },
-	{ "Lumi Sato",   "Zenith",   "Zénith", 0xF2F6FF, 0x22E6FF, "pilot_bruno",    { 0, 4, 0, 9, 4, 3 }, "01" },
-	{ "Aya Okafor",  "Volt",     "Volt",       0xFFD21F, 0x1E2A6A, "pilot_bolt",     { 4, 4, 3, 2, 6, 2 }, "22" },
-	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 4, 0, 4, 9, 1 }, "14" },
-	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 0, 4, 0, 0, 9, 3 }, "09" },
-	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 0, 3, 6, 2 }, "33" },
-	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 4, 0, 7, 0, 1 }, "18" },
-	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 4, 4, 1, 2, 1 }, "42" },
+	{ "Kai Moreno",  "Ember",    "Braise",     0xF2384B, 0xF4F4F8, "pilot_pepper",   { 1, 4, 0, 0, 1, 0 }, "07" },
+	{ "Lumi Sato",   "Zenith",   "Zénith", 0xF2F6FF, 0x22E6FF, "pilot_bruno",    { 0, 4, 0, 4, 9, 0 }, "01" },
+	{ "Aya Okafor",  "Volt",     "Volt",       0xFFD21F, 0x1E2A6A, "pilot_bolt",     { 4, 4, 3, 3, 5, 0 }, "22" },
+	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 4, 0, 1, 5, 0 }, "14" },
+	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 0, 4, 0, 6, 9, 0 }, "09" },
+	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 0, 1, 2, 0 }, "33" },
+	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 4, 0, 8, 5, 0 }, "18" },
+	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 4, 4, 2, 0, 0 }, "42" },
 };
 
 // The points of a Grand Prix race, by place
