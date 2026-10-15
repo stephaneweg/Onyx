@@ -19,7 +19,7 @@ namespace cz {
 // ---- the parts: each gives stat points (1..5) ------------------------------------------------------------------------
 struct Part { const char *name, *model, *look; int speed, accel, handling, weight; const char *perk; };
 
-enum { NHULL = 6, NWING = 4, NENGINE = 5, NPAINT = 10, NPATTERN = 7 };
+enum { NHULL = 6, NWING = 5, NENGINE = 5, NPAINT = 10, NPATTERN = 7 };
 
 // (the user's concept sheet, 2026-10-15: docs/cosmozoom/DESIGN.md section 4)
 static const Part HULLS[NHULL] = {
@@ -35,6 +35,7 @@ static const Part WINGS[NWING] = {
 	{ TRN ("Ray Wings"), "wing_ray", "", 1, -1, 0, 0, TRN ("Jumps fly further") },
 	{ TRN ("Delta Wings"), "wing_solar", "", -1, 0, 1, 0, "" },
 	{ TRN ("Swept Fins"), "wing_swept", "", 0, 0, 0, 0, TRN ("Drifts charge faster") },
+	{ TRN ("No Fins"), "", "", 0, 0, 0, 0, "" },			// (the clean hulls of the user's reference sheet)
 };
 static const Part ENGINES[NENGINE] = {
 	{ TRN ("Ion Jet"), "engine_ion", "", 0, 0, 0, 0, "" },
@@ -131,14 +132,14 @@ static const ItemInfo ITEMS[IT_COUNT] = {
 struct Pilot { const char *name, *team, *teamFr; unsigned color, trim; const char *model; Build build; const char *number; };
 enum { NPILOT = 8 };
 static const Pilot PILOTS[NPILOT] = {
-	{ "Kai Moreno",  "Ember",    "Braise",     0xF2384B, 0xF4F4F8, "pilot_pepper",   { 1, 3, 0, 8, 9, 1 }, "07" },
-	{ "Lumi Sato",   "Zenith",   "Zénith", 0xF2F6FF, 0x22E6FF, "pilot_bruno",    { 0, 0, 1, 9, 4, 3 }, "01" },
-	{ "Aya Okafor",  "Volt",     "Volt",       0xFFD21F, 0x1E2A6A, "pilot_bolt",     { 4, 0, 3, 2, 6, 2 }, "22" },
-	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 2, 0, 4, 9, 1 }, "14" },
-	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 0, 3, 1, 0, 9, 3 }, "09" },
-	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 3, 2, 3, 6, 2 }, "33" },
-	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 1, 0, 7, 0, 1 }, "18" },
-	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 3, 4, 1, 2, 1 }, "42" },
+	{ "Kai Moreno",  "Ember",    "Braise",     0xF2384B, 0xF4F4F8, "pilot_pepper",   { 1, 4, 0, 8, 9, 1 }, "07" },
+	{ "Lumi Sato",   "Zenith",   "Zénith", 0xF2F6FF, 0x22E6FF, "pilot_bruno",    { 0, 4, 1, 9, 4, 3 }, "01" },
+	{ "Aya Okafor",  "Volt",     "Volt",       0xFFD21F, 0x1E2A6A, "pilot_bolt",     { 4, 4, 3, 2, 6, 2 }, "22" },
+	{ "Nils Berg",   "Glacier",  "Glacier",    0x3DE0FF, 0xF4F4F8, "pilot_zib",      { 3, 4, 0, 4, 9, 1 }, "14" },
+	{ "Zara Haddad", "Orchid",   "Orchidée", 0xFF2E9A, 0xF4F4F8, "pilot_beep", { 0, 4, 1, 0, 9, 3 }, "09" },
+	{ "Teo Rossi",   "Verde",    "Verde",      0x7CF06A, 0x1E2A6A, "pilot_bloop",    { 2, 4, 2, 3, 6, 2 }, "33" },
+	{ "Mika Lind",   "Nebula",   "Nébuleuse", 0x7A5CFF, 0xFF5FA2, "pilot_squiggle", { 3, 4, 0, 7, 0, 1 }, "18" },
+	{ "Ravi Kapoor", "Sunburst", "Soleil",     0xFF8A1F, 0xFFD21F, "pilot_kiki",     { 5, 4, 4, 1, 2, 1 }, "42" },
 };
 
 // The points of a Grand Prix race, by place

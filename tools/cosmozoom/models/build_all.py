@@ -25,12 +25,12 @@ for opt in ("items", "city", "nature", "props"):
 
 # The pilots' own ships (DESIGN.md 5) and colours, for the sheets.
 CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's six ships, then two more
-    ("pilot_bolt", "hull_needle", "wing_solar", "engine_ion", ("#E63ACB", "#FF8A1F")),
-    ("pilot_bloop", "hull_comet", "wing_stubby", "engine_pods", ("#3FD7EE", "#9DEFFA")),
-    ("pilot_bruno", "hull_whale", "wing_swept", "engine_twin", ("#FF8A1F", "#FFD23F")),
-    ("pilot_zib", "hull_pod", "wing_stubby", "engine_star", ("#9BE03A", "#22C3B5")),
-    ("pilot_kiki", "hull_cube", "wing_stubby", "engine_ring", ("#FFD23F", "#E63ACB")),
-    ("pilot_pepper", "hull_manta", "wing_solar", "engine_ion", ("#FF8A1F", "#22C3B5")),
+    ("pilot_bolt", "hull_needle", "", "engine_ion", ("#E63ACB", "#FF8A1F")),
+    ("pilot_bloop", "hull_comet", "", "engine_pods", ("#3FD7EE", "#9DEFFA")),
+    ("pilot_bruno", "hull_whale", "", "engine_twin", ("#FF8A1F", "#FFD23F")),
+    ("pilot_zib", "hull_pod", "", "engine_star", ("#9BE03A", "#22C3B5")),
+    ("pilot_kiki", "hull_cube", "", "engine_ring", ("#FFD23F", "#E63ACB")),
+    ("pilot_pepper", "hull_manta", "", "engine_ion", ("#FF8A1F", "#22C3B5")),
     ("pilot_beep", "hull_cube", "wing_ray", "engine_pods", ("#22C3B5", "#FFF6E0")),
     ("pilot_squiggle", "hull_needle", "wing_ray", "engine_star", ("#8C52FF", "#FF4F9A")),
 ]
@@ -97,7 +97,7 @@ def sheets(built=None):
         seen.add(h)
         png = os.path.join(W, "sheet_%s.png" % h)
         info = pv.tri_info(pv.ship_png(h, w, e, pil, png, 400, paint))
-        cells.append((png, "%s + %s + %s" % (h[5:], w[5:], e[7:]), info))
+        cells.append((png, "%s + %s + %s" % (h[5:], w[5:] or "no fins", e[7:]), info))
     pv.sheet(cells, os.path.join(out, "ships.png"), 3, 0, 400, "Cosmo Zoom! -- the six hulls, assembled (front 3/4)")
     pv.sheet(cells, os.path.join(out, "ships_back.png"), 3, 3, 400, "Cosmo Zoom! -- the six hulls (the chase camera's side)")
     # the engines on one hull, the wings on one hull

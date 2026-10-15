@@ -70,7 +70,8 @@ static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 	S.mesh.tris.clear (); S.mesh.ngroups = 0; S.mesh.npt = 0; S.nflame = 0; S.hasArc = false; S.npad = 0;
 	// (the parts raw: painted and lit together below)
 	const Mesh *hull = lib.rawMesh (HULLS[clampi (b.hull, 0, NHULL - 1)].model);
-	const Mesh *wing = lib.rawMesh (WINGS[clampi (b.wing, 0, NWING - 1)].model);
+	const char *wm = WINGS[clampi (b.wing, 0, NWING - 1)].model;
+	const Mesh *wing = *wm ? lib.rawMesh (wm) : 0;		// ("No Fins": no model)
 	const Mesh *eng = lib.rawMesh (ENGINES[clampi (b.engine, 0, NENGINE - 1)].model);
 	const Mesh *pil = lib.rawMesh (PILOTS[clampi (pilot, 0, NPILOT - 1)].model);
 	Mesh raw;

@@ -139,3 +139,4 @@ Ion Storm	Orage ionique
 A storm cloud flies to the leader and slows them down	Un nuage d'orage file vers le premier et le ralentit
 Warp Star	Étoile Warp
 A warp field: very fast, and nothing stops you	Un champ warp : très vite, et rien ne vous arrête
+No Fins	Sans ailerons

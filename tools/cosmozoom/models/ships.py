@@ -147,108 +147,104 @@ def canopy(z0, z1, ybot, top, w, peak=0.35, mat="tint", sts=4):
     return ch_loft(st, mat, c0=0.05, c1=0.05)
 
 
+# (the planforms measured on the user's top view of the six ships, the heights on their side view, 2026-10-15)
 def hull_needle():
-    m = Model("hull_needle", "Nova Streak: a faceted arrowhead, a paint2 nose tip and side panels, white pinstripes")
-    Y0 = 0.20
-    # (z, half width, height): wide at the back, a sharp nose
-    prof = [(-1.62, 1.18, 0.62), (-0.70, 1.04, 0.64), (0.40, 0.74, 0.52), (1.30, 0.44, 0.36), (2.05, 0.18, 0.20),
-            (2.32, 0.06, 0.11)]
-    rings = []
-    for z, w, h in prof:
-        rings.append([(w, Y0 + 0.04, z), (w, Y0 + 0.13 * h / 0.44, z), (w * 0.86, Y0 + h * 0.48, z), (w * 0.82, Y0 + h * 0.54, z),
-                      (w * 0.14, Y0 + h, z), (-w * 0.14, Y0 + h, z), (-w * 0.82, Y0 + h * 0.54, z), (-w * 0.86, Y0 + h * 0.48, z),
-                      (-w, Y0 + 0.13 * h / 0.44, z), (-w, Y0 + 0.04, z), (-w * 0.9, Y0, z), (w * 0.9, Y0, z)])
+    m = Model("hull_needle", "Nova Streak: a faceted arrowhead widest near its back, a blunt paint2 nose, white pinstripes")
+    # (z, half width, bottom, top): the top a ridge, the bottom flat
+    prof = [(2.25, 0.31, 0.36, 0.64), (1.37, 0.49, 0.31, 0.76), (0.0, 0.92, 0.27, 0.90), (-1.46, 1.385, 0.17, 1.10),
+            (-1.84, 1.00, 0.15, 1.08)]
+    slope = [0.0, 0.40, 0.45, 0.50, 0.55, 1.0]        # from the shoulder (0) up to the ridge (1)
+    rings, labs = [], []
+    for z, w, yb, yt in prof[::-1]:
+        h = yt - yb
+        sh = (w * 0.95, yb + 0.32 * h)
+        rt = (w * 0.15, yt)
+        r, lab = [(w, yb), sh], ["side", "slope0"]
+        for k in range(1, len(slope) - 1):
+            t = slope[k]
+            r.append((sh[0] + (rt[0] - sh[0]) * t, sh[1] + (rt[1] - sh[1]) * t)); lab.append("slope%d" % k)
+        r.append(rt); lab.append("ridge")
+        left = [(-x, y) for x, y in r[::-1]]
+        llab = ["slope%d" % (len(slope) - 2 - k) for k in range(len(slope) - 1)] + ["side", "bottom"]
+        ring = r + left
+        labs = lab + llab
+        rings.append([(x, y, z) for x, y in ring])
 
     def mat(i, j, c):
-        if c[2] > 1.75:
-            return "paint2"                         # the nose tip
-        if j in (2, 6):
-            return "white"                          # the pinstripes along the shoulders
-        if j in (1, 7) and -0.9 < c[2] < 0.6:
-            return "paint2"                         # the side panels
-        if j in (10,):
+        lab = labs[j % len(labs)]
+        if c[2] > 1.37:
+            return "paint2"                         # the blunt nose
+        if lab == "ridge" and 0.22 < c[2] < 1.37:
+            return "paint2"                         # the panel on the ridge
+        if lab in ("slope1", "slope3") and -1.0 < c[2] < 1.37:
+            return "white"                          # the pinstripes
+        if lab == "bottom":
             return SL
         return "paint1"
     m.add(loft(rings, mat))
-    # the canopy, the spine behind it
-    m.add(canopy(-1.25, 0.35, Y0 + 0.55, Y0 + 0.95, 0.30, 0.40))
-    m.add(ch_box(-0.26, 0.26, Y0 + 0.50, Y0 + 0.74, -1.66, -1.10, 0.06, "paint1"))
-    return finish(m, (1.00, 0.30, -1.20), (0.0, Y0 + 0.48, -0.55),
-                  [(0.40, 1.20), (-0.40, 1.20), (0.70, -1.20), (-0.70, -1.20)], -1.62)
+    m.add(canopy(-0.95, 0.00, 0.86, 1.22, 0.30, 0.40))
+    m.add(ch_box(-0.20, 0.20, 0.95, 1.16, -1.86, -0.95, 0.06, "paint1"))
+    return finish(m, (1.20, 0.30, -1.30), (0.0, 0.76, -0.45),
+                  [(0.30, 1.40), (-0.30, 1.40), (0.90, -1.30), (-0.90, -1.30)], -1.84)
 
 
 def hull_comet():
-    m = Model("hull_comet", "Comet Chaser: a narrow chamfered fuselage, a stepped cabin, a pointed slate nose")
-    sts = [S(-1.45, 0.50, 0.30, 0.12, 0, 0.50), S(0.60, 0.50, 0.30, 0.12, 0, 0.50), S(1.55, 0.36, 0.22, 0.10, 0, 0.44),
-           S(2.05, 0.22, 0.13, 0.07, 0, 0.40)]
-
-    def mat(lab, i, c):
-        if lab == "bottom":
-            return SL
-        if c[2] > 1.95:
-            return SL                                # the nose's intake
-        return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.08, c1=0.05))
-    # the stepped cabin: a block, the canopy on its front, a step behind
-    cab = [S(-1.10, 0.36, 0.17, 0.08, 0, 0.92), S(0.10, 0.36, 0.17, 0.08, 0, 0.92), S(0.70, 0.28, 0.08, 0.05, 0, 0.84)]
-    m.add(ch_loft(cab, "paint1", c0=0.08, c1=0.04))
-    m.add(canopy(-0.35, 0.95, 0.90, 1.24, 0.27, 0.30))
-    m.add(ch_box(-0.30, 0.30, 0.96, 1.16, -1.25, -0.75, 0.06, "paint2"))
-    return finish(m, (0.48, 0.50, -0.80), (0.0, 0.80, 0.15),
-                  [(0.36, 1.00), (-0.36, 1.00), (0.40, -1.05), (-0.40, -1.05)], -1.45)
+    m = Model("hull_comet", "Comet Chaser: a narrow neck and nose ahead of a wide rear block, a slate canopy")
+    neck = [S(0.25, 0.44, 0.27, 0.09, 0, 0.92), S(1.50, 0.42, 0.26, 0.09, 0, 0.88), S(2.00, 0.30, 0.18, 0.07, 0, 0.80)]
+    m.add(ch_loft(neck, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.04, c1=0.06))
+    rear = [S(-2.00, 0.86, 0.40, 0.12, 0, 0.85), S(0.35, 0.86, 0.40, 0.12, 0, 0.85)]
+    m.add(ch_loft(rear, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.08, c1=0.16))
+    m.add(canopy(-0.70, 0.28, 1.18, 1.48, 0.24, 0.30))
+    m.add(ch_box(-0.33, 0.33, 1.20, 1.36, -1.58, -0.82, 0.05, "paint1"))
+    return finish(m, (0.86, 0.60, -1.20), (0.0, 1.02, -0.20),
+                  [(0.50, 1.20), (-0.50, 1.20), (0.60, -1.50), (-0.60, -1.50)], -2.00)
 
 
 def hull_whale():
-    m = Model("hull_whale", "Star Drifter: a long chamfered fuselage, a paint2 stripe down its back, a slate canopy")
-    sts = [S(-1.55, 0.46, 0.27, 0.12, 0, 0.48), S(0.40, 0.48, 0.28, 0.12, 0, 0.49), S(1.40, 0.38, 0.22, 0.10, 0, 0.45),
-           S(2.10, 0.20, 0.13, 0.07, 0, 0.41)]
+    m = Model("hull_whale", "Star Drifter: a long thin pointed fuselage, a paint2 stripe down its back, yellow struts")
+    sts = [S(-1.91, 0.41, 0.24, 0.10, 0, 0.55), S(1.00, 0.41, 0.24, 0.10, 0, 0.55), S(1.70, 0.25, 0.17, 0.07, 0, 0.52),
+           S(2.10, 0.08, 0.08, 0.03, 0, 0.50)]
 
     def mat(lab, i, c):
         if lab == "bottom":
             return SL
-        if lab in ("top1",):
+        if lab == "top1" and -1.09 < c[2] < 1.66:
             return "paint2"                         # the stripe down the back
-        if c[2] > 2.05:
-            return "paint2"
         return "paint1"
-    m.add(ch_loft(sts, mat, top=(0.30, 0.70), c0=0.08, c1=0.06))
-    m.add(canopy(-0.75, 0.80, 0.70, 1.10, 0.30, 0.40))
-    m.add(ch_box(-0.06, 0.06, 0.70, 0.98, -1.55, -0.95, 0.03, "paint1"))
-    # a little fin under the belly
-    m.add(ch_box(-0.05, 0.05, 0.02, 0.24, -0.80, -0.20, 0.03, "paint1"))
-    return finish(m, (0.46, 0.45, -0.70), (0.0, 0.62, 0.05),
-                  [(0.34, 1.00), (-0.34, 1.00), (0.36, -1.15), (-0.36, -1.15)], -1.55)
+    m.add(ch_loft(sts, mat, top=(0.30, 0.70), c0=0.06, c1=0.02))
+    m.add(canopy(-0.85, -0.10, 0.72, 1.00, 0.20, 0.40))
+    m.add(ch_box(-0.05, 0.05, 0.10, 0.34, -1.40, -0.90, 0.02, "paint1"))      # a little keel below
+    return finish(m, (0.41, 0.55, -1.20), (0.0, 0.54, -0.45),
+                  [(0.30, 1.00), (-0.30, 1.00), (0.30, -1.30), (-0.30, -1.30)], -1.91)
 
 
 def hull_pod():
     m = Model("hull_pod", "Plasma Runner: a small chamfered cockpit block, a slate canopy and front")
-    sts = [S(-0.80, 0.40, 0.25, 0.10, 0, 0.55), S(0.55, 0.40, 0.25, 0.10, 0, 0.55), S(0.85, 0.34, 0.20, 0.08, 0, 0.52)]
+    sts = [S(-0.55, 0.37, 0.25, 0.10, 0, 0.55), S(0.30, 0.37, 0.25, 0.10, 0, 0.55), S(0.54, 0.30, 0.19, 0.08, 0, 0.53)]
 
     def mat(lab, i, c):
-        if lab == "bottom" or c[2] > 0.84:
+        if lab == "bottom" or c[2] > 0.52:
             return SL
         return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.08, c1=0.04))
-    m.add(canopy(-0.55, 0.55, 0.72, 1.06, 0.27, 0.40))
-    return finish(m, (0.40, 0.50, -0.40), (0.0, 0.62, -0.05),
-                  [(0.26, 0.60), (-0.26, 0.60), (0.28, -0.60), (-0.28, -0.60)], -0.88, 0.13)
+    m.add(ch_loft(sts, mat, c0=0.08, c1=0.06))
+    m.add(canopy(-0.30, 0.40, 0.72, 0.98, 0.22, 0.40))
+    return finish(m, (0.37, 0.50, -0.30), (0.0, 0.54, 0.05),
+                  [(0.24, 0.35), (-0.24, 0.35), (0.24, -0.35), (-0.24, -0.35)], -0.55, 0.13)
 
 
 def hull_cube():
-    m = Model("hull_cube", "Ringmaster: an octagonal torpedo, a paint2 nose cone with a slate intake, a slate canopy")
-    sts = [S(-1.50, 0.44, 0.40, 0.17, 0, 0.62), S(0.70, 0.46, 0.42, 0.18, 0, 0.62), S(1.35, 0.36, 0.33, 0.14, 0, 0.60),
-           S(1.85, 0.20, 0.19, 0.08, 0, 0.58)]
+    m = Model("hull_cube", "Ringmaster: an octagonal torpedo, a paint2 nose cone, a slate canopy")
+    sts = [S(-1.30, 0.40, 0.40, 0.17, 0, 0.62), S(1.20, 0.40, 0.40, 0.17, 0, 0.62), S(1.70, 0.27, 0.27, 0.11, 0, 0.62),
+           S(2.00, 0.12, 0.12, 0.05, 0, 0.62)]
 
     def mat(lab, i, c):
-        if c[2] > 1.86:
-            return SL                                # the intake in the nose
-        if c[2] > 0.95:
+        if c[2] > 1.20:
             return "paint2"
         return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.10, c1=0.04))
-    m.add(canopy(-0.45, 0.65, 0.90, 1.22, 0.24, 0.40))
-    return finish(m, (0.42, 0.55, -0.70), (0.0, 0.78, 0.10),
-                  [(0.32, 0.95), (-0.32, 0.95), (0.34, -1.00), (-0.34, -1.00)], -1.60)
+    m.add(ch_loft(sts, mat, c0=0.04, c1=0.04))
+    m.add(canopy(-0.55, 0.20, 0.92, 1.20, 0.22, 0.40))
+    return finish(m, (0.40, 0.55, -0.20), (0.0, 0.74, -0.15),
+                  [(0.28, 1.00), (-0.28, 1.00), (0.28, -1.00), (-0.28, -1.00)], -1.30)
 
 
 def tip_pod(x, y, z0, z1, w, h, mat="paint2"):
@@ -259,25 +255,27 @@ def tip_pod(x, y, z0, z1, w, h, mat="paint2"):
 
 
 def hull_manta():
-    m = Model("hull_manta", "Manta Ray: a wide flat chamfered delta, a slate intake in its front, boxy pods at its tips")
-    sts = [S(-1.20, 1.66, 0.15, 0.07, 0, 0.36), S(-0.50, 1.50, 0.17, 0.07, 0, 0.37), S(0.40, 0.92, 0.17, 0.07, 0, 0.37),
-           S(1.15, 0.42, 0.14, 0.06, 0, 0.35)]
-
-    def mat(lab, i, c):
-        if lab == "bottom":
-            return SL
-        return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.07, c1=0.10))
-    # the raised centre and its front intake
-    mid = [S(-1.15, 0.48, 0.16, 0.08, 0, 0.52), S(0.40, 0.46, 0.16, 0.08, 0, 0.52), S(1.15, 0.30, 0.10, 0.06, 0, 0.44)]
-    m.add(ch_loft(mid, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.07, c1=0.06))
-    m.add(ch_box(-0.24, 0.24, 0.40, 0.50, 1.10, 1.24, 0.02, SL))
-    m.add(canopy(-0.70, 0.55, 0.62, 0.98, 0.28, 0.42))
+    m = Model("hull_manta", "Manta Ray: a flat hexagon wider than long, a raised centre, boxy pods at its tips")
+    # (the wing's tips run along the pods: a chord, not a point; the wings fall from a raised faceted centre to the
+    # pods -- the reference sheet)
+    yc = 0.40
+    rings = []
+    for z, w in ((-1.27, 0.82), (-0.80, 1.44), (0.55, 1.44), (1.40, 0.22)):
+        rw = min(0.34, w * 0.75)
+        yt = yc - 0.10 * min(1.0, (w - rw) / 1.0)
+        rings.append([(w, yt - 0.035, z), (w, yt + 0.035, z), (rw, yc + 0.12, z), (0.0, yc + 0.15, z), (-rw, yc + 0.12, z),
+                      (-w, yt + 0.035, z), (-w, yt - 0.035, z), (-rw, yc - 0.10, z), (rw, yc - 0.10, z)])
+    m.add(loft(rings, lambda i, j, c: SL if j in (6, 7) else "paint1"))
+    m.add(ch_box(-0.16, 0.16, 0.34, 0.46, 1.36, 1.44, 0.02, SL))      # the intake slot in the nose
+    m.add(canopy(-0.80, -0.05, 0.50, 0.80, 0.24, 0.42))
     for sx in (1, -1):
-        m.add(tip_pod(sx * 1.66, 0.38, -1.50, 0.35, 0.18, 0.20))
-        m.socket("flame%d" % (3 if sx > 0 else 4), sx * 1.66, 0.38, -1.58)
-    return finish(m, (0.80, 0.45, -0.60), (0.0, 0.52, -0.10),
-                  [(0.40, 0.70), (-0.40, 0.70), (0.80, -0.90), (-0.80, -0.90)], -1.27)
+        m.add(tip_pod(sx * 1.62, 0.30, -0.95, 0.70, 0.20, 0.18))
+        m.socket("flame%d" % (3 if sx > 0 else 4), sx * 1.62, 0.30, -1.00)
+    return finish(m, (1.00, 0.36, -0.60), (0.0, 0.40, -0.40),
+                  [(0.40, 0.60), (-0.40, 0.60), (0.80, -0.70), (-0.80, -0.70)], -1.27)
+
+
+# (the "No Fins" wing has no model: the game and the previews draw nothing for it -- parts.h, WINGS[4])
 
 
 # ---- the wings: small chamfered fins -------------------------------------------------------------------------------
@@ -316,24 +314,24 @@ def wing_solar():
 def engine_ion():
     m = Model("engine_ion", "Ion Jet: one big slate nozzle with a cyan core, a paint2 collar")
     m.add(soft_cyl(0.36, -0.22, 0.10, 0.08, 8, "paint2", steps=1))
-    m.add(nozzle(0.32, -0.58, -0.16, "cyan_glow", 0, 0, 8, mat=SL))
+    m.add(nozzle(0.32, -0.58, -0.16, "cyan_glow", 0, 0, 8, mat="paint2"))
     m.socket("flame1", 0.0, 0.0, -0.60)
     return m
 
 
 def engine_pods():
-    m = Model("engine_pods", "Side Pods: two long chamfered boxes beside the hull, slate intakes, cyan cores")
-    X, Y, W, H, Z0, Z1 = 0.98, 0.04, 0.33, 0.40, 2.05, -0.40
+    m = Model("engine_pods", "Side Pods: two tall chamfered boxes beside the hull's back, slate ends, cyan cores")
+    X, Y, W, H, Z0, Z1 = 1.29, 0.08, 0.29, 0.40, 2.22, 0.0
     for sx in (1, -1):
         x = sx * X
-        m.add(ch_box(x - W, x + W, Y - H, Y + H, Z1, Z0, 0.09, "paint1", top=(0.5,)))
-        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - H * 0.70, Y + H * 0.70, Z0 - 0.06, Z0 + 0.05, 0.05, SL))
-        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - H * 0.70, Y + H * 0.70, Z1 - 0.06, Z1 + 0.06, 0.05, SL))
-        m.add(disc(0.13, 8, "cyan_glow", y=0.0, down=True).rot("x", 90).tr(x, Y, Z1 - 0.065))
-        m.add(ch_box(x - W - 0.01, x + W + 0.01, Y + 0.10, Y + 0.17, Z0 - 0.75, Z0 - 0.55, 0.02, "paint2"))
-        # the pylon into the hull
-        a, b = sorted((sx * 0.30, sx * (X - W + 0.05)))
-        m.add(ch_box(a, b, Y - 0.08, Y + 0.08, 0.40, 1.40, 0.03, "paint1"))
+        m.add(ch_box(x - W, x + W, Y - H, Y + H, Z1, Z0, 0.09, "paint1"))
+        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - H * 0.75, Y + H * 0.75, Z0 - 0.06, Z0 + 0.05, 0.05, SL))
+        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - H * 0.75, Y + H * 0.75, Z1 - 0.06, Z1 + 0.06, 0.05, SL))
+        m.add(disc(0.14, 8, "cyan_glow", y=0.0, down=True).rot("x", 90).tr(x, Y, Z1 - 0.065))
+        m.add(ch_box(x - W - 0.01, x + W + 0.01, Y - H * 0.35, Y - H * 0.20, Z1 + 0.30, Z0 - 0.30, 0.02, SL))
+        # the strut into the hull
+        a, b = sorted((sx * 0.80, sx * (X - W + 0.05)))
+        m.add(ch_box(a, b, Y + 0.10, Y + 0.30, 1.30, 1.80, 0.03, "paint1"))
         m.socket("flame%d" % (1 if sx > 0 else 2), x, Y, Z1 - 0.10)
     return m
 
@@ -367,70 +365,73 @@ def boom(x, y, z0, z1, w=0.13, n=5, r=0.035, mat="paint1"):
 
 
 def engine_twin():
-    m = Model("engine_twin", "Twin Nacelles: two big octagonal nacelles on flat struts, lattice booms ahead with paint2 tips")
-    X, Y, Z0, Z1, R = 1.40, 0.04, 1.25, -0.25, 0.40
+    m = Model("engine_twin", "Twin Nacelles: two big octagonal nacelles on paint2 struts, lattice booms ahead with paint2 tips")
+    X, Y, Z0, Z1, R = 1.40, 0.13, 1.65, -0.19, 0.30
     for sx in (1, -1):
         x = sx * X
 
         def nmat(i, j, c):
-            return "paint2" if 0.55 < c[2] < 0.80 else "paint1"
-        m.add(soft_cyl(R, Z1 + 0.05, Z0, 0.10, 8, nmat, x, Y, steps=1))
-        m.add(soft_cyl(R * 0.80, Z0 - 0.05, Z0 + 0.07, 0.04, 8, SL, x, Y, steps=1))
-        m.add(nozzle(R * 0.80, Z1 - 0.12, Z1 + 0.10, "orange_glow", x, Y, 8, mat=SL))
+            return "paint2" if (1.40 < c[2] < 1.58 or 0.12 < c[2] < 0.32) else "paint1"
+        m.add(soft_cyl(R, Z1 + 0.19, Z0, 0.08, 8, nmat, x, Y, steps=1))
+        m.add(nozzle(R * 0.86, Z1, Z1 + 0.22, "orange_glow", x, Y, 8, mat=SL))
+        m.add(soft_cyl(R * 0.70, Z0 - 0.04, Z0 + 0.05, 0.03, 8, SL, x, Y, steps=1))
         # the strut to the hull, the boom ahead with its little tip
-        a, b = sorted((sx * 0.30, sx * (X - R * 0.8)))
-        m.add(ch_box(a, b, Y - 0.06, Y + 0.06, 0.15, 0.85, 0.03, "paint1"))
-        m.add(boom(x, Y, Z0 + 0.05, Z0 + 1.85, 0.12))
-        m.add(ch_box(x - 0.17, x + 0.17, Y - 0.17, Y + 0.17, Z0 + 1.85, Z0 + 2.20, 0.04, "paint2"))
-        m.add(ch_box(x - 0.11, x + 0.11, Y - 0.11, Y + 0.11, Z0 + 2.18, Z0 + 2.24, 0.02, SL))
-        m.socket("flame%d" % (1 if sx > 0 else 2), x, Y, Z1 - 0.14)
+        a, b = sorted((sx * 0.35, sx * (X - R * 0.8)))
+        m.add(ch_box(a, b, Y - 0.05, Y + 0.05, 0.64, 1.38, 0.025, "paint2"))
+        m.add(boom(x, Y, Z0 + 0.04, Z0 + 1.95, 0.10, 6, 0.03))
+        m.add(ch_box(x - 0.11, x + 0.11, Y - 0.11, Y + 0.11, Z0 + 1.95, Z0 + 2.19, 0.03, "paint2"))
+        m.add(ch_box(x - 0.07, x + 0.07, Y - 0.07, Y + 0.07, Z0 + 2.17, Z0 + 2.22, 0.015, SL))
+        m.socket("flame%d" % (1 if sx > 0 else 2), x, Y, Z1 - 0.04)
     return m
 
 
-def oct_pod(x, y, z0, z1, w, mat="paint1", band="paint2"):
-    """An octagonal chamfered pod from z0 (back) to z1 (front), a groove (band) round its back third."""
+def oct_pod(x, y, z0, z1, w, h=None, mat="paint1", band="paint1"):
+    """An octagonal chamfered pod from z0 (back) to z1 (front), a groove just ahead of its back."""
+    h = w if h is None else h
     c = w * 0.38
-    zb = z0 + (z1 - z0) * 0.30
-    g = 0.05
-    sts = [S(z0 + c * 0.5, w, w, c, x, y), S(zb - 0.08, w, w, c, x, y), S(zb - 0.07, w - g, w - g, c - g * 0.4, x, y),
-           S(zb + 0.07, w - g, w - g, c - g * 0.4, x, y), S(zb + 0.08, w, w, c, x, y), S(z1 - c * 0.5, w, w, c, x, y)]
-    p = ch_loft(sts, lambda lab, i, cc: band if 2 <= i <= 3 else mat, c0=c * 0.5, c1=c * 0.5)
-    return p
+    zb = z0 + 0.20
+    g = 0.04
+    sts = [S(z0 + c * 0.3, w, h, c, x, y), S(zb - 0.07, w, h, c, x, y), S(zb - 0.06, w - g, h - g, c - g * 0.4, x, y),
+           S(zb + 0.06, w - g, h - g, c - g * 0.4, x, y), S(zb + 0.07, w, h, c, x, y), S(z1 - c * 0.5, w, h, c, x, y)]
+    return ch_loft(sts, lambda lab, i, cc: band if 2 <= i <= 3 else mat, c0=c * 0.3, c1=c * 0.5)
 
 
 def engine_star():
     m = Model("engine_star", "Plasma Pods: two chunky octagonal pods out ahead, pulling the cockpit on glowing cables")
-    X, Y, Z0, Z1, W = 1.10, 0.02, 4.00, 2.60, 0.40
+    X, Y, Z0, Z1, W, H = 0.89, 0.13, 4.20, 2.60, 0.32, 0.42
     for sx in (1, -1):
         x = sx * X
-        m.add(oct_pod(x, Y, Z1, Z0, W, band="paint1"))
-        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - W * 0.72, Y + W * 0.72, Z0 - 0.06, Z0 + 0.06, W * 0.25, SL))
-        prof = [(W * 0.70, Z1 + 0.04), (W * 0.62, Z1 - 0.10), (W * 0.42, Z1 - 0.38), (0.0, Z1 - 0.38)]
-        m.add(revolve_z([(0.0, Z1 + 0.04)] + prof, 8, lambda i, j, c: "purple_glow" if i >= 3 else SL, a0=PI / 8).tr(x, Y, 0))
-        a = np.array([x - sx * W * 0.4, Y + 0.10, Z1 - 0.20])
-        b = np.array([sx * 0.25, Y + 0.10, 1.65])
-        mid = (a + b) / 2 + np.array([0, 0.14, 0])
-        m.add(tube([a, (a + mid) / 2 + np.array([0, 0.05, 0]), mid, (mid + b) / 2 + np.array([0, 0.02, 0]), b],
+        m.add(oct_pod(x, Y, Z1, Z0, W, H))
+        m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - H * 0.75, Y + H * 0.75, Z0 - 0.06, Z0 + 0.05, W * 0.22, SL))
+        prof = [(W * 0.82, Z1 + 0.03), (W * 0.76, Z1 - 0.20), (W * 0.50, Z1 - 0.59), (0.0, Z1 - 0.59)]
+        cone = revolve_z([(0.0, Z1 + 0.03)] + prof, 8, lambda i, j, c: "purple_glow" if i >= 3 else SL, a0=PI / 8)
+        cone.v[:, 1] *= H / W
+        m.add(cone.tr(x, Y, 0))
+        a = np.array([x - sx * W * 0.3, Y + 0.15, Z1 - 0.30])
+        b = np.array([sx * 0.18, Y + 0.05, 1.10])
+        mid = (a + b) / 2 + np.array([0, 0.10, 0])
+        m.add(tube([a, (a + mid) / 2 + np.array([0, 0.04, 0]), mid, (mid + b) / 2 + np.array([0, 0.02, 0]), b],
                    0.03, 5, "pink_glow"))
-        m.socket("flame%d" % (1 if sx > 0 else 2), x, Y, Z1 - 0.42)
-        m.socket("arc%d" % (1 if sx > 0 else 2), x - sx * W, Y, Z1 + 0.45)
-    m.add(soft_cyl(0.22, -0.16, 0.08, 0.06, 8, SL, steps=1))
+        m.socket("flame%d" % (1 if sx > 0 else 2), x, Y, Z1 - 0.62)
+        m.socket("arc%d" % (1 if sx > 0 else 2), x - sx * W, Y, Z1 + 0.50)
+    m.add(soft_cyl(0.18, -0.12, 0.06, 0.05, 8, SL, steps=1))
     return m
 
 
 def engine_ring():
-    m = Model("engine_ring", "Ring Drive: a big chamfered ring round the hull's back, on four struts")
-    cy, cz, R, r = 0.20, 1.05, 0.95, 0.16
-    m.add(soft_cyl(0.30, -0.25, 0.10, 0.08, 8, "paint2", steps=1))
-    m.add(nozzle(0.26, -0.50, -0.20, "magenta_glow", 0, 0, 8, mat=SL))
+    m = Model("engine_ring", "Ring Drive: a paint2 tail cone, a big chamfered ring round the hull on four struts")
+    cy, cz, R, r = 0.20, 0.50, 0.90, 0.15
+    prof = [(0.0, 0.02), (0.40, 0.02), (0.40, -0.05), (0.27, -0.45), (0.13, -0.70), (0.0, -0.70)]
+    m.add(revolve_z(prof, 8, lambda i, j, c: SL if i >= 4 else "paint2", a0=PI / 8).tr(0, cy, 0))
+    m.add(disc(0.08, 8, "magenta_glow", y=0.0, down=True).rot("x", 90).tr(0, cy, -0.705))
     ring = torus(R, r, 24, 8, "paint1").rot("x", 90).tr(0, cy, cz)
     for k in range(4):
         a = PI / 4 + PI / 2 * k
-        ring.add(tube([(0.38 * math.cos(a), cy + 0.38 * math.sin(a), cz), ((R - 0.06) * math.cos(a), cy + (R - 0.06) * math.sin(a), cz)],
+        ring.add(tube([(0.38 * math.cos(a), cy + 0.38 * math.sin(a), cz), ((R - 0.08) * math.cos(a), cy + (R - 0.08) * math.sin(a), cz)],
                       0.06, 5, "paint1"))
     m.add(ring, "ring")
     m.socket("ring", 0.0, cy, cz)
-    m.socket("flame1", 0.0, 0.0, -0.52)
+    m.socket("flame1", 0.0, cy, -0.72)
     return m
 
 

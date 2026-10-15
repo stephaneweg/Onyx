@@ -256,13 +256,10 @@ engine, wings and colours (§4.1). The player can then change the parts and the 
 | 5 | **Plasma Runner** / Coureur Plasma | `hull_pod.obj` | a compact **lime/teal** cockpit towed by **detached podracer pods**, joined by a **pink lightning arc** | 3 | 5 | 2 | 2 | quick starts |
 | 6 | **Ringmaster** / Maître de l'Anneau | `hull_cube.obj` | an angular **yellow/magenta** racer with a **big ring over its tail** | 4 | 3 | 1 | 5 | tough |
 
-**Default parts**:
-- Nova Streak: Swept Fins + Central Jet.
-- Comet Chaser: Ray Wings + Side Pods.
-- Star Drifter: Stub Fins + Side Pods on truss struts (`engine_twin` with its truss variant `o truss`).
-- Manta Ray: no extra wing (built in) + Side Pods at the wing tips.
-- Plasma Runner: Stub Fins + Tether Pods (the tether drawn as a pink lightning arc).
-- Ringmaster: Twin Blades + Ring Drive.
+**Default parts** (the pilots' ships, `parts.h` PILOTS): every pilot starts on **No Fins** — the clean hulls of the
+user's reference sheet — with the hull's own engine: Nova Streak + Ion Jet, Comet Chaser + Side Pods, Star Drifter +
+Twin Nacelles, Manta Ray + Ion Jet (its pods are part of the hull), Plasma Runner + Plasma Pods, Ringmaster + Ring
+Drive. The planforms follow the user's top view of the six ships, their heights its side view (2026-10-15).
 
 The trail colours are: Nova Streak magenta, Comet Chaser cyan, Star Drifter yellow, Manta Ray orange, Plasma
 Runner pink, Ringmaster yellow-magenta.
@@ -277,6 +274,7 @@ Runner pink, Ringmaster yellow-magenta.
 | **Ray Wings** / Ailes Rayon | long straight blades with tip lights | **+1 Speed, −1 Acceleration**; jumps fly 15 % further |
 | **Twin Blades** / Doubles lames | two stacked angled blades per side | **+1 Handling, −1 Speed** |
 | **Swept Fins** / Ailes en flèche | swept-back crescent fins | no stat change; drift charges 15 % faster |
+| **No Fins** / Sans ailerons | nothing: the clean hull (the default) | no stat change |
 
 ### 4.3 Engines (4) — the model files keep their names
 
