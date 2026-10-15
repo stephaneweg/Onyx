@@ -8,7 +8,7 @@
 #   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe, banded nacelles, lattice booms (measured on its GLB)
 #   hull_pod     "Plasma Runner" two chunky pods ahead, a plasma arc, cables back to a small cockpit (measured on its GLB)
 #   hull_cube    "Ringmaster"    a torpedo, paint2 nose and tail cones, a big spinning ring on struts (measured on its GLB)
-#   hull_manta   "Manta Ray"     a wide flat delta, a slate intake in front, boxy pods at its tips
+#   hull_manta   "Manta Ray"     a flat slab, a faceted centre, a slate slot and canopy, boxy pods (measured on its GLB)
 # The wings: four small chamfered fins. The engines: slate nozzles with a soft glowing core.
 #
 # Conventions (the game's): metres, +Y up, +Z forward, the ship's left is +X. A hull's origin is the ship's centre,
@@ -659,32 +659,84 @@ def hull_cube():
                   [(0.25, 1.40), (-0.25, 1.40), (0.25, -1.20), (-0.25, -1.20)], -1.86, engine_y=1.01)
 
 
-def tip_pod(x, y, z0, z1, w, h, mat="paint2"):
-    p = ch_box(x - w, x + w, y - h, y + h, z0, z1, 0.06, mat)
-    p.add(ch_box(x - w * 0.62, x + w * 0.62, y - h * 0.55, y + h * 0.55, z0 - 0.04, z0 + 0.05, 0.03, SL))
-    p.add(ch_box(x - w * 0.62, x + w * 0.62, y - h * 0.55, y + h * 0.55, z1 - 0.05, z1 + 0.04, 0.03, SL))
-    return p
+# Manta Ray, measured on the user's generated model (sections every 0.1 m): mirror-symmetric top and bottom about
+# y 0.665 -- a flat slab with bevelled edges, a raised faceted centre (a slate canopy and a hump on top, their twins
+# underneath), a slate slot in the nose, a wide slate exhaust in the back, two boxy paint2 pods at the tips
+_MR_Y = 1.33                          # y + y' (the mirror's plane at y 0.665)
+_MR_T = [(1.09, 0.79), (0.88, 0.83), (0.68, 0.86), (0.48, 0.90), (0.28, 0.92), (0.08, 0.94), (-0.22, 0.97),
+         (-1.24, 0.97)]               # (z, the centre's top y)
+_MR_W = [(1.00, 0.37), (0.12, 1.44), (-1.015, 1.44), (-1.27, 0.42)]   # (z, the slab's half width)
+_MR_PX = 1.607                        # the +X pod's axis x (its y 0.665)
+
+
+def _mr_ring(z, top, flip=False):
+    """A closed ring from its right top half (centre first), the bottom its mirror in y; flip: all of it mirrored."""
+    right = top + [(x, _MR_Y - y) for x, y in top[::-1]]
+    return [(x, _MR_Y - y if flip else y, z) for x, y in _nv_mirror(right)]
+
+
+def _mr_centre(z):
+    """The centre: a flat top, a small chamfer, a 0.6 facet down into the slab, a short side (the nose's)."""
+    T = _lerp_tab(_MR_T, z)[0]
+    G = min(max(0.38, 0.35 + (T - 0.795) / 0.6), _lerp_tab(_MR_W, z)[0])
+    return _mr_ring(z, [(0.0, T), (0.31, T), (0.35, T - 0.025), (G, min(0.77, T - 0.05))])
+
+
+def _mr_slab(z, d):
+    W = _lerp_tab(_MR_W, z)[0]
+    return _mr_ring(z, [(0.0, 0.78), (W - d, 0.78), (W, 0.705)])
+
+
+def _mr_deck(flip):
+    """The slate canopy rising back to the hump (on top; flip: its twin underneath)."""
+    rows = ((-0.21, 0.975, 0.10, 0.16), (-0.40, 1.08, 0.15, 0.22), (-0.795, 1.10, 0.15, 0.22),
+            (-0.795, 1.13, 0.18, 0.27), (-1.00, 1.13, 0.18, 0.27), (-1.235, 1.04, 0.16, 0.25))
+    rings = []
+    for z, top, tw, bw in rows:
+        r = [(0.0, top), (tw, top), (bw, 0.97), (bw, 0.93), (0.0, 0.93)]
+        rings.append([(x, _MR_Y - y if flip else y, z) for x, y in _nv_mirror(r)])
+    return _shell(rings, lambda i, j, c: SL if i < 2 else "paint1")
+
+
+def _mr_pod(sx):
+    """A pod: a chamfered box tapered at both ends, a slate intake and exhaust recessed in its end frames."""
+    r = lambda z, w, h, ch: [(sx * x, y, z) for x, y, _ in oct_ring(_MR_PX, 0.665, z, w, h, ch)]
+    inner, end, body = (0.09, 0.085, 0.03), (0.142, 0.155, 0.045), (0.207, 0.2125, 0.06)
+    rings = [r(0.295, *inner), r(0.335, *inner), r(0.335, *end), r(0.05, *body), r(-0.97, *body),
+             r(-1.245, *end), r(-1.245, *inner), r(-1.205, *inner)]
+    return _shell(rings, lambda i, j, c: SL if i == 0 or i >= 6 else "paint2")
 
 
 def hull_manta():
-    m = Model("hull_manta", "Manta Ray: a flat hexagon wider than long, a raised centre, boxy pods at its tips")
-    # (the wing's tips run along the pods: a chord, not a point; the wings fall from a raised faceted centre to the
-    # pods -- the reference sheet)
-    yc = 0.40
-    rings = []
-    for z, w in ((-1.27, 0.82), (-0.80, 1.44), (0.55, 1.44), (1.40, 0.22)):
-        rw = min(0.34, w * 0.75)
-        yt = yc - 0.10 * min(1.0, (w - rw) / 1.0)
-        rings.append([(w, yt - 0.035, z), (w, yt + 0.035, z), (rw, yc + 0.12, z), (0.0, yc + 0.15, z), (-rw, yc + 0.12, z),
-                      (-w, yt + 0.035, z), (-w, yt - 0.035, z), (-rw, yc - 0.10, z), (rw, yc - 0.10, z)])
-    m.add(loft(rings, lambda i, j, c: SL if j in (6, 7) else "paint1"))
-    m.add(ch_box(-0.16, 0.16, 0.34, 0.46, 1.36, 1.44, 0.02, SL))      # the intake slot in the nose
-    m.add(canopy(-0.80, -0.05, 0.50, 0.80, 0.24, 0.42))
+    m = Model("hull_manta", "Manta Ray: a flat bevelled slab wider than long, a raised faceted centre, a slate slot in "
+              "the nose, a slate canopy and hump (and their twins underneath), boxy paint2 pods at its tips")
+    # the slab: its leading and trailing edges bevelled to a rim; its tips run into the pods
+    m.add(_shell([_mr_slab(0.98, 0.16), _mr_slab(0.12, 0.16), _mr_slab(-0.85, 0.16), _mr_slab(-1.015, 0.30),
+                  _mr_slab(-1.25, 0.30)], "paint1"))
+    # the centre: the slate slot recessed in the nose's frame, the slate exhaust recessed in the back
+    nose, back = _mr_centre(1.09), _mr_centre(-1.24)
+    inset = lambda ring, z, sx, sy: [(x * sx, 0.665 + (y - 0.665) * sy, z) for x, y, _ in ring]
+    rings = [inset(nose, 1.04, 0.85, 0.55), inset(nose, 1.09, 0.85, 0.55)] + \
+            [_mr_centre(z) for z in (1.09, 0.88, 0.68, 0.48, 0.28, 0.08, -0.22, -1.00, -1.20, -1.24)] + \
+            [inset(back, -1.24, 0.85, 0.5), inset(back, -1.19, 0.85, 0.5)]
+    m.add(_shell(rings, lambda i, j, c: SL if i == 0 or i >= len(rings) - 2 else "paint1"))
+    m.add(_mr_deck(False))
+    m.add(_mr_deck(True))
     for sx in (1, -1):
-        m.add(tip_pod(sx * 1.62, 0.30, -0.95, 0.70, 0.20, 0.18))
-        m.socket("flame%d" % (3 if sx > 0 else 4), sx * 1.62, 0.30, -1.00)
-    return finish(m, (1.00, 0.36, -0.60), (0.0, 0.40, -0.40),
-                  [(0.40, 0.60), (-0.40, 0.60), (0.80, -0.70), (-0.80, -0.70)], -1.27)
+        m.add(_mr_pod(sx))
+        # the paint2 cheek on the nose's side
+        ck = lambda x, k: [(sx * x, 0.675 + y * k, 0.985 + z * k) for z, y, _ in
+                           oct_ring(0.0, 0.0, 0.0, 0.06, 0.085, 0.025)]
+        m.add(_shell([ck(0.34, 1.0), ck(0.43, 0.7)], "paint2"))
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave the pods' exhausts
+    # and the centre's; the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", _MR_PX, 0.665, -1.260)
+    m.socket("flame2", -_MR_PX, 0.665, -1.260)
+    m.socket("flame3", 0.0, 0.665, -1.250)
+    return finish(m, (1.81, 0.70, -0.45), (0.0, 0.97, -0.45),
+                  [(0.30, 0.80), (-0.30, 0.80), (1.61, -0.60), (-1.61, -0.60)], -1.27, engine_y=0.665)
 
 
 # (the "No Fins" wing has no model: the game and the previews draw nothing for it -- parts.h, WINGS[4])
