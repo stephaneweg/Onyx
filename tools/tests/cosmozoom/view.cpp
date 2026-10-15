@@ -15,7 +15,7 @@ int main (int argc, char **argv)
 	snprintf (lib.dir, sizeof lib.dir, "sdcard/apps/cosmozoom.app/models");
 	if (!T.load (trk)) { fprintf (stderr, "no track\n"); return 1; }
 	W.build (T, lib, 1);
-	const int w = aerial ? 1600 : 640, h = aerial ? 900 : 360;
+	const int w = aerial ? 1600 : 1280, h = aerial ? 900 : 720;
 	V3 eye = T.pointAt (s - 9, 0, 3.2f), at = T.pointAt (s + 6, 0, 1.0f);
 	float fov = 65, zfar = 1500;
 	if (aerial)
