@@ -770,6 +770,7 @@ SUB Race
   FOR i = 0 TO np - 1: pcamL(i) = lx(i) * .6: pcamH(i) = 2.9: pmsgt(i) = 0: kfire(i) = 0: NEXT
   last = TIMER
   DO
+    SCREEN , , 1, 0                 ' (drawn on page 1, out of sight: PCOPY shows the whole frame at once)
     now = TIMER: dt = now - last: last = now
     IF dt < 0 OR dt > .05 THEN dt = .05
     k$ = UCASE$(INKEY$)
@@ -829,6 +830,7 @@ SUB Race
     VIEW3D
     Overlay
     SfxTick
+    PCOPY 1, 0
     PAUSE 1
   LOOP
   SoundsOff
@@ -1296,6 +1298,7 @@ SUB TitleScreen
   state = 2: racet = 0: menuSel = 4: paused = 0: vdist = 66
   last = TIMER
   DO
+    SCREEN , , 1, 0                 ' (drawn on page 1, out of sight: PCOPY shows the whole frame at once)
     now = TIMER: dt = now - last: last = now
     IF dt < 0 OR dt > .05 THEN dt = .05
     t = t + dt
@@ -1361,6 +1364,7 @@ SUB TitleScreen
     a$ = T$("Arrows steer  Up/X thrust  Z/C air brakes  Space fire  P pause"): DRAWTEXT 320 - LEN(a$) * 4, 454, a$, c
     ShowRate
     SfxTick
+    PCOPY 1, 0
     PAUSE 1
   LOOP
 END SUB

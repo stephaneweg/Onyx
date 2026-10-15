@@ -6200,6 +6200,7 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   w, h)`** makes a texture of a rectangle of the screen (draw it with `LINE`, `CIRCLE`,
   `PSET`…; magenta `RGB (255, 0, 255)` = transparent); **`GPU3D`** is -1 when the GPU draws.
   **`VIEW3D x, y, w, h`** draws the frames that follow into that part of the screen (cleared and seen there alone, its own shape: a split screen); `VIEW3D` alone, the whole screen again. Examples: `SD:/basic/examples/planets3d.bas` (the **Planets 3D** app), `antigrav.bas` (the **Antigrav** app: a racer for one to four players).
+  **Pages, no flicker**: the screen is shown some fifty times a second, whenever the system can -- a frame drawn in several steps (the 3D, then the score over it) may be seen half done. A game draws on a page out of sight and shows the whole frame at once: `SCREEN , , 1, 0` (draw on page 1, show page 0), then `PCOPY 1, 0` at the end of each frame. `SCREEN 12` and `SCREEN 13` have two pages (one in QBasic); `SCREEN 0` and `7` eight.
 - **Events**: `ON TIMER (n) GOSUB`, `ON KEY (n) GOSUB` (F1–F12, arrows, user keys) with
   `TIMER` / `KEY (n)` `ON` / `OFF` / `STOP`. `INKEY$` returns F1–F10 as `CHR$(0) + CHR$(59…68)`.
 - **Programs**: `CHAIN` (with `COMMON` variables and the open files), `RUN`, `CLEAR`,
