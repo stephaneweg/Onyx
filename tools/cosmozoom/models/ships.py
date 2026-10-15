@@ -455,7 +455,7 @@ def hull_whale():
                                                                  (0.29, 0.94), (0.29, 0.90), (0.0, 0.90)])]
     hr = [hump(-0.43, 1.17, 1.17), hump(-0.55, 1.18, 1.17), hump(-0.68, 1.23, 1.18), hump(-0.95, 1.23, 1.16), hump(-1.10, 1.20, 1.12),
           hump(-1.25, 1.14, 1.08), hump(-1.38, 1.10, 1.04)]
-    m.add(_shell(hr, lambda i, j, c: "paint2" if j in (0, 11) and 1 < i < 6 else "paint1"))
+    m.add(_shell(hr, lambda i, j, c: "paint2" if j in (0, 1, 10, 11) and 1 < i < 6 else "paint1"))
     for sx in (1, -1):
         # the strut: a chamfered plate swept back (its back paint2) and a thicker spar across it
         def plate(x, zf, zb):
@@ -464,8 +464,8 @@ def hull_whale():
             return [(sx * x, y, z) for z, y in pts]
         m.add(_shell([plate(0.36, -0.33, -1.26), plate(1.00, -0.54, -1.13)],
                      lambda i, j, c: "paint2" if c[2] < -0.90 else "paint1"))
-        a, b = sorted((sx * 0.36, sx * 1.00))
-        m.add(ch_box(a, b, 0.66, 0.83, -0.90, -0.675, 0.02, "paint1"))
+        spar = lambda x: [(sx * x, y, z) for z, y, _ in oct_ring(-0.7875, 0.745, 0.0, 0.1125, 0.085, 0.025)]
+        m.add(_shell([spar(0.36), spar(1.00)], "paint1"))
         m.add(_sd_nacelle(sx))
         m.add(_sd_boom(sx))
     # the ventral leg: a post on a flared foot
