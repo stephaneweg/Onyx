@@ -125,7 +125,7 @@ struct World
 			// the surface
 			int cols = 4 + (int) (tube * 20 + 0.5f);
 			float ea = A.w * 0.5f, eb = B.w * 0.5f;
-			unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
+			unsigned band = T.road[0];		// (one colour all along: no darker stretches)
 			for (int k = 0; k < cols; k++)
 			{
 				float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
@@ -291,7 +291,7 @@ struct World
 			*l = q.x < 0 ? -m : m; *h = (q.z - 5) * 0.1f;
 		};
 		float ha = A.w * 0.5f, hb = B.w * 0.5f;
-		unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
+		unsigned band = T.road[0];		// (one colour all along: no darker stretches)
 		unsigned stripe = T.rails[(i & 1)];
 		for (int k = 0; k + 1 < n; k++)
 		{
@@ -300,7 +300,7 @@ struct World
 			V3 a0 = SP (A, la0, ha0), a1 = SP (A, la1, ha1), b0 = SP (B, lb0, hb0), b1 = SP (B, lb1, hb1);
 			// the outward normal: the profile's edge turned left (up for the top, out for the sides)
 			float dl = la1 - la0, dh = ha1 - ha0;
-			V3 nm = A.u * dl - A.r * dh;
+			V3 nm = A.u * dl - A.r * dh, nmB = B.u * dl - B.r * dh;
 			unsigned c;
 			switch (P[k].kind)
 			{
@@ -309,7 +309,7 @@ struct World
 			case 2: c = stripe; break;
 			default: c = rgbScale (T.road[0], 0.78f); break;
 			}
-			L.face (a0, a1, b1, b0, shade (c, nm), nm);
+			L.face2 (a0, a1, b1, b0, shade (c, nm), shade (c, nmB), nm);	// (lit at each end: no steps in the curves)
 		}
 		// the underside, flat
 		{

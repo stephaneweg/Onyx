@@ -54,6 +54,13 @@ struct VList
 		V3 cn = cross (b - a, c - a) + cross (c - a, d - a);
 		if (dot (cn, n) < 0) quad (d, c, b, a, col); else quad (a, b, c, d, col);
 	}
+	// the same, its a-b edge in colour ca and its c-d edge in cd (a smooth light from one end to the other)
+	void face2 (const V3 &a, const V3 &b, const V3 &c, const V3 &d, unsigned ca, unsigned cd, const V3 &n)
+	{
+		V3 cn = cross (b - a, c - a) + cross (c - a, d - a);
+		if (dot (cn, n) < 0) { tri (d, c, b, cd, cd, ca); tri (d, b, a, cd, ca, ca); }
+		else { tri (a, b, c, ca, ca, cd); tri (a, c, d, ca, cd, cd); }
+	}
 	void quadUV (const V3 &a, const V3 &b, const V3 &c, const V3 &d, unsigned col, float s0, float t0, float s1, float t1, unsigned alpha = 255)
 	{
 		v.reserve (v.n + 6);
