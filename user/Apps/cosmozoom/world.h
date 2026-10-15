@@ -212,7 +212,7 @@ struct World
 			}
 		}
 		// the tunnel: the user's profile (2026-10-15, refs/road_profile/TunnelProfile.obj, drawn for a 15 m road): a
-		// round tube around the road, 8.5 m inside, its wall 0.5 m, its centre 4.3 m above the lanes; scaled with the
+		// round tube hugging the road, 7.5 m inside, its wall 1.5 m, its centre 1.8 m above the lanes; scaled with the
 		// road's width. Outside, a raised lighter ring every 6 m (the ribbed look); inside, darker at the crown, lights
 		if (tun)
 		{
@@ -221,7 +221,7 @@ struct World
 			bool rib = (i % 3) == 0;
 			auto TP = [&] (const Seg &S, float sc, float a, float rad)
 			{
-				V3 p; Track::surfOf (S.c, S.r, S.u, 0, cosf (a) * rad * sc, 4.3f * sc + sinf (a) * rad * sc, &p, 0, 0); return p;
+				V3 p; Track::surfOf (S.c, S.r, S.u, 0, cosf (a) * rad * sc, 1.8f * sc + sinf (a) * rad * sc, &p, 0, 0); return p;
 			};
 			unsigned wall = T.walls[0], ribc = rgbMix (T.walls[0], 0xFFFFFF, 0.3f);
 			for (int k = 0; k < K; k++)
@@ -230,7 +230,7 @@ struct World
 				V3 out = A.r * cosf (am) + A.u * sinf (am);
 				// inside: darker toward the crown
 				unsigned ci = rgbScale (rib ? rgbMix (wall, 0xFFFFFF, 0.18f) : wall, 1.0f - 0.3f * fmaxf (0.0f, sinf (am)));	// (the rings show inside too)
-				L.face (TP (A, sa, a0, 8.5f), TP (B, sb, a0, 8.5f), TP (B, sb, a1, 8.5f), TP (A, sa, a1, 8.5f), shade (ci, -out), -out);
+				L.face (TP (A, sa, a0, 7.5f), TP (B, sb, a0, 7.5f), TP (B, sb, a1, 7.5f), TP (A, sa, a1, 7.5f), shade (ci, -out), -out);
 				// outside, a rib raised every 6 m
 				float ro = rib ? 9.35f : 9.0f;
 				L.face (TP (A, sa, a0, ro), TP (B, sb, a0, ro), TP (B, sb, a1, ro), TP (A, sa, a1, ro), shade (rib ? ribc : wall, out), out);
@@ -249,13 +249,13 @@ struct World
 				for (int k = 0; k < K; k++)
 				{
 					float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
-					L.face (TP (S, sc, a0, 8.5f), TP (S, sc, a1, 8.5f), TP (S, sc, a1, 9.0f), TP (S, sc, a0, 9.0f), shade (ribc, n), n);
+					L.face (TP (S, sc, a0, 7.5f), TP (S, sc, a1, 7.5f), TP (S, sc, a1, 9.0f), TP (S, sc, a0, 9.0f), shade (ribc, n), n);
 				}
 			}
 			// a light under the crown every 6 m
 			if (rib)
 			{
-				V3 c = TP (A, sa, PI / 2, 8.45f);
+				V3 c = TP (A, sa, PI / 2, 7.45f);
 				V3 dx = A.r * 1.4f, dz = A.f * 0.6f;
 				G.face (c - dx - dz, c + dx - dz, c + dx + dz, c - dx + dz, 0xFFF2C0, -A.u);
 			}

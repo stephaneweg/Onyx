@@ -63,7 +63,7 @@ each side, 0.5 m wide and 0.7 m tall (0.2 m above the lanes), its top corners ro
 the track (`world.h` `roadProfile` / `profileRoad`): the lanes stretch with the circuit's width (15-18 m), the borders
 keep their shape and carry the rails' candy stripes. Tubes keep the plain rolled surface.
 The tunnels are the user's tube profile (`refs/road_profile/TunnelProfile.obj`, drawn for a 15 m road): a round tube
-around the road, 8.5 m inside, its wall 0.5 m, its centre 4.3 m above the lanes, scaled with the road's width; a
+hugging the road, 7.5 m inside, its wall 1.5 m, its centre 1.8 m above the lanes, scaled with the road's width; a
 raised lighter ring outside every 6 m (the ribbed look), the rings lighter inside too, lights under the crown.
 
 ### 1.1 The final direction: low-poly, a bit rounded
