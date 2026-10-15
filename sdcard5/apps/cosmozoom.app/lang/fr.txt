@@ -151,3 +151,7 @@ Sounds On / Off	Bruitages oui / non
 Full Screen at 800 x 600	Plein écran en 800 x 600
 Full Screen at 1024 x 576	Plein écran en 1024 x 576
 Full Screen at the System's Size	Plein écran à la taille du système
+Nebula Sprinter	Sprinter Nébuleuse
+Fast off the line	Vif au départ
+Sonic Wave	Onde Sonique
+Rides the shock wave	Surfe sur l'onde de choc
