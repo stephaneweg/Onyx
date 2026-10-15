@@ -74,8 +74,12 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
 - **Tubes and loops**: teal ribbed tubes and loops arching over the track, in the same colour as the road.
 - **World**: **rounded pastel capsule towers** (pill-shaped buildings with stripes and caps), **floating grassy
   islands** with round low-poly trees and boulders, little arched bridges, and distant floating rocks.
-- **Ships**: the same six ships (§4.1), in **rounded** versions: soft bevels, chunky pods, glossy pastel-vivid
-  paint, small dark canopies, soft glowing exhaust plumes (pink/lilac).
+- **Ships**: the same six ships (§4.1), after the user's **reference sheet of the six ships** (2026-10-15):
+  **chamfered** low-poly — flat faces and crisp 45° bevels rather than round ones — vivid solid paint, opaque
+  **slate-navy canopies, intakes and nozzles**, soft glowing exhaust plumes. Nova Streak a faceted arrowhead,
+  Comet Chaser a narrow fuselage between two long boxes, Star Drifter big nacelles with lattice booms ahead,
+  Plasma Runner two chunky octagonal pods pulling a little cockpit on glowing cables, Ringmaster a torpedo inside
+  a big yellow ring, Manta Ray a wide delta with boxy pods at its tips (`docs/cosmozoom/models/ships.png`).
 - **Pilots**: helmeted humans (§5), modelled in the same rounded low-poly way.
 
 ### 1.2 Directions tried and dropped (2026-10-15)

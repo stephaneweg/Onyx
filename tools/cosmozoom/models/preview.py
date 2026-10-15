@@ -2,7 +2,7 @@
 #
 # preview.py -- the modeller's previews: a model (or a whole ship assembled from its parts at the hull's sockets,
 # the wing mirrored) rendered by the game's own renderer (tools/tests/cosmozoom/objview.cpp: the toon light, the
-# outline, the glass, the glow), and the contact sheets of docs/cosmozoom/models/.
+# glass, the glow), and the contact sheets of docs/cosmozoom/models/.
 #   python3 tools/cosmozoom/models/preview.py <model> [<model>...]        -> <scratch>/<model>.png
 #   python3 tools/cosmozoom/models/preview.py --ship hull wing engine pilot
 #   python3 tools/cosmozoom/models/preview.py --sheets                     -> docs/cosmozoom/models/*.png

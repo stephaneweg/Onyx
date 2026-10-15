@@ -1,4 +1,4 @@
-// objview: a model (.obj) seen as the game draws it -- the toon light, the outline, the glass, the glow -- from
+// objview: a model (.obj) seen as the game draws it -- the soft light, the glass, the glow -- from
 // four sides, on a light background, into a .ppm (the PC: the modeller's preview).
 //   objview model.obj out.ppm [size]
 #include "Apps/cosmozoom/gfx.h"
@@ -13,7 +13,7 @@ int main (int argc, char **argv)
 	int ntris = m.tris.n;
 	lightMesh (m);
 	float sz = len (m.hi - m.lo);
-	addOutline (m, clampf (sz * 0.012f, 0.03f, 0.25f));
+	(void) sz;				// (no outline: the game draws none since its soft look)
 	int S = argc > 3 ? atoi (argv[3]) : 320;
 	int W = S * 2, H = S * 2;
 	unsigned *px = (unsigned *) malloc (sizeof (unsigned) * W * H); float *zb = (float *) malloc (sizeof (float) * S * S);

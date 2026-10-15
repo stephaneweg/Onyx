@@ -46,7 +46,7 @@ MATERIALS = [
     ("lavender", "#C8A8FF", ""),
     ("gold", "#FFC83D", ""),
     ("glass", "#BDF3FF", "d 0.35"),
-    ("tint", "#3A4C8C", "d 0.62"),         # the ships' dark tinted canopies
+    ("tint", "#4A5A8E", "d 0.88"),         # the ships' slate canopies (a helmet barely seen)
     ("holo", "#9FF4FF", "d 0.40"),         # the item capsule's see-through shell
     ("bubble", "#FF8CC6", "d 0.45"),       # the plasma bubble
     ("paint1", "#E6E6E6", ""),             # the player's main colour (recoloured by the game)
@@ -69,8 +69,9 @@ MATERIALS = [
     ("sand", "#F8DC9A", ""),
     ("wood", "#B8774A", ""),
     ("peach", "#FFC4A3", ""),
+    ("slate", "#4A5A8E", ""),              # the ships' intakes and nozzles
 ]
-assert len(MATERIALS) <= 48
+assert len(MATERIALS) <= 96
 
 
 def hex_kd(h):
