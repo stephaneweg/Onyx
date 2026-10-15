@@ -257,13 +257,14 @@ struct World
 		{
 			const Tri &T = m->tris[i];
 			bool glowing = (T.flags & TRI_GLOW) != 0;
-			bool sign = glowing && panel >= 0 && T.group == panel && chunkIdx >= 0;
+			bool sign = panel >= 0 && T.group == panel && chunkIdx >= 0 && signCol;
 			VList &D = sign ? S : glowing ? G : L;
 			for (int k = 0; k < 3; k++)
 			{
 				Vtx *p = D.v.push (); if (!p) return;
 				unsigned c = T.col[k];
-				if (glowing) c = rgbScale (sign ? signCol : c, sign ? 1.0f : glowK * 0.9f + 0.1f);
+				if (sign) c = rgbMix (signCol, 0xFFFFFF, 0.25f);
+				else if (glowing) c = rgbScale (c, glowK * 0.9f + 0.1f);
 				setVtx (*p, M.point (T.p[k]), sign ? cu + clampf (T.s[k], 0, 1) * 0.5f : T.s[k], sign ? cv + clampf (T.t[k], 0, 1) * 0.25f : T.t[k], c, T.alpha);
 			}
 		}
@@ -419,7 +420,7 @@ struct World
 		for (int k = 0; k < T.nprops; k++)
 		{
 			const PropLine &P = T.props[k];
-			const Mesh *m = lib.get (P.model, T.walls[0], T.walls[1]);
+			const Mesh *m = lib.get (P.model, T.walls[0] ? T.walls[0] : pastel (rng, T), T.walls[1]);
 			if (!m) continue;
 			int step = (int) (P.spacing / SEG); if (step < 1) step = 1;
 			int i0 = (int) (P.t0 * T.n), i1 = (int) (P.t1 * T.n);
@@ -443,7 +444,7 @@ struct World
 		for (int k = 0; k < T.nscat; k++)
 		{
 			const Scatter &S = T.scat[k];
-			const Mesh *m = lib.get (S.model, T.walls[0], T.walls[1]);
+			const Mesh *m = lib.get (S.model, T.walls[0] ? T.walls[0] : pastel (rng, T), T.walls[1]);
 			if (!m) continue;
 			for (int j = 0, tries = 0; j < S.count && tries < S.count * 8; tries++)
 			{
@@ -458,7 +459,7 @@ struct World
 		for (int k = 0; k < T.ndecor; k++)
 		{
 			const Decor &D = T.decor[k];
-			const Mesh *m = lib.get (D.model, T.walls[0], T.walls[1]);
+			const Mesh *m = lib.get (D.model, T.walls[0] ? T.walls[0] : pastel (rng, T), T.walls[1]);
 			V3 p (D.x, D.hasY ? D.y : T.groundY, D.z);
 			int ni = 0; float dist = 0; clearOfRoad (T, p, 0, &ni, &dist);
 			place (m, at (p, D.yaw, D.scale, D.scale, D.scale), dist < 90 ? ni / CHUNK : -1);

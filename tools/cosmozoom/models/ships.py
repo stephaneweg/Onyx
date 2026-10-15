@@ -103,12 +103,12 @@ def fix_out_torus(p, centre, R):
 def pad(x, z, r=0.15, h=0.16):
     """A hover pad: a small rounded dark puck under the hull (its glow is drawn by the game)."""
     prof = [(0.0, 0.02), (r - 0.04, 0.02), (r, 0.06), (r, h), (0.0, h)]
-    return revolve(prof, 8, "darkgrey", a0=PI / 8).tr(x, 0, z)
+    return revolve(prof, 6, "darkgrey", a0=PI / 6).tr(x, 0, z)
 
 
 def finish(m, wing, pilot, pad_pts, z_back, pad_r=0.15):
     for k, (x, z) in enumerate(pad_pts):
-        m.add(pad(x, z, pad_r))
+        # (the pads are not modelled any more: the game draws their glow at these points, under the hull)
         m.socket("pad%d" % (k + 1), x, 0.0, z)
     m.socket("wing", *wing)
     m.socket("engine", 0.0, ENGINE_Y, z_back)
@@ -154,8 +154,6 @@ def hull_needle():
     # the canopy at the back, a small spoiler behind it
     m.add(canopy(-1.55, -0.05, 0.74, 1.20, 0.33, 0.45))
     m.add(soft_box(-0.50, 0.50, 0.82, 0.92, -1.80, -1.55, 0.04, "paint2", k=1))
-    for sx in (1, -1):
-        m.add(soft_box(sx * 0.40 - 0.05, sx * 0.40 + 0.05, 0.70, 0.88, -1.72, -1.58, 0.03, "darkgrey", k=1))
     return finish(m, (0.55, 0.52, -1.00), (0.0, 0.74, -0.95),
                   [(0.36, 1.25), (-0.36, 1.25), (0.40, -1.25), (-0.40, -1.25)], -1.72)
 
@@ -206,15 +204,14 @@ def hull_whale():
     m.add(soft_loft(sts, mat, 3, top=(0.42, 0.58), round0=0.12, round1=0.05, steps=3))
     # the front block and its grille
     m.add(soft_box(-0.70, 0.70, 0.15, 0.66, 1.25, 1.95, 0.14, "paint2"))
-    for k in range(4):
-        z = 1.42 + 0.13 * k
-        m.add(soft_box(-0.45, 0.45, 0.62, 0.69, z - 0.035, z + 0.035, 0.03, "darkgrey", k=1))
-    m.add(soft_box(-0.50, 0.50, 0.26, 0.46, 1.90, 2.00, 0.05, "darkgrey", k=1))
+    for k in range(3):
+        z = 1.45 + 0.16 * k
+        m.add(box(-0.45, 0.45, 0.60, 0.69, z - 0.04, z + 0.04, "darkgrey", 0.02))
+    m.add(box(-0.50, 0.50, 0.26, 0.46, 1.90, 1.99, "darkgrey", 0.03))
     # the raised back deck with the canopy, a fin
-    m.add(soft_box(-0.52, 0.52, 0.70, 0.86, -1.60, -0.30, 0.08, "paint1"))
     m.add(canopy(-1.30, 0.20, 0.80, 1.22, 0.34, 0.40))
     fin_out = round_corners([(0.0, -1.62), (0.0, -0.95), (0.50, -1.35), (0.52, -1.62)], 1, 0.25, 2)
-    f = soft_fin(fin_out, 0.10, "paint2")
+    f = soft_fin(fin_out, 0.10, "paint2", 1)
     # slab is in (u, v, w) = (x, y, z): the outline (y, z) -> stand it up: u = height, v = z
     f.v = np.stack([f.v[:, 2], f.v[:, 0] + 0.80, f.v[:, 1]], axis=1)
     m.add(f.orient())
@@ -262,8 +259,8 @@ def hull_cube():
 
 
 def tip_pod(x, y, z0, z1, r, mat="paint2", glow="cyan_glow"):
-    p = soft_cyl(r, z0 + 0.12, z1, 0.10, 12, mat, x, y, bevel0=0.04, bevel1=r * 0.7, steps=2)
-    p.add(nozzle(r * 0.86, z0 - 0.06, z0 + 0.16, glow, x, y, 12))
+    p = soft_cyl(r, z0 + 0.12, z1, 0.10, 9, mat, x, y, bevel0=0.04, bevel1=r * 0.7, steps=2)
+    p.add(nozzle(r * 0.86, z0 - 0.06, z0 + 0.16, glow, x, y, 9))
     return p
 
 
@@ -279,7 +276,7 @@ def hull_manta():
     m.add(soft_loft(sts, mat, 3, round0=0.10, round1=0.22, steps=3))
     spine = [S(-1.25, 0.42, 0.18, 0.15, 0, 0.52), S(0.20, 0.40, 0.18, 0.15, 0, 0.52), S(1.30, 0.20, 0.10, 0.09, 0, 0.42)]
     m.add(soft_loft(spine, lambda lab, i, c: "darkgrey" if lab == "bottom" else "paint2", 2, round0=0.10, round1=0.12,
-                    steps=3))
+                    steps=2))
     m.add(canopy(-1.00, 0.45, 0.62, 1.06, 0.30, 0.42))
     for sx in (1, -1):
         m.add(tip_pod(sx * 1.70, 0.38, -1.55, 0.30, 0.22))
@@ -337,8 +334,8 @@ def engine_pods():
         x0, x1 = sx * X - 0.32, sx * X + 0.32
         m.add(soft_box(x0, x1, Y - 0.27, Y + 0.27, Z1, Z0, 0.15, "paint1", top=(0.5,)))
         m.add(soft_box(sx * X - 0.24, sx * X + 0.24, Y - 0.17, Y + 0.13, Z0 - 0.08, Z0 + 0.05, 0.07, "darkgrey", k=1))
-        m.add(soft_box(x0 - 0.01, x1 + 0.01, Y + 0.05, Y + 0.12, Z1 + 0.45, Z0 - 0.45, 0.03, "paint2", k=1))
-        m.add(nozzle(0.20, Z1 - 0.22, Z1 + 0.05, "cyan_glow", sx * X, Y, 12))
+        m.add(box(x0 - 0.01, x1 + 0.01, Y + 0.05, Y + 0.12, Z1 + 0.45, Z0 - 0.45, "paint2"))
+        m.add(nozzle(0.20, Z1 - 0.22, Z1 + 0.05, "cyan_glow", sx * X, Y, 10))
         # the pylon into the hull
         m.add(soft_box(min(sx * 0.45, sx * (X - 0.28)), max(sx * 0.45, sx * (X - 0.28)), Y - 0.10, Y + 0.08,
                        1.00, 1.55, 0.05, "darkgrey", k=1))
@@ -350,7 +347,7 @@ def lattice(x0, x1, y, z, h=0.24, n=4, r=0.035, mat="grey"):
     """A flat lattice arm in the XY plane (from x0 to x1, h high): two rails and a zigzag."""
     p = Part()
     for dy in (h / 2, -h / 2):
-        p.add(tube([(x0, y + dy, z), (x1, y + dy, z)], r, 6, mat))
+        p.add(tube([(x0, y + dy, z), (x1, y + dy, z)], r, 5, mat))
     xs = np.linspace(x0, x1, n + 1)
     for k in range(n):
         a = (xs[k], y + (h / 2 if k % 2 == 0 else -h / 2), z)
@@ -362,16 +359,16 @@ def lattice(x0, x1, y, z, h=0.24, n=4, r=0.035, mat="grey"):
 def engine_twin():
     m = Model("engine_twin", "Twin Thrusters: two rounded nacelles held out on grey lattice trusses")
     X, Y, Z0, Z1, R = 1.42, 0.02, 0.85, -1.30, 0.30
-    m.add(soft_box(-0.36, 0.36, -0.20, 0.20, -0.95, 0.30, 0.12, "darkgrey"))
+    m.add(soft_box(-0.36, 0.36, -0.20, 0.20, -0.95, 0.30, 0.10, "darkgrey", k=1))
     for sx in (1, -1):
         def nmat(i, j, c):
             return "paint2" if c[2] > Z0 - 0.35 else "paint1"
-        m.add(soft_cyl(R, Z1 + 0.12, Z0, 0.10, 12, nmat, sx * X, Y, bevel1=0.16, steps=2))
-        m.add(soft_cyl(R * 0.62, Z0 - 0.05, Z0 + 0.04, 0.03, 12, "darkgrey", sx * X, Y))
-        m.add(nozzle(R * 0.86, Z1 - 0.12, Z1 + 0.16, "purple_glow", sx * X, Y, 12))
-        for zc in (0.10, -0.62):
-            a, b = (0.30, X - R * 0.85) if sx > 0 else (-(X - R * 0.85), -0.30)
-            m.add(lattice(a, b, Y, zc))
+        m.add(soft_cyl(R, Z1 + 0.12, Z0, 0.10, 10, nmat, sx * X, Y, bevel1=0.16, steps=2))
+        m.add(disc(R * 0.62, 10, "darkgrey", y=0.0, down=True).rot("x", -90).tr(sx * X, Y, Z0 + 0.005))
+        m.add(nozzle(R * 0.86, Z1 - 0.12, Z1 + 0.16, "purple_glow", sx * X, Y, 10))
+        a, b = (0.30, X - R * 0.85) if sx > 0 else (-(X - R * 0.85), -0.30)
+        m.add(lattice(a, b, Y, -0.25, 0.30, 5))
+        m.add(tube([(sx * 0.30, Y, 0.35), (sx * (X - R * 0.85), Y, 0.35)], 0.05, 6, "grey"))
         m.socket("flame%d" % (1 if sx > 0 else 2), sx * X, Y, Z1 - 0.14)
     return m
 
@@ -384,11 +381,11 @@ def engine_star():
             if c[2] > Z0 - 0.30 or c[2] < Z1 + 0.45:
                 return "paint2"
             return "paint1"
-        m.add(soft_cyl(R, Z1 + 0.10, Z0, 0.08, 12, nmat, sx * X, Y, bevel1=0.20, steps=2))
-        m.add(soft_cyl(R * 0.55, Z0 - 0.02, Z0 + 0.05, 0.03, 12, "purple_glow", sx * X, Y))
-        m.add(nozzle(R * 0.84, Z1 - 0.12, Z1 + 0.14, "magenta_glow", sx * X, Y, 12))
+        m.add(soft_cyl(R, Z1 + 0.10, Z0, 0.08, 10, nmat, sx * X, Y, bevel1=0.20, steps=2))
+        m.add(disc(R * 0.55, 10, "purple_glow", y=0.0, down=True).rot("x", -90).tr(sx * X, Y, Z0 + 0.005))
+        m.add(nozzle(R * 0.84, Z1 - 0.12, Z1 + 0.14, "magenta_glow", sx * X, Y, 10))
         # two small fins on top and below
-        for sy in (1, -1):
+        for sy in (1,):
             f = flat_fin([(-0.05, 0.25), (-0.05, -0.30), (0.22, -0.32), (0.22, -0.05)], 0.06, "paint2", steps=1)
             f.rot("z", 90 * sy).tr(sx * X, Y + sy * (R - 0.04), Z1 + 0.65)
             m.add(f)
@@ -399,7 +396,7 @@ def engine_star():
                    0.035, 6, "darkgrey"))
         m.socket("flame%d" % (1 if sx > 0 else 2), sx * X, Y, Z1 - 0.14)
         m.socket("arc%d" % (1 if sx > 0 else 2), sx * (X - R), Y, Z0 - 0.9)
-    m.add(soft_cyl(0.24, -0.20, 0.08, 0.08, 14, "darkgrey"))
+    m.add(soft_cyl(0.24, -0.16, 0.08, 0.06, 10, "darkgrey", steps=1))
     return m
 
 
@@ -408,13 +405,13 @@ def engine_ring():
     cy, cz, R, r = 0.10, -0.55, 0.82, 0.12
     m.add(soft_cyl(0.26, -0.85, 0.10, 0.08, 12, "paint2", 0.0, 0.0, bevel0=0.12))
     m.add(nozzle(0.20, -1.02, -0.80, "magenta_glow", 0, 0, 14))
-    ring = torus(R, r, 24, 8, "paint1").rot("x", 90).tr(0, cy, cz)
+    ring = torus(R, r, 20, 6, "paint1").rot("x", 90).tr(0, cy, cz)
     hub = soft_cyl(0.30, cz - 0.12, cz + 0.12, 0.08, 12, "paint2", 0.0, cy)
     ring.add(hub)
     for k in range(4):
         a = PI / 4 + PI / 2 * k
         ring.add(tube([(0.25 * math.cos(a), cy + 0.25 * math.sin(a), cz), ((R - 0.05) * math.cos(a), cy + (R - 0.05) * math.sin(a), cz)],
-                      0.055, 8, "paint2"))
+                      0.055, 6, "paint2"))
     m.add(ring, "ring")
     m.socket("ring", 0.0, cy, cz)
     m.socket("flame1", 0.0, 0.0, -1.04)

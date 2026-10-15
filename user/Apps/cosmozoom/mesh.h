@@ -143,7 +143,7 @@ static bool loadObj (const char *path, Mesh &m)
 	char *b = readFile (path);
 	if (!b) return false;
 	Arr<V3> vs; Arr<unsigned> vc; Arr<float> vt;	// positions, their colours (0xFF000000: none), uv pairs
-	enum { MAXM = 48 };
+	enum { MAXM = 96 };
 	static ObjMaterial mats[MAXM]; int nmat = 0;
 	unsigned cur = 0xC0C0C0; bool unlit = false, glow = false; unsigned char alpha = 255, paint = 0; int grp = -1;
 	for (char *line = b; line && *line; )

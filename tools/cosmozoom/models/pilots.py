@@ -53,7 +53,7 @@ def torso(suit, trim):
 
 def helmet(main, stripe=None, stripe_w=1, chin=None):
     """The helmet shell: 12 meridians (a stripe over the top: the faces either side of the x = 0 plane)."""
-    segs, rings_n = 12, 7
+    segs, rings_n = 12, 6
     prof = []
     for i in range(rings_n + 1):
         v = -PI / 2 + PI * i / rings_n

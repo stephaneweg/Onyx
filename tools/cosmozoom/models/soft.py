@@ -107,7 +107,11 @@ def soft_box(x0, x1, y0, y1, z0, z1, r, mat="paint1", k=2, top=(), side=()):
 
 def revolve_z(profile, segs=14, mat="darkgrey", a0=0.0):
     """A surface of revolution around the Z axis: profile [(radius, z)] (radius 0: on the axis)."""
-    p = revolve(profile, segs, mat, a0=a0)
+    m2 = mat
+    if callable(mat):
+        def m2(i, j, c):
+            return mat(i, j, np.array([c[0], -c[2], c[1]]))
+    p = revolve(profile, segs, m2, a0=a0)
     p.v = np.stack([p.v[:, 0], -p.v[:, 2], p.v[:, 1]], axis=1)
     return p.orient()
 
@@ -127,7 +131,7 @@ def soft_cyl(r, z0, z1, bevel=0.06, segs=14, mat="darkgrey", x=0.0, y=0.0, bevel
     return revolve_z(prof, segs, mat).tr(x, y, 0)
 
 
-def nozzle(r, z0, z1, glow="cyan_glow", x=0.0, y=0.0, segs=14, depth=0.10, mat="darkgrey"):
+def nozzle(r, z0, z1, glow="cyan_glow", x=0.0, y=0.0, segs=12, depth=0.10, mat="darkgrey"):
     """A dark rounded nozzle from z1 (front) back to z0, its soft glowing core set into its back face."""
     b = min(0.08, r * 0.3)
     prof = [(0.0, z1), (r - b, z1), (r - b * 0.29, z1 - b * 0.29), (r, z1 - b), (r, z0 + b), (r - b * 0.29, z0 + b * 0.29),

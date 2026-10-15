@@ -23,6 +23,7 @@ struct ShipModel
 	V3 trail[6][TRAIL]; int ntrail = 0; float trailT = 0;	// the exhausts' last places (the ribbons)
 	V3 flames[6]; int nflame = 0;	// where the exhausts are (model space)
 	V3 arc[2]; bool hasArc = false;	// the two ends of the energy arc between the engines (podracer pods)
+	V3 pads[4]; int npad = 0;	// the hover pads under the hull (a soft glow)
 	float length = 3;
 };
 
@@ -66,7 +67,7 @@ static unsigned paintOf (const Tri &T, const Build &b, const Mesh &m)
 
 static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 {
-	S.mesh.tris.clear (); S.mesh.ngroups = 0; S.mesh.npt = 0; S.nflame = 0; S.hasArc = false;
+	S.mesh.tris.clear (); S.mesh.ngroups = 0; S.mesh.npt = 0; S.nflame = 0; S.hasArc = false; S.npad = 0;
 	// (the parts raw: painted and lit together below)
 	const Mesh *hull = lib.rawMesh (HULLS[clampi (b.hull, 0, NHULL - 1)].model);
 	const Mesh *wing = lib.rawMesh (WINGS[clampi (b.wing, 0, NWING - 1)].model);
@@ -111,6 +112,7 @@ static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 		appendMesh (raw, *pil, M4::translate (p));
 	}
 	if (hull) for (int i = 0; i < hull->npt && S.nflame < 6; i++) if (!strncmp (hull->ptName[i], "flame", 5)) S.flames[S.nflame++] = hull->pt[i];
+	if (hull) for (int i = 0; i < hull->npt && S.npad < 4; i++) if (!strncmp (hull->ptName[i], "pad", 3)) S.pads[S.npad++] = hull->pt[i];
 	if (!S.nflame) S.flames[S.nflame++] = V3 (0, 0.35f, raw.lo.z);
 	raw.bounds ();
 	for (int i = 0; i < raw.tris.n; i++)
@@ -415,7 +417,7 @@ struct Scene
 			if (C.v < 4 || !S.ntrail) continue;
 			unsigned col = C.warpT > 0 ? hueColor (time * 2 + (float) i * 0.1f) : C.boostT > 0 ? 0xFF8A3C : PAINTS[clampi (C.build.paint, 0, NPAINT - 1)];
 			if (col == PAINTS[9]) col = 0x9FE8FF;			// (a white ship: a pale cyan trail)
-			float wdt = C.boostT > 0 || C.warpT > 0 ? 0.26f : 0.15f;
+			float wdt = C.boostT > 0 || C.warpT > 0 ? 0.22f : 0.11f;
 			for (int k = 0; k < S.nflame; k++)
 				for (int j = 0; j + 1 < ShipModel::TRAIL; j++)
 				{
@@ -423,7 +425,7 @@ struct Scene
 					V3 d = b - a; if (len (d) < 0.01f) continue;
 					V3 side = norm (cross (d, a - cam.eye));
 					float f0 = 1 - (float) j / ShipModel::TRAIL, f1 = 1 - (float) (j + 1) / ShipModel::TRAIL;
-					unsigned c0 = rgbScale (col, 0.8f * f0 * f0), c1 = rgbScale (col, 0.8f * f1 * f1);
+					unsigned c0 = rgbScale (col, 0.5f * f0 * f0), c1 = rgbScale (col, 0.5f * f1 * f1);
 					Vtx *v = F.room (6); if (!v) break;
 					V3 a0 = a - side * (wdt * f0), a1 = a + side * (wdt * f0), b0 = b - side * (wdt * f1), b1 = b + side * (wdt * f1);
 					setVtx (v[0], a0, 0, 0, c0); setVtx (v[1], a1, 0, 0, c0); setVtx (v[2], b1, 0, 0, c1);
@@ -457,6 +459,14 @@ struct Scene
 				flame (F, p, back, L, 0.32f, col, cr, cu);
 			}
 			if (S.hasArc) arc (F, M.point (S.arc[0]), M.point (S.arc[1]), cr, cu, (unsigned) i * 7919u);
+			// the hover pads: soft cyan discs of light under the hull, pulsing
+			for (int k = 0; k < S.npad; k++)
+			{
+				V3 c = M.point (S.pads[k] - V3 (0, 0.05f, 0)), ax = M.dir (V3 (0.35f, 0, 0)), az = M.dir (V3 (0, 0, 0.35f));
+				unsigned pc = rgbScale (0x7FE8FF, 0.55f + 0.2f * sinf (time * 9 + (float) k));
+				F.quad (c - ax - az, c + ax - az, c + ax + az, c - ax + az, pc);
+				F.quad (c - ax + az, c + ax + az, c + ax - az, c - ax - az, pc);
+			}
 			if (C.shieldT > 0 || C.bubbleT > 0)
 				sphere (F, M.point (V3 (0, 0.4f, 0)), C.bubbleT > 0 ? 2.0f : 2.3f, C.bubbleT > 0 ? 0x2A5A80 : rgbScale (0x5CF2C8, 0.35f + 0.1f * sinf (time * 6)));
 		}

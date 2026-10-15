@@ -53,25 +53,29 @@ def question_mark(h=0.62, r=0.07, mat="white"):
     return t.add(dot)
 
 
+def qmark_face(size=0.62, t=0.12, depth=0.05, mat="white"):
+    """A bold '?' of five small bars in the XY plane, facing +Z, its back at z = 0, centred."""
+    h, w = size, size * 0.62
+    bars = [(-w / 2, w / 2, h / 2 - t, h / 2),            # the top
+            (w / 2 - t, w / 2, h * 0.08, h / 2),          # the right side going down
+            (-t / 2, w / 2, h * 0.08 - t, h * 0.08),      # back to the middle
+            (-t / 2, t / 2, -h * 0.18, h * 0.08 - t),     # the stem
+            (-t / 2, t / 2, -h / 2, -h / 2 + t)]          # the dot
+    p = Part()
+    for x0, x1, y0, y1 in bars:
+        p.add(box(x0, x1, y0, y1, 0.0, depth, mat))
+    return p
+
+
 def itembox():
-    m = Model("itembox", "the item capsule: a holographic crystal cube (1.2 m) with neon edges and a '?' inside")
+    m = Model("itembox", "the item capsule: a translucent rounded cube (1.2 m), a white '?' on each side and on top")
     s = 1.2
-    shell = rounded_box(s, s, s, 0.16, 1, "holo")
-    m.add(shell, "shell")
-    # neon edges: thin glowing bars along the 12 edges, just inside the chamfers
-    e = s / 2 - 0.08
-    t = 0.05
-    cols = {"x": "magenta_glow", "y": "cyan_glow", "z": "yellow_glow"}
-    edges = Part()
-    for a in (-1, 1):
-        for b in (-1, 1):
-            edges.add(box(-e, e, a * e - t, a * e + t, b * e - t, b * e + t, cols["x"]))
-            edges.add(box(a * e - t, a * e + t, -e, e, b * e - t, b * e + t, cols["y"]))
-            edges.add(box(a * e - t, a * e + t, b * e - t, b * e + t, -e, e, cols["z"]))
-    m.add(edges, "shell")
-    # the symbol: a white '?' (it can spin on its own: o symbol)
-    q = question_mark(0.72, 0.085, "magenta")
-    m.add(q, "symbol")
+    from soft import soft_box
+    m.add(soft_box(-s / 2, s / 2, -s / 2, s / 2, -s / 2, s / 2, 0.24, "holo", k=3), "shell")
+    q = qmark_face(0.66, 0.13, 0.05)
+    for ang in (0, 90, 180, 270):
+        m.add(q.copy().tr(0, 0, s / 2 - 0.01).rot("y", ang), "shell")
+    m.add(q.copy().tr(0, 0, s / 2 - 0.01).rot("x", -90), "shell")
     return m
 
 

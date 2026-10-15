@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 #
-# city.py -- Cosmo Zoom!'s city props (the user's art direction, 2026-10-15: a futuristic city raced by day, at
-# dusk and at night): skyscrapers -- walls in paint1 (the game recolours them per circuit: cream by day, dark blue
-# by night), trims and terraces in paint2, windows in *_glow strips --, neon billboards (a glowing panel with UVs
-# 0..1 for the game's texture), antenna masts, elevated highway pieces, a flying traffic ship, street lamps, neon
-# arches, holo-rings and the start gate.
+# city.py -- Cosmo Zoom!'s city props. The final look (the user's approved image, 2026-10-15): rounded capsule
+# towers -- walls in paint1 (the game recolours them: coral, lemon, mint, lavender, white, sky), bands and rounded
+# caps in paint2, plain navy / white window slots --, rounded signs on poles (the panel with UVs 0..1 for the game's
+# picture), a rounded street lamp, the rounded start gate, a small flying car. (The neon pieces of the night look
+# before it -- antenna_mast, neon_arch, holo_ring, the highways -- are kept: they can serve.)
 #
 # Props stand on y = 0, their origin at the base centre; sizes in metres. Glow strips stand a few centimetres
 # proud of the walls (they are unlit and drawn added, without outline).
@@ -20,6 +20,8 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from czmodel import PI, Model, Part, loft, revolve, tube  # noqa: E402
 from ships import box, fan, oct_ring, blade  # noqa: E402
+from czmodel import frame_along  # noqa: E402
+from soft import Station, soft_loft, soft_box, soft_cyl, rrect  # noqa: E402
 
 SCRIPT = "city.py"
 
@@ -141,124 +143,132 @@ def frame(w, h, t, d, mat="darkgrey"):
     return p
 
 
-# ---- the skyscrapers -----------------------------------------------------------------------------------------------
-def tower_setback():
-    m = Model("tower_setback", "a skyscraper with two setbacks, terraces, vertical window strips, a mast")
-    r1, r2, r3 = chamfer_sq(9, 9, 2.0), chamfer_sq(7, 7, 1.6), chamfer_sq(4.8, 4.8, 1.2)
-    m.add(prism(r1, 0, 40))
-    m.add(slab(r1, 40.6, 0.8, 1.06))
-    m.add(prism(r2, 40.6, 62))
-    m.add(slab(r2, 62.6, 0.8, 1.08))
-    m.add(prism(r3, 62.6, 74, top="darkgrey"))
-    m.add(box(-2.5, 2.5, 74, 76.5, -2.5, 2.5, "paint2", 0.4))
-    m.add(strips_vertical(r1, (0, 2, 4, 6), 3, 38, 3, 0.5, "yellow_glow"))
-    m.add(strips_vertical(r2, (0, 2, 4, 6), 42, 60, 2, 0.5, "yellow_glow"))
-    m.add(bands(r3, (65, 69), 1.4, "cyan_glow", faces=(0, 2, 4, 6)))
-    m.add(mast(1.0, 76.5, 1.0, 12, 0.3))
-    return m
+# ---- the towers (the final look: rounded capsule towers, walls paint1, bands and caps paint2) -----------------------
+def soft_tower(w, d, r, h, cap=0.0, x=0.0, z=0.0, y0=0.0, bands_at=(), band_h=1.2, mat_band="paint2", k=3,
+               cap_mat="paint2", cap_from=None):
+    """A rounded tower: a rounded-rectangle section (half sizes w x d, corners r) from y0 to y0 + h, its top
+    rounded over `cap`; the bands (paint2) at the heights in bands_at; the rounded top from cap_from up in cap_mat."""
+    edges = sorted(set([y0] + [b for y in bands_at for b in (y, y + band_h)] + [y0 + h]))
+    sts = [Station(yy, w, d, r, 0.0, 0.0) for yy in edges]
+
+    def mat(lab, i, c):
+        y = c[2]
+        if cap_from is not None and y > cap_from:
+            return cap_mat
+        for b in bands_at:
+            if b < y < b + band_h:
+                return mat_band
+        return "paint1"
+    p = soft_loft(sts, mat, k, round0=0.0, round1=cap, steps=3 if cap > 2.0 else 2, plane="xz")
+    return p.tr(x, 0, z)
+
+
+def slots(x0, x1, ys, z, h=0.5, mat="navy", depth=0.25):
+    """Dark window slots: thin rounded bars on a front face (z = its front) at the heights ys."""
+    p = Part()
+    for y in ys:
+        p.add(box(x0, x1, y, y + h, z - depth, z + 0.08, mat))
+    return p
 
 
 def tower_chamfer():
-    m = Model("tower_chamfer", "a tall chamfered tower, window bands, a crown and a spire")
-    r = chamfer_sq(7.5, 7.5, 2.6)
-    m.add(prism(r, 0, 84))
-    m.add(bands(r, [6 + 7 * k for k in range(11)], 2.2, "cyan_glow", faces=(0, 2, 4, 6)))
-    m.add(bands(r, [6 + 7 * k for k in range(11)], 2.2, "cyan_glow", faces=(1, 3, 5, 7)))
-    # the crown: a band of paint2 leaning in, a spire
-    rc = chamfer_sq(7.9, 7.9, 2.8)
-    m.add(prism(rc, 84, 88, "paint2", "darkgrey", scale_top=0.7))
-    m.add(revolve([(0.0, 88), (1.4, 88), (0.0, 106)], 6, "silver"))
-    m.add(revolve([(0.0, -0.6), (0.6, 0.0), (0.0, 0.6)], 6, "red_glow").tr(0, 106.5, 0))
+    m = Model("tower_chamfer", "a tall pill tower: a rounded slab, a paint2 band, a rounded paint2 top, slots")
+    H = 52.0
+    m.add(soft_tower(7.0, 4.6, 4.5, H, cap=4.5, bands_at=(H * 0.42,), band_h=1.6, cap_from=H - 2.0))
+    m.add(slots(-3.4, 3.4, (H - 9.0, H - 7.4, H - 5.8), 4.6, 0.6, "white", 0.2))
+    m.add(slots(-1.6, 1.6, (9.0, 15.0, 30.0, 36.0), 4.6, 1.8, "navy", 0.2))
     return m
 
 
-def tower_round():
-    m = Model("tower_round", "a cylindrical tower, ring ledges, glowing bands, a rooftop disc")
-    r = ngon(7.0, 12, PI / 12)
-    m.add(prism(r, 0, 58))
-    for y in (20, 40):
-        m.add(slab(r, y + 0.5, 1.0, 1.07))
-    m.add(bands(r, [4 + 4 * k for k in range(4)] + [24 + 4 * k for k in range(4)] + [44 + 4 * k for k in range(3)], 1.6,
-                "magenta_glow", faces=range(0, 12, 2)))
-    m.add(prism(ngon(8.4, 12, PI / 12), 58, 59.2, "paint2", "darkgrey", bottom=True))
-    m.add(revolve([(0.0, 59.2), (3.0, 59.2), (3.0, 61.5), (0.0, 61.5)], 8, "paint2"))
-    m.add(mast(0.0, 61.5, 0.0, 9, 0.28))
+def tower_setback():
+    m = Model("tower_setback", "a rounded box tower, a paint2 band, a rounded paint2 cap block, dark window slots")
+    H = 40.0
+    m.add(soft_tower(7.5, 7.5, 2.0, H, cap=1.4, bands_at=(H - 8.0,), band_h=1.6))
+    m.add(soft_tower(6.4, 6.4, 1.8, 3.4, cap=1.2, y0=H - 0.2, cap_from=H - 1.0))
+    m.add(slots(-4.8, 4.8, (7.0, 14.0, 21.0), 7.5, 1.0, "navy", 0.2))
     return m
 
 
 def tower_stepped():
-    m = Model("tower_stepped", "a stepped tower: four blocks with terraces and lime strips")
-    sizes = [(11, 0, 22), (9, 22, 40), (7, 40, 54), (5, 54, 64)]
-    for k, (w, y0, y1) in enumerate(sizes):
-        r = chamfer_sq(w, w * 0.85, 1.4)
-        m.add(prism(r, y0, y1, top="paint2"))
-        m.add(slab(r, y1 + 0.4, 0.8, 1.05))
-        m.add(strips_vertical(r, (0, 4), y0 + 2.5, y1 - 2.5, 2, 0.45, "lime_glow"))
-        m.add(bands(r, [y0 + (y1 - y0) * 0.5], 1.2, "yellow_glow", faces=(2, 6)))
-    m.add(mast(-2.0, 64.4, -1.5, 8, 0.25))
+    m = Model("tower_stepped", "a stepped rounded tower: three blocks, paint2 ledges between them")
+    blocks = [(9.0, 8.0, 2.4, 0.0, 18.0), (7.0, 6.2, 2.0, 18.0, 15.0), (5.0, 4.6, 1.8, 33.0, 12.0)]
+    for i, (w, d, r, y0, h) in enumerate(blocks):
+        top = i == len(blocks) - 1
+        m.add(soft_tower(w, d, r, h, cap=1.8 if top else 0.0, y0=y0, cap_from=(y0 + h - 1.6) if top else None))
+        if not top:
+            m.add(soft_tower(w + 0.5, d + 0.5, r + 0.3, 1.2, cap=0.0, y0=y0 + h - 0.3, cap_from=y0 - 1, k=2))
+    m.add(slots(-5.0, 5.0, (5.0, 11.0), 8.0, 1.2, "navy", 0.2))
+    m.add(slots(-3.6, 3.6, (23.0, 28.0), 6.2, 1.0, "navy", 0.2))
     return m
 
 
 def tower_twin():
-    m = Model("tower_twin", "two slim towers joined by a sky bridge")
-    for sx in (1, -1):
-        r = [(x + 7 * sx, z) for x, z in chamfer_sq(4.5, 4.5, 1.2)]
-        h = 70 if sx > 0 else 60
-        m.add(prism(r, 0, h))
-        m.add(bands(r, [5 + 6 * k for k in range(int((h - 8) / 6))], 1.8, "cyan_glow" if sx > 0 else "yellow_glow",
-                    faces=(0, 2, 4, 6)))
-        m.add(prism([(x * 0.9 + 7 * sx * 0.1, z * 0.9) for x, z in r], h, h + 3, "paint2", "darkgrey"))
-    m.add(box(-3.0, 3.0, 38, 42, -2.5, 2.5, "paint2", 0.5))
-    m.add(bands([(-3, -2.5), (3, -2.5), (3, 2.5), (-3, 2.5)], (39.2,), 1.4, "magenta_glow", faces=(0, 2)))
-    m.add(mast(7.0, 73, 0.0, 10, 0.25))
+    m = Model("tower_twin", "twin pill towers of two heights, joined by a rounded bridge")
+    for sx, H in ((1, 46.0), (-1, 36.0)):
+        m.add(soft_tower(4.4, 4.4, 4.35, H, cap=4.35, x=5.2 * sx, bands_at=(H * 0.5,), band_h=1.4, cap_from=H - 2.6))
+    m.add(soft_box(-2.0, 2.0, 22.0, 25.5, -2.4, 2.4, 1.0, "paint2"))
     return m
 
 
 def tower_slim():
-    m = Model("tower_slim", "a slender hexagonal needle tower, a long spire")
-    r = ngon(4.5, 6, PI / 6)
-    m.add(prism(r, 0, 70, scale_top=0.75))
-    m.add(bands(r, [5 + 8 * k for k in range(8)], 1.5, "cyan_glow"))
-    m.add(slab([(x * 0.75, z * 0.75) for x, z in r], 71, 1.0, 1.25))
-    m.add(revolve([(0.0, 71), (1.8, 71), (0.0, 96)], 6, "silver"))
-    m.add(revolve([(0.0, -0.6), (0.6, 0.0), (0.0, 0.6)], 6, "red_glow").tr(0, 96.5, 0))
+    m = Model("tower_slim", "a slim capsule tower: a round shaft, a paint2 band, a round top")
+    H = 56.0
+    m.add(soft_tower(4.0, 4.0, 3.95, H, cap=3.95, bands_at=(H - 12.0,), band_h=1.4, cap_from=H - 2.6))
     return m
 
 
-# ---- billboards, masts, lamps ----------------------------------------------------------------------------------------
-def billboard(name, glow, w=12.0, h=6.0, pole=14.0, title=""):
-    m = Model(name, title or "a neon billboard on a pole (its panel: UVs 0..1)")
-    y = pole + h / 2
-    pic = panel(w - 0.8, h - 0.8, glow).tr(0, y, 0)
+def tower_round():
+    m = Model("tower_round", "a dome-topped round tower: a white band, a paint2 dome, slots")
+    H = 30.0
+    m.add(soft_tower(7.0, 7.0, 6.95, H, cap=6.95, bands_at=(H - 3.0,), band_h=1.2, mat_band="white", cap_from=H - 0.4))
+    m.add(slots(-3.4, 3.4, (7.0, 13.0, 19.0), 6.8, 1.2, "navy", 0.4))
+    return m
+
+
+# ---- signs, lamps ------------------------------------------------------------------------------------------------
+def sign(name, w, h, pole, legs=1, title="", wall=False):
+    m = Model(name, title)
+    y = (0.0 if wall else pole) + h / 2
+    zc = 0.35 if wall else 0.0
+    m.add(soft_box(-w / 2, w / 2, y - h / 2, y + h / 2, zc - 0.35, zc + 0.35, 0.30, "paint2"))
+    pic = panel(w - 0.9, h - 0.9, "white", two_sided=not wall, z=0.0).tr(0, y, 0)
+    if wall:
+        pic.tr(0, 0, zc + 0.36)
+    else:
+        pic.v[:, 2] = np.sign(pic.v[:, 2] if False else 1) * pic.v[:, 2]
+        # the front face at +0.36, the back face at -0.36
+        front = panel(w - 0.9, h - 0.9, "white", two_sided=False).tr(0, y, 0.36)
+        back = panel(w - 0.9, h - 0.9, "white", two_sided=False)
+        back.v[:, 0] *= -1
+        back.v[:, 2] = -0.36
+        back.flip()
+        back.tr(0, y, 0)
+        pic = front.add(back)
     m.add(pic, "panel")
-    fr = frame(w, h, 0.45, 0.8, "darkgrey").tr(0, y, 0)
-    m.add(fr)
-    m.add(box(-w / 2 - 0.1, w / 2 + 0.1, y + h / 2, y + h / 2 + 0.3, -0.5, 0.5, "paint2"))    # a coloured top lip
-    m.add(box(-0.5, 0.5, 0, pole + 0.4, -0.5, 0.5, "grey", 0.15))
-    m.add(box(-1.4, 1.4, 0, 0.6, -1.0, 1.0, "darkgrey", 0.2))
+    if not wall:
+        xs = [0.0] if legs == 1 else [-w * 0.3, w * 0.3]
+        for x in xs:
+            m.add(soft_cyl(0.30, 0.0, y - h / 2 + 0.2, 0.08, 10, "grey", x, 0.0, steps=1).rot("x", -90)
+                  .tr(0, 0, 0) if False else vertical_cyl(0.30, 0.0, y - h / 2 + 0.2, x, 0.0, "grey"))
+            m.add(soft_box(x - 0.9, x + 0.9, 0.0, 0.4, -0.9, 0.9, 0.15, "paint1", k=1))
     return m
+
+
+def vertical_cyl(r, y0, y1, x=0.0, z=0.0, mat="grey", segs=10):
+    b = min(0.08, r * 0.3)
+    return revolve([(0.0, y0), (r, y0), (r, y1 - b), (r - b, y1), (0.0, y1)], segs, mat).tr(x, 0, z)
+
+
+def billboard_pole():
+    return sign("billboard_pole", 10.0, 5.0, 8.0, 1, "a rounded sign on a pole (its panel: UVs 0..1, o panel)")
 
 
 def billboard_wall():
-    m = Model("billboard_wall", "a neon billboard for a wall (its back at z = 0, facing +Z; panel UVs 0..1)")
-    w, h = 10.0, 5.0
-    pic = panel(w - 0.7, h - 0.7, "cyan_glow", two_sided=False).tr(0, h / 2, 0.45)
-    m.add(pic, "panel")
-    m.add(frame(w, h, 0.4, 0.8, "darkgrey").tr(0, h / 2, 0.4))
-    m.add(box(-w / 2, w / 2, -0.2, 0.0, 0.0, 0.5, "paint2"))
-    return m
+    return sign("billboard_wall", 8.0, 4.0, 0.0, 0, "a rounded sign for a wall: its back at z = 0, facing +Z (o panel: UVs 0..1)", wall=True)
 
 
 def billboard_tall():
-    m = Model("billboard_tall", "a tall vertical neon sign on a frame (its panel: UVs 0..1)")
-    w, h = 4.0, 12.0
-    y = 4.0 + h / 2
-    m.add(panel(w - 0.6, h - 0.6, "lime_glow").tr(0, y, 0), "panel")
-    m.add(frame(w, h, 0.35, 0.7, "darkgrey").tr(0, y, 0))
-    for sx in (1, -1):
-        m.add(box(sx * 1.2 - 0.25, sx * 1.2 + 0.25, 0, 4.2, -0.25, 0.25, "grey"))
-    m.add(box(-w / 2 - 0.1, w / 2 + 0.1, y + h / 2, y + h / 2 + 0.3, -0.45, 0.45, "paint2"))
-    return m
+    return sign("billboard_tall", 3.6, 9.0, 3.0, 2, "a tall rounded sign on two legs (o panel: UVs 0..1)")
 
 
 def antenna_mast():
@@ -282,12 +292,11 @@ def antenna_mast():
 
 
 def street_lamp():
-    m = Model("street_lamp", "a street lamp: a pole, an arm, a neon light bar")
-    m.add(box(-0.6, 0.6, 0, 0.4, -0.6, 0.6, "darkgrey", 0.1))
-    m.add(tube([(0, 0.3, 0), (0, 7.0, 0), (0.0, 7.6, 0.4), (0, 7.8, 2.2)], 0.14, 6, "grey", cap0=False))
-    head = box(-0.35, 0.35, 7.45, 7.95, 1.2, 3.6, "paint2", 0.08)
-    m.add(head)
-    m.add(box(-0.22, 0.22, 7.38, 7.46, 1.35, 3.45, "cyan_glow"))
+    m = Model("street_lamp", "a rounded street lamp: a grey pole bent over, a paint2 head, a white light")
+    m.add(soft_box(-0.5, 0.5, 0.0, 0.35, -0.5, 0.5, 0.15, "paint1", k=1))
+    m.add(tube([(0, 0.3, 0), (0, 6.6, 0), (0.0, 7.3, 0.35), (0, 7.5, 1.4)], 0.13, 8, "grey", cap0=False))
+    m.add(soft_box(-0.40, 0.40, 7.25, 7.80, 0.9, 2.6, 0.22, "paint2"))
+    m.add(soft_box(-0.26, 0.26, 7.18, 7.26, 1.05, 2.45, 0.03, "white_flat", k=1))
     return m
 
 
@@ -386,31 +395,40 @@ def checker_banner(w, h, cols, rows, y0, zf, depth=0.25):
     return p
 
 
+def soft_path(path, w, h, r, mat="paint1", k=3):
+    """A rounded-rectangle section (half sizes w across, h along the path's normal plane) swept along a path."""
+    P, T, N, B = frame_along(path)
+    pts, lab = rrect(w, h, r, k)
+    rings = []
+    for i in range(len(P)):
+        rings.append([tuple(P[i] + N[i] * u + B[i] * v) for u, v in pts])
+    return loft(rings, mat)
+
+
 def start_gate():
-    m = Model("start_gate", "the start gate: a neon arch over the 16 m track, a checker banner, three lights")
-    p, pts = arch_beams(19.0, 9.0, 2.0, 1.4, "paint1")
-    m.add(p)
-    # paint2 caps where the legs meet the shoulders
+    m = Model("start_gate", "the start gate: a rounded pastel arch over the track, a checker banner, three lights")
+    W, H, R = 9.6, 9.0, 2.6
+    path = [(-W, 0.0, 0.0), (-W, H - R, 0.0)]
+    for i in range(1, 5):
+        a = PI - PI / 2 * i / 4
+        path.append((-W + R + R * math.cos(a), H - R + R * math.sin(a), 0.0))
+    for i in range(0, 5):
+        a = PI / 2 - PI / 2 * i / 4
+        path.append((W - R + R * math.cos(a), H - R + R * math.sin(a), 0.0))
+    path.append((W, 0.0, 0.0))
+    m.add(soft_path(path, 0.75, 1.0, 0.45, "paint1", k=2))
     for sx in (1, -1):
-        m.add(box(sx * 9.5 - 1.0, sx * 9.5 + 1.0, 6.2, 6.8, -1.1, 1.1, "paint2"))
-        m.add(box(sx * 9.5 - 1.3, sx * 9.5 + 1.3, 0, 1.0, -1.4, 1.4, "darkgrey", 0.25))
-        # neon strips up the legs (front faces)
-        for zf in (1.01, -1.01):
-            q = Part()
-            x0, x1 = sx * 9.5 - 0.25, sx * 9.5 + 0.25
-            q.v = np.array([(x0, 1.2, zf), (x1, 1.2, zf), (x1, 6.0, zf), (x0, 6.0, zf)])
-            q.f = [((0, 1, 2, 3), "magenta_glow")]
-            face_out(q, (0, 0, np.sign(zf)))
-            m.add(q)
-    m.add(checker_banner(11.0, 1.6, 14, 2, 6.6, 0.0))
-    # the three lights in a dark housing over the banner (o light1..3: the game colours them)
-    m.add(box(-3.9, 3.9, 8.2, 10.5, -0.7, 0.7, "darkgrey", 0.3))
-    for k, x in enumerate((-2.5, 0.0, 2.5)):
-        light = revolve([(0.0, 0.0), (0.88, 0.0), (0.88, 0.22), (0.0, 0.30)], 10, "red_glow" if k < 2 else "lime_glow")
-        light.rot("x", 90)
-        front = light.copy().tr(x, 9.35, 0.70)
-        back = light.copy().rot("y", 180).tr(x, 9.35, -0.70)
-        m.add(front.add(back), "light%d" % (k + 1))
+        m.add(soft_box(sx * W - 1.3, sx * W + 1.3, 0.0, 1.2, -1.4, 1.4, 0.35, "paint2", k=1))
+        m.add(soft_box(sx * W - 0.95, sx * W + 0.95, 5.6, 6.2, -1.15, 1.15, 0.25, "paint2", k=1))
+    m.add(checker_banner(11.0, 1.6, 12, 2, 6.2, 0.0, 0.2))
+    m.add(soft_box(-3.6, 3.6, H - 0.6, H + 1.6, -0.75, 0.75, 0.5, "paint2"))
+    for k, x in enumerate((-2.2, 0.0, 2.2)):
+        mat = "red" if k < 2 else "mint"
+        light = Part()
+        for zf, sgn in ((0.75, 1), (-0.75, -1)):
+            l = revolve([(0.0, 0.0), (0.62, 0.0), (0.56, 0.16), (0.0, 0.22)], 10, mat).rot("x", 90 * sgn)
+            light.add(l.tr(x, H + 0.5, zf))
+        m.add(light, "light%d" % (k + 1))
     return m
 
 
@@ -478,30 +496,14 @@ def highway_piece(name, angle, radius, title):
 
 
 def traffic_ship():
-    m = Model("traffic_ship", "a small flying traffic ship (4 m), glowing lights: it crosses the sky")
-    from ships import body
-    rows = [(-1.8, 0.95, 0.40, 0.75, 0.80, 0.85, 0.50, 0.70, 0.20),
-            (-0.6, 1.05, 0.45, 0.85, 0.90, 0.95, 0.50, 0.80, 0.15),
-            (0.8, 0.95, 0.42, 0.80, 0.80, 0.90, 0.45, 0.75, 0.18),
-            (1.9, 0.62, 0.30, 0.60, 0.55, 0.70, 0.38, 0.55, 0.26)]
-
-    def mat(panel, c):
-        if panel == "bottom":
-            return "darkgrey"
-        if panel == "lip":
-            return "darkgrey"
-        if panel == "side":
-            return "paint2"
-        return "paint1"
-    m.add(body(rows, mat, mouth=(0.75, 0.1, "darkgrey")))
-    from ships import canopy
-    m.add(canopy(-0.7, 1.2, 0.2, 1.00, 1.38, 0.46))
-    # lights: a cyan strip under each side, magenta tail lights, a glowing belly disc
+    m = Model("traffic_ship", "a small rounded flying car (3.6 m): paint1 body, a tinted cabin, white lights")
+    sts = [Station(-1.6, 0.85, 0.28, 0.24, 0, 0.45), Station(0.9, 0.85, 0.26, 0.22, 0, 0.43), Station(1.5, 0.75, 0.22, 0.2, 0, 0.40)]
+    m.add(soft_loft(sts, lambda lab, i, c: "darkgrey" if lab == "bottom" else "paint1", 2, round0=0.2, round1=0.2, steps=2))
+    cab = [Station(-1.0, 0.6, 0.25, 0.2, 0, 0.88), Station(0.3, 0.6, 0.22, 0.2, 0, 0.86)]
+    m.add(soft_loft(cab, lambda lab, i, c: "tint" if (c[2] > 0.2 or lab.startswith("side")) else "paint2", 2, round0=0.15, round1=0.25, steps=2))
     for sx in (1, -1):
-        m.add(box(sx * 0.9 - 0.05, sx * 0.9 + 0.05, 0.38, 0.48, -1.6, 1.6, "cyan_glow"))
-        m.add(box(sx * 0.55 - 0.18, sx * 0.55 + 0.18, 0.40, 0.70, -1.84, -1.80, "magenta_glow"))
-    from czmodel import disc
-    m.add(disc(0.55, 8, "plasma_glow", y=0.12, down=True))
+        m.add(soft_box(sx * 0.55 - 0.18, sx * 0.55 + 0.18, 0.40, 0.55, 1.62, 1.72, 0.04, "white_flat", k=1))
+        m.add(soft_box(sx * 0.55 - 0.18, sx * 0.55 + 0.18, 0.40, 0.55, -1.86, -1.76, 0.04, "red", k=1))
     return m
 
 
@@ -512,7 +514,7 @@ ALL = {
     "tower_stepped": tower_stepped,
     "tower_twin": tower_twin,
     "tower_slim": tower_slim,
-    "billboard_pole": lambda: billboard("billboard_pole", "magenta_glow"),
+    "billboard_pole": billboard_pole,
     "billboard_wall": billboard_wall,
     "billboard_tall": billboard_tall,
     "antenna_mast": antenna_mast,

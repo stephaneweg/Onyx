@@ -17,7 +17,7 @@ import ships  # noqa: E402
 import pilots  # noqa: E402
 
 MODULES = [ships, pilots]
-for opt in ("items", "city", "props"):
+for opt in ("items", "city", "nature", "props"):
     try:
         MODULES.append(__import__(opt))
     except ImportError:
@@ -26,10 +26,10 @@ for opt in ("items", "city", "props"):
 # The pilots' own ships (DESIGN.md 5) and colours, for the sheets.
 CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's six ships, then two more
     ("pilot_bolt", "hull_needle", "wing_swept", "engine_ion", ("#E63ACB", "#FF8A1F")),
-    ("pilot_bloop", "hull_comet", "wing_stubby", "engine_pods", ("#2EE6F0", "#3A86FF")),
-    ("pilot_bruno", "hull_whale", "wing_swept", "engine_twin", ("#FFE135", "#FF8A1F")),
-    ("pilot_zib", "hull_pod", "wing_stubby", "engine_star", ("#8FD80F", "#22C3B5")),
-    ("pilot_kiki", "hull_cube", "wing_swept", "engine_ring", ("#FFE135", "#E63ACB")),
+    ("pilot_bloop", "hull_comet", "wing_stubby", "engine_pods", ("#3FD7EE", "#9DEFFA")),
+    ("pilot_bruno", "hull_whale", "wing_swept", "engine_twin", ("#FF8A1F", "#FFD23F")),
+    ("pilot_zib", "hull_pod", "wing_stubby", "engine_star", ("#9BE03A", "#22C3B5")),
+    ("pilot_kiki", "hull_cube", "wing_swept", "engine_ring", ("#FFD23F", "#E63ACB")),
     ("pilot_pepper", "hull_manta", "wing_solar", "engine_ion", ("#FF8A1F", "#22C3B5")),
     ("pilot_beep", "hull_cube", "wing_ray", "engine_pods", ("#22C3B5", "#FFF6E0")),
     ("pilot_squiggle", "hull_needle", "wing_ray", "engine_star", ("#8C52FF", "#FF4F9A")),
@@ -127,23 +127,23 @@ def sheets(built=None):
     pv.sheet(cells, os.path.join(out, "pilots.png"), 4, 0, 260, "Cosmo Zoom! -- the pilots")
     # the race objects, the props
     for mod, sheet_name, title in (("items", "items.png", "Cosmo Zoom! -- the race objects"),
-                                   ("city", "city.png", "Cosmo Zoom! -- the city (walls paint1 = cream here, by day)"),
+                                   ("city", "city.png", "Cosmo Zoom! -- the city (walls paint1, bands and caps paint2: sample pastels)"),
+                                   ("nature", "nature.png", "Cosmo Zoom! -- the floating islands, trees, rocks, clouds"),
                                    ("props", "props.png", "Cosmo Zoom! -- the other props")):
         m = sys.modules.get(mod)
         if not m:
             continue
         cells = []
-        paint = ("#FFF1D6", "#7FB8E8") if mod == "city" else ("#3A86FF", "#FFE135")
-        for name in m.ALL:
+        pastels = [("#FF8C7A", "#FFF6E0"), ("#FFE066", "#FFFFFF"), ("#9BE3B5", "#FFF6E0"), ("#C9B6FF", "#FFFFFF"),
+                   ("#FFFFFF", "#8FD3FF"), ("#8FD3FF", "#FFFFFF")]
+        for k_, name in enumerate(m.ALL):
+            paint = pastels[k_ % 6] if mod == "city" else ("#3A86FF", "#FFE135")
             png = os.path.join(W, "sheet_%s.png" % name)
             info = pv.tri_info(pv.render(os.path.join(cz.OUT_DIR, name + ".obj"), png, 300, paint))
             cells.append((png, name, info))
         cols = 6 if len(cells) > 12 else 4
         pv.sheet(cells, os.path.join(out, sheet_name), cols, 0, 240, title)
-        if mod == "city":
-            for c_ in cells:
-                pv.render(os.path.join(cz.OUT_DIR, c_[1] + ".obj"), c_[0], 300, ("#27304F", "#3D7BD9"))
-            pv.sheet(cells, os.path.join(out, "city_night.png"), cols, 0, 240, "Cosmo Zoom! -- the city at night (paint1 dark blue)")
+
     try:
         import import_cc0
         cells = []
