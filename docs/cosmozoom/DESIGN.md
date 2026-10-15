@@ -55,6 +55,14 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
 
 ## 1. Art direction
 
+### 1.0 The road's profile (the user, 2026-10-15)
+
+The road is the user's parametric profile, drawn at 150 mm for 15 m (`refs/road_profile/`, the five pieces as OBJ):
+0.5 m thick; three lanes (4.7 m at 15 m) split by small grooves (a 0.1 m chamfer, its top edges rounded); a border
+each side, 0.5 m wide and 0.7 m tall (0.2 m above the lanes), its top corners rounded. The game extrudes it along
+the track (`world.h` `roadProfile` / `profileRoad`): the lanes stretch with the circuit's width (15-18 m), the borders
+keep their shape and carry the rails' candy stripes. Tubes keep the plain rolled surface.
+
 ### 1.1 The final direction: low-poly, a bit rounded
 
 ![Art direction](refs/art-direction.png)

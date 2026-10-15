@@ -113,93 +113,103 @@ struct World
 		bool tun = (A.flags & F_TUNNEL) != 0 && tube <= 0;
 		bool start = (A.flags & F_START) || i == T.n - 1;
 		auto SP = [&] (const Seg &S, float l, float h, V3 *n = 0, V3 *lat = 0) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, n, lat); return p; };
-		// the surface
-		int cols = 4 + (int) (tube * 20 + 0.5f);
-		float ea = A.w * 0.5f, eb = B.w * 0.5f;
-		unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
-		for (int k = 0; k < cols; k++)
+		// the user's road profile (2026-10-15, docs/cosmozoom/DESIGN.md: drawn at 150 mm for 15 m): three lanes split by
+		// small rounded grooves, a raised rounded border each side, 0.5 m thick; the lanes stretch with the width, the
+		// borders keep their shape. Tubes keep the plain rolled surface below.
+		if (tube <= 0.01f)
 		{
-			float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
-			V3 a0 = SP (A, f0 * ea, 0), a1 = SP (A, f1 * ea, 0), b0 = SP (B, f0 * eb, 0), b1 = SP (B, f1 * eb, 0);
-			V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
-			unsigned c = band;
-			if (tube > 0.4f) c = (k % 5 == 2) ? rgbMix (T.road[0], 0xFFFFFF, 0.25f) : T.road[0];	// (a tube: light stripes along it)
-			if (start) c = ((k + (i == T.n - 1 ? 1 : 0)) & 1) ? 0xFFFFFF : 0x2A3350;
-			L.face (a0, a1, b1, b0, shade (c, nm), nm);
-			if (!closed)
-			{
-				V3 u0 = SP (A, f0 * ea, -1.1f), u1 = SP (A, f1 * ea, -1.1f), v0 = SP (B, f0 * eb, -1.1f), v1 = SP (B, f1 * eb, -1.1f);
-				L.face (u0, u1, v1, v0, shade (rgbScale (T.road[0], 0.7f), -nm), -nm);
-			}
+			profileRoad (T, i, A, B, start, L);
 		}
-		// the lane grooves: thin darker lines, continuous
-		if (!start && tube <= 0.4f)
-			for (int k = -1; k <= 1; k += 2)
-			{
-				float l = (float) k * A.w / 6, lb = (float) k * B.w / 6, wl = 0.07f;
-				L.face (SP (A, l - wl, 0.015f), SP (A, l + wl, 0.015f), SP (B, lb + wl, 0.015f), SP (B, lb - wl, 0.015f), shade (rgbScale (band, 0.84f), A.u), A.u);
-			}
-		// a speed pad's darker panel under its glowing chevrons
-		if ((A.flags & F_BOOST) && tube <= 0.4f)
+		else
 		{
-			float la = A.lane * A.w * 0.5f, lb = A.lane * B.w * 0.5f, hw = 2.3f;
-			L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
-		}
-		// a tube's white rings every 20 m
-		if (tube > 0.4f && (i % 10) == 0)
+			// the surface
+			int cols = 4 + (int) (tube * 20 + 0.5f);
+			float ea = A.w * 0.5f, eb = B.w * 0.5f;
+			unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
 			for (int k = 0; k < cols; k++)
 			{
 				float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
+				V3 a0 = SP (A, f0 * ea, 0), a1 = SP (A, f1 * ea, 0), b0 = SP (B, f0 * eb, 0), b1 = SP (B, f1 * eb, 0);
 				V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
-				L.face (SP (A, f0 * ea, 0.03f), SP (A, f1 * ea, 0.03f), SP (B, f1 * eb, 0.03f) * 0.4f + SP (A, f1 * ea, 0.03f) * 0.6f, SP (B, f0 * eb, 0.03f) * 0.4f + SP (A, f0 * ea, 0.03f) * 0.6f, shade (0xF4F6FF, nm), nm);
-			}
-		if (closed) return;
-		// the edges: rounded down to the underside, a striped round rail on top
-		for (int side = -1; side <= 1; side += 2)
-		{
-			float s = (float) side;
-			V3 nA, latA, nB, latB;
-			V3 ao = SP (A, s * ea, 0, &nA, &latA), bo = SP (B, s * eb, 0, &nB, &latB);
-			V3 outA = latA * s, outB = latB * s;
-			// the slab's rounded side: a half round from the top edge down to the underside
-			const int R = 4;
-			unsigned sc = rgbScale (T.road[0], 0.82f);
-			for (int k = 0; k < R; k++)
-			{
-				float t0 = PI * (float) k / R, t1 = PI * (float) (k + 1) / R;
-				auto E = [&] (const V3 &o, const V3 &n, const V3 &out, float t) { return o - n * (0.55f - 0.55f * cosf (t)) + out * (0.4f * sinf (t)); };
-				V3 p0 = E (ao, nA, outA, t0), p1 = E (ao, nA, outA, t1), q0 = E (bo, nB, outB, t0), q1 = E (bo, nB, outB, t1);
-				V3 fn = outA * sinf ((t0 + t1) * 0.5f) + nA * cosf ((t0 + t1) * 0.5f);
-				L.face (p0, q0, q1, p1, shade (sc, fn), fn);
-			}
-			// the kerb: a raised rounded lip along the edge, inside the road's width (lighter on top)
-			{
-				static const float KP[][2] = { { -1.05f, 0.0f }, { -0.80f, 0.20f }, { -0.50f, 0.38f }, { -0.18f, 0.47f }, { 0.0f, 0.40f }, { 0.04f, 0.0f } };
-				const int NK = 6;
-				unsigned kc = rgbMix (T.road[0], 0xFFFFFF, 0.12f);
-				for (int k = 0; k + 1 < NK; k++)
+				unsigned c = band;
+				if (tube > 0.4f) c = (k % 5 == 2) ? rgbMix (T.road[0], 0xFFFFFF, 0.25f) : T.road[0];	// (a tube: light stripes along it)
+				if (start) c = ((k + (i == T.n - 1 ? 1 : 0)) & 1) ? 0xFFFFFF : 0x2A3350;
+				L.face (a0, a1, b1, b0, shade (c, nm), nm);
+				if (!closed)
 				{
-					auto KPt = [&] (const Seg &S, float e, const V3 &n, const V3 &out, int j) { V3 o = SP (S, s * e, 0); return o + out * KP[j][0] + n * KP[j][1]; };
-					V3 p0 = KPt (A, ea, nA, outA, k), p1 = KPt (A, ea, nA, outA, k + 1), q0 = KPt (B, eb, nB, outB, k), q1 = KPt (B, eb, nB, outB, k + 1);
-					V3 fn = nA * (KP[k + 1][0] - KP[k][0]) - outA * (KP[k + 1][1] - KP[k][1]);
-					if (dot (fn, nA) < 0) fn = -fn;
-					L.face (p0, q0, q1, p1, shade (k < 2 ? rgbScale (kc, 0.94f) : kc, fn), fn);
+					V3 u0 = SP (A, f0 * ea, -1.1f), u1 = SP (A, f1 * ea, -1.1f), v0 = SP (B, f0 * eb, -1.1f), v1 = SP (B, f1 * eb, -1.1f);
+					L.face (u0, u1, v1, v0, shade (rgbScale (T.road[0], 0.7f), -nm), -nm);
 				}
 			}
-			// the rail: an 8-sided round bar on the kerb, its stripes in turn (2 m each)
-			unsigned rc = T.rails[(i & 1)];
-			const int K = 8;
-			float rr = 0.36f;
-			V3 cA = SP (A, s * (ea - 0.3f), 0.45f + rr * 0.85f), cB = SP (B, s * (eb - 0.3f), 0.45f + rr * 0.85f);
-			for (int k = 0; k < K; k++)
+			// the lane grooves: thin darker lines, continuous
+			if (!start && tube <= 0.4f)
+				for (int k = -1; k <= 1; k += 2)
+				{
+					float l = (float) k * A.w / 6, lb = (float) k * B.w / 6, wl = 0.07f;
+					L.face (SP (A, l - wl, 0.015f), SP (A, l + wl, 0.015f), SP (B, lb + wl, 0.015f), SP (B, lb - wl, 0.015f), shade (rgbScale (band, 0.84f), A.u), A.u);
+				}
+			// a speed pad's darker panel under its glowing chevrons
+			if ((A.flags & F_BOOST) && tube <= 0.4f)
 			{
-				float t0 = 2 * PI * (float) k / K, t1 = 2 * PI * (float) (k + 1) / K;
-				V3 d0A = nA * cosf (t0) + outA * sinf (t0), d1A = nA * cosf (t1) + outA * sinf (t1);
-				V3 d0B = nB * cosf (t0) + outB * sinf (t0), d1B = nB * cosf (t1) + outB * sinf (t1);
-				V3 fn = (d0A + d1A) * 0.5f;
-				L.face (cA + d0A * rr, cB + d0B * rr, cB + d1B * rr, cA + d1A * rr, shade (rc, fn), fn);
+				float la = A.lane * A.w * 0.5f, lb = A.lane * B.w * 0.5f, hw = 2.3f;
+				L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
 			}
+			// a tube's white rings every 20 m
+			if (tube > 0.4f && (i % 10) == 0)
+				for (int k = 0; k < cols; k++)
+				{
+					float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
+					V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
+					L.face (SP (A, f0 * ea, 0.03f), SP (A, f1 * ea, 0.03f), SP (B, f1 * eb, 0.03f) * 0.4f + SP (A, f1 * ea, 0.03f) * 0.6f, SP (B, f0 * eb, 0.03f) * 0.4f + SP (A, f0 * ea, 0.03f) * 0.6f, shade (0xF4F6FF, nm), nm);
+				}
+			if (closed) return;
+			// the edges: rounded down to the underside, a striped round rail on top
+			for (int side = -1; side <= 1; side += 2)
+			{
+				float s = (float) side;
+				V3 nA, latA, nB, latB;
+				V3 ao = SP (A, s * ea, 0, &nA, &latA), bo = SP (B, s * eb, 0, &nB, &latB);
+				V3 outA = latA * s, outB = latB * s;
+				// the slab's rounded side: a half round from the top edge down to the underside
+				const int R = 4;
+				unsigned sc = rgbScale (T.road[0], 0.82f);
+				for (int k = 0; k < R; k++)
+				{
+					float t0 = PI * (float) k / R, t1 = PI * (float) (k + 1) / R;
+					auto E = [&] (const V3 &o, const V3 &n, const V3 &out, float t) { return o - n * (0.55f - 0.55f * cosf (t)) + out * (0.4f * sinf (t)); };
+					V3 p0 = E (ao, nA, outA, t0), p1 = E (ao, nA, outA, t1), q0 = E (bo, nB, outB, t0), q1 = E (bo, nB, outB, t1);
+					V3 fn = outA * sinf ((t0 + t1) * 0.5f) + nA * cosf ((t0 + t1) * 0.5f);
+					L.face (p0, q0, q1, p1, shade (sc, fn), fn);
+				}
+				// the kerb: a raised rounded lip along the edge, inside the road's width (lighter on top)
+				{
+					static const float KP[][2] = { { -1.05f, 0.0f }, { -0.80f, 0.20f }, { -0.50f, 0.38f }, { -0.18f, 0.47f }, { 0.0f, 0.40f }, { 0.04f, 0.0f } };
+					const int NK = 6;
+					unsigned kc = rgbMix (T.road[0], 0xFFFFFF, 0.12f);
+					for (int k = 0; k + 1 < NK; k++)
+					{
+						auto KPt = [&] (const Seg &S, float e, const V3 &n, const V3 &out, int j) { V3 o = SP (S, s * e, 0); return o + out * KP[j][0] + n * KP[j][1]; };
+						V3 p0 = KPt (A, ea, nA, outA, k), p1 = KPt (A, ea, nA, outA, k + 1), q0 = KPt (B, eb, nB, outB, k), q1 = KPt (B, eb, nB, outB, k + 1);
+						V3 fn = nA * (KP[k + 1][0] - KP[k][0]) - outA * (KP[k + 1][1] - KP[k][1]);
+						if (dot (fn, nA) < 0) fn = -fn;
+						L.face (p0, q0, q1, p1, shade (k < 2 ? rgbScale (kc, 0.94f) : kc, fn), fn);
+					}
+				}
+				// the rail: an 8-sided round bar on the kerb, its stripes in turn (2 m each)
+				unsigned rc = T.rails[(i & 1)];
+				const int K = 8;
+				float rr = 0.36f;
+				V3 cA = SP (A, s * (ea - 0.3f), 0.45f + rr * 0.85f), cB = SP (B, s * (eb - 0.3f), 0.45f + rr * 0.85f);
+				for (int k = 0; k < K; k++)
+				{
+					float t0 = 2 * PI * (float) k / K, t1 = 2 * PI * (float) (k + 1) / K;
+					V3 d0A = nA * cosf (t0) + outA * sinf (t0), d1A = nA * cosf (t1) + outA * sinf (t1);
+					V3 d0B = nB * cosf (t0) + outB * sinf (t0), d1B = nB * cosf (t1) + outB * sinf (t1);
+					V3 fn = (d0A + d1A) * 0.5f;
+					L.face (cA + d0A * rr, cB + d0B * rr, cB + d1B * rr, cA + d1A * rr, shade (rc, fn), fn);
+				}
 
+			}
 		}
 		// the tunnel: a rounded arch with lighter ribs
 		if (tun)
@@ -220,6 +230,70 @@ struct World
 				V3 o = (p0 - A.c) * 0.1f, oq = (q0 - B.c) * 0.1f, o1 = (p1 - A.c) * 0.1f, oq1 = (q1 - B.c) * 0.1f;
 				L.face (p0 + o, q0 + oq, q1 + oq1, p1 + o1, shade (T.walls[0], -inward), -inward);
 			}
+		}
+	}
+	// the road profile, in the drawing's millimetres (x across, z up; the lanes' top at z 5): the top from the left
+	// border's outside to the right one's, then the flat underside. kind: 0 lane, 1 groove, 2 border (striped), 3 side
+	struct ProfPt { float x, z; unsigned char kind; };
+	static const ProfPt *roadProfile (int *n)
+	{
+		static const ProfPt P[] = {
+			{ -75.00f, 0.0f, 3 }, { -75.00f, 6.00f, 2 }, { -74.71f, 6.71f, 2 }, { -74.00f, 7.00f, 2 }, { -71.00f, 7.00f, 2 },
+			{ -70.29f, 6.71f, 2 }, { -70.00f, 6.00f, 2 },
+			{ -70.00f, 5.00f, 0 }, { -24.75f, 5.00f, 1 }, { -24.36f, 4.92f, 1 }, { -24.04f, 4.71f, 1 }, { -23.33f, 4.00f, 1 },
+			{ -22.63f, 4.71f, 1 }, { -22.30f, 4.92f, 1 }, { -21.92f, 5.00f, 0 },
+			{ 21.92f, 5.00f, 1 }, { 22.30f, 4.92f, 1 }, { 22.63f, 4.71f, 1 }, { 23.33f, 4.00f, 1 }, { 24.04f, 4.71f, 1 },
+			{ 24.36f, 4.92f, 1 }, { 24.75f, 5.00f, 0 },
+			{ 70.00f, 5.00f, 2 }, { 70.00f, 6.00f, 2 }, { 70.29f, 6.71f, 2 }, { 71.00f, 7.00f, 2 }, { 74.00f, 7.00f, 2 },
+			{ 74.71f, 6.71f, 2 }, { 75.00f, 6.00f, 3 }, { 75.00f, 0.0f, 3 },
+		};
+		*n = (int) (sizeof P / sizeof P[0]);
+		return P;
+	}
+	void profileRoad (const Track &T, int i, const Seg &A, const Seg &B, bool start, VList &L)
+	{
+		int n; const ProfPt *P = roadProfile (&n);
+		auto SP = [&] (const Seg &S, float l, float h) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, 0, 0); return p; };
+		// a drawing point -> (across, above the lanes) in metres at this segment's half width
+		auto M = [&] (const ProfPt &q, float half, float *l, float *h)
+		{
+			float inner = half - 0.5f, ax = fabsf (q.x);
+			float m = ax <= 70 ? ax / 70 * inner : inner + (ax - 70) * 0.1f;
+			*l = q.x < 0 ? -m : m; *h = (q.z - 5) * 0.1f;
+		};
+		float ha = A.w * 0.5f, hb = B.w * 0.5f;
+		unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
+		unsigned stripe = T.rails[(i & 1)];
+		for (int k = 0; k + 1 < n; k++)
+		{
+			float la0, ha0, la1, ha1, lb0, hb0, lb1, hb1;
+			M (P[k], ha, &la0, &ha0); M (P[k + 1], ha, &la1, &ha1); M (P[k], hb, &lb0, &hb0); M (P[k + 1], hb, &lb1, &hb1);
+			V3 a0 = SP (A, la0, ha0), a1 = SP (A, la1, ha1), b0 = SP (B, lb0, hb0), b1 = SP (B, lb1, hb1);
+			// the outward normal: the profile's edge turned left (up for the top, out for the sides)
+			float dl = la1 - la0, dh = ha1 - ha0;
+			V3 nm = A.u * dl - A.r * dh;
+			unsigned c;
+			switch (P[k].kind)
+			{
+			case 0: c = start ? (((int) ((la0 + la1) * 0.5f + 20) + (i == T.n - 1 ? 1 : 0)) & 1 ? 0xFFFFFF : 0x2A3350) : band; break;
+			case 1: c = rgbScale (band, 0.8f); break;
+			case 2: c = stripe; break;
+			default: c = rgbScale (T.road[0], 0.78f); break;
+			}
+			L.face (a0, a1, b1, b0, shade (c, nm), nm);
+		}
+		// the underside, flat
+		{
+			float l0, h0, l1, h1, m0, g0, m1, g1;
+			M (P[0], ha, &l0, &h0); M (P[n - 1], ha, &l1, &h1); M (P[0], hb, &m0, &g0); M (P[n - 1], hb, &m1, &g1);
+			V3 nm = -A.u;
+			L.face (SP (A, l0, h0), SP (A, l1, h1), SP (B, m1, g1), SP (B, m0, g0), shade (rgbScale (T.road[0], 0.7f), nm), nm);
+		}
+		// a speed pad's darker panel under its glowing chevrons
+		if (A.flags & F_BOOST)
+		{
+			float la = A.lane * ha, lb = A.lane * hb, hw = 2.3f;
+			L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
 		}
 	}
 	// the end of the road before / after a gap: a striped lip, glowing
