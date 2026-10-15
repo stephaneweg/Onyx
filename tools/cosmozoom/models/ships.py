@@ -9,6 +9,7 @@
 #   hull_pod     "Plasma Runner" two chunky pods ahead, a plasma arc, cables back to a small cockpit (measured on its GLB)
 #   hull_cube    "Ringmaster"    a torpedo, paint2 nose and tail cones, a big spinning ring on struts (measured on its GLB)
 #   hull_manta   "Manta Ray"     a flat slab, a faceted centre, a slate slot and canopy, boxy pods (measured on its GLB)
+#   hull_sprinter "Nebula Sprinter" a delta, green stripes, blue piping, a cockpit block, side pods, three engines (its GLB)
 # The wings: four small chamfered fins. The engines: slate nozzles with a soft glowing core.
 #
 # Conventions (the game's): metres, +Y up, +Z forward, the ship's left is +X. A hull's origin is the ship's centre,
@@ -739,6 +740,118 @@ def hull_manta():
                   [(0.30, 0.80), (-0.30, 0.80), (1.61, -0.60), (-1.61, -0.60)], -1.27, engine_y=0.665)
 
 
+# Nebula Sprinter, measured on the user's generated model (sections every 0.1 m): a yellow delta, a slate nose intake,
+# a raised deck between two rails, green drop faces, blue piping down the flanks and out along the wings (and under),
+# a slate keel, a slate canopy into a cockpit block and its ridge, three slate pods a side, three round engines
+_NS_TAB = [  # (z, deck y, deck half, rail y, rail x, shoulder x, y, crease x, y, under x, y, keel x, y, its foot x, y)
+    (2.34, 0.845, 0.19, 0.846, 0.205, 0.225, 0.838, 0.26, 0.80, 0.26, 0.505, 0.22, 0.497, 0.18, 0.495),
+    (2.00, 0.88, 0.23, 0.882, 0.25, 0.27, 0.87, 0.33, 0.81, 0.28, 0.485, 0.23, 0.468, 0.17, 0.465),
+    (1.60, 0.97, 0.25, 0.975, 0.31, 0.335, 0.905, 0.42, 0.84, 0.32, 0.45, 0.27, 0.40, 0.21, 0.375),
+    (1.42, 1.00, 0.245, 1.025, 0.34, 0.363, 0.918, 0.46, 0.855, 0.345, 0.438, 0.30, 0.33, 0.21, 0.215),
+    (1.00, 1.067, 0.25, 1.10, 0.377, 0.412, 0.949, 0.55, 0.896, 0.40, 0.424, 0.34, 0.368, 0.29, 0.222),
+    (0.55, 1.125, 0.27, 1.157, 0.383, 0.462, 0.966, 0.62, 0.925, 0.52, 0.455, 0.37, 0.33, 0.28, 0.257),
+    (0.12, 1.15, 0.25, 1.175, 0.37, 0.42, 1.05, 0.66, 0.945, 0.63, 0.47, 0.38, 0.30, 0.29, 0.27),
+    (0.02, 1.16, 0.25, 1.173, 0.36, 0.40, 1.08, 0.58, 0.985, 0.62, 0.465, 0.34, 0.29, 0.27, 0.268),
+    (-0.43, 1.10, 0.25, 1.10, 0.33, 0.45, 0.99, 0.575, 0.972, 0.60, 0.453, 0.35, 0.30, 0.27, 0.285),
+    (-0.80, 1.07, 0.25, 1.07, 0.33, 0.52, 0.975, 0.77, 0.916, 0.45, 0.40, 0.38, 0.31, 0.315, 0.288),
+    (-1.00, 1.05, 0.25, 1.05, 0.33, 0.555, 0.968, 0.88, 0.886, 0.44, 0.39, 0.40, 0.32, 0.35, 0.29),
+    (-1.22, 1.05, 0.25, 1.05, 0.33, 0.535, 0.99, 0.88, 0.897, 0.425, 0.392, 0.39, 0.323, 0.353, 0.296),
+    (-1.30, 1.05, 0.25, 1.05, 0.33, 0.535, 0.99, 0.56, 0.985, 0.425, 0.392, 0.39, 0.33, 0.353, 0.30)]
+_NS_RIM = [  # (z, the half width, the rim's top y, its bottom y)
+    (2.34, 0.32, 0.72, 0.605), (1.60, 0.54, 0.754, 0.594), (1.00, 0.73, 0.773, 0.58), (0.55, 0.86, 0.778, 0.58),
+    (-0.43, 1.53, 0.735, 0.578), (-1.22, 1.54, 0.72, 0.59), (-1.30, 0.62, 0.96, 0.44)]
+_NS_PIPE = [(2.34, 0.29), (1.80, 0.43), (1.42, 0.54), (1.00, 0.63), (0.55, 0.73), (0.12, 0.70), (0.02, 0.72),
+            (-0.43, 0.97), (-0.80, 1.25), (-1.00, 1.22), (-1.22, 1.17), (-1.30, 0.60)]     # (z, the piping's centre x)
+_NS_LABS = ["deck", "railin", "rail", "drop", "slope", "slope2", "pipe", "wing", "rim", "uwing", "upipe", "uslope",
+            "band", "keel", "bottom"]
+
+
+def _ns_ring(z):
+    Yd, Xd, Yr, Xr, Xs, Ys, Xm, Ym, Xu, Yu, Xk, Yk, Xb, Yb = _lerp_tab(_NS_TAB, z)
+    W, Yt, Yw = _lerp_tab(_NS_RIM, z)
+    pc = _lerp_tab(_NS_PIPE, z)[0]
+    p0, p1 = min(max(pc - 0.045, Xm + 0.01), W - 0.04), min(max(pc + 0.045, Xm + 0.03), W - 0.015)
+    top = lambda x: Ym + (Yt - Ym) * (x - Xm) / (W - Xm)
+    bot = lambda x: Yu + (Yw - Yu) * (x - Xu) / (W - Xu)
+    right = [(0.0, Yd), (Xd, Yd), (Xd + 0.015, Yr), (Xr, Yr), (Xs, Ys), (Xm, Ym), (p0, top(p0)), (p1, top(p1)),
+             (W, Yt), (W, Yw), (p1, bot(p1)), (p0, bot(p0)), (Xu, Yu), (Xk, Yk), (Xb, Yb), (0.0, Yb)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _ns_body():
+    def mat(i, j, c):
+        lab, z = (_NS_LABS + _NS_LABS[::-1])[j], c[2]
+        if i == 0:
+            return SL                                   # the intake's recess
+        if i == 1:
+            return "paint1"                             # its frame
+        if lab == "deck" and 0.5 < z < 1.9 or lab == "drop" and z < 1.9 or lab == "rail" and z < 1.0 \
+                or lab == "band" and -0.43 < z < 1.0 \
+                or lab in ("wing", "uwing") and 0.12 < z < 0.55 or lab == "slope2" and -1.22 < z < -1.0:
+            return "paint2"                             # the green stripes and patches
+        if lab in ("pipe", "upipe") and -1.22 < z < 2.0:
+            return "blue"
+        if lab in ("keel", "bottom") and z < 1.6 or lab == "band" and z < -0.43:
+            return SL                                   # the keel
+        return "paint1"
+    nose = _ns_ring(2.34)
+    inset = lambda z: [(x * 0.75, 0.67 + (y - 0.67) * 0.7, z) for x, y, _ in nose]
+    rings = [inset(2.27), inset(2.34)] + [_ns_ring(r[0]) for r in _NS_TAB]
+    return _shell(rings, mat)
+
+
+def _ns_deck(rows, sec, mat):
+    """A shell through rows (z, top y, ...): sec(top, ...) gives the right half of its section."""
+    return _shell([[(x, y, r[0]) for x, y in _nv_mirror(sec(*r[1:]))] for r in rows], mat)
+
+
+def _ns_pod(z0, z1):
+    ring = [(0.30, 1.27), (0.44, 1.315), (0.575, 1.15), (0.575, 1.09), (0.52, 0.99), (0.38, 1.05)]
+    sh = lambda z, k: [(0.45 + (x - 0.45) * k, 1.15 + (y - 1.15) * k, z) for x, y in ring]
+    return _shell([sh(z0, 0.82), sh(z0 - 0.025, 1.0), sh(z1 + 0.025, 1.0), sh(z1, 0.82)], SL)
+
+
+def hull_sprinter():
+    m = Model("hull_sprinter", "Nebula Sprinter: a yellow delta, a slate nose intake, green stripes and blue piping, "
+              "a slate keel, a slate canopy into a cockpit block, three slate pods a side, three round engines")
+    m.add(_ns_body())
+    # the canopy (opaque slate) rising back into the cockpit block, the block, the ridge on it (its front slate)
+    dk = lambda z: _lerp_tab(_NS_TAB, z)[0]
+    m.add(_ns_deck([(z, t, tw, bw, dk(z)) for z, t, tw, bw in
+                    ((0.80, 1.115, 0.10, 0.16), (0.65, 1.175, 0.165, 0.215), (0.45, 1.29, 0.175, 0.225),
+                     (0.25, 1.37, 0.18, 0.235), (0.05, 1.405, 0.19, 0.245), (-0.05, 1.41, 0.19, 0.245))],
+                   lambda t, tw, bw, yd: [(0.0, t), (tw, t), (bw, yd - 0.005), (bw, yd - 0.06), (0.0, yd - 0.06)], SL))
+    m.add(_ns_deck([(0.02, 1.47), (-0.90, 1.47), (-1.22, 1.415), (-1.29, 1.40)],
+                   lambda t: [(0.0, t), (0.17, t), (0.21, t - 0.02), (0.42, 1.06), (0.56, 0.975), (0.56, 0.92),
+                              (0.0, 0.92)], "paint1"))
+    m.add(_ns_deck([(-0.12, 1.60), (-0.16, 1.625), (-0.32, 1.625), (-0.65, 1.625), (-0.80, 1.54), (-0.87, 1.475)],
+                   lambda t: [(0.0, t), (0.14, t), (0.175, min(t, 1.48)), (0.175, 1.44), (0.0, 1.44)],
+                   lambda i, j, c: SL if i <= 1 else "paint1"))
+    for k in range(3):                                  # the pods
+        z0 = -0.335 - 0.26 * k
+        for sx in (1, -1):
+            m.add(_ns_pod(z0, z0 - 0.24).sc(sx, 1, 1) if sx < 0 else _ns_pod(z0, z0 - 0.24))
+    # the engines (decagons, their flats' mean on the circle): the top one slate, the two lower ones out of paint1
+    # collars; slate exits recessed
+    top = [(0.0, -1.28), (0.25, -1.28), (0.25, -1.70), (0.23, -1.82), (0.14, -1.82), (0.12, -1.76), (0.0, -1.76)]
+    k = 1.03
+    m.add(revolve_z([(r * k, z) for r, z in top], 10, SL, a0=PI / 10).tr(0.0, 1.11, 0.0))
+    low = [(0.0, -1.28), (0.29, -1.28), (0.29, -1.46), (0.225, -1.50), (0.225, -1.74), (0.21, -1.86), (0.13, -1.86),
+           (0.11, -1.80), (0.0, -1.80)]
+    for sx in (1, -1):
+        m.add(revolve_z([(r * k, z) for r, z in low], 10, lambda i, j, c: "paint1" if i <= 2 else SL,
+                        a0=PI / 10).tr(sx * 0.24, 0.765, 0.0))
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave its three exits;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 0.0, 1.11, -1.83)
+    m.socket("flame2", 0.24, 0.765, -1.87)
+    m.socket("flame3", -0.24, 0.765, -1.87)
+    return finish(m, (1.53, 0.655, -0.85), (0.0, 1.15, 0.30),
+                  [(0.30, 1.30), (-0.30, 1.30), (0.90, -1.00), (-0.90, -1.00)], -1.30, engine_y=0.88)
+
+
 # (the "No Fins" wing has no model: the game and the previews draw nothing for it -- parts.h, WINGS[4])
 
 
@@ -906,6 +1019,7 @@ ALL = {
     "hull_pod": hull_pod,
     "hull_cube": hull_cube,
     "hull_manta": hull_manta,
+    "hull_sprinter": hull_sprinter,
     "wing_stubby": wing_stubby,
     "wing_ray": wing_ray,
     "wing_solar": wing_solar,
