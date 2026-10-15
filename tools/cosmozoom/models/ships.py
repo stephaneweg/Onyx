@@ -106,12 +106,12 @@ def pad(x, z, r=0.15, h=0.16):
     return revolve(prof, 6, "darkgrey", a0=PI / 6).tr(x, 0, z)
 
 
-def finish(m, wing, pilot, pad_pts, z_back, pad_r=0.15):
+def finish(m, wing, pilot, pad_pts, z_back, pad_r=0.15, engine_y=ENGINE_Y):
     for k, (x, z) in enumerate(pad_pts):
         # (the pads are not modelled any more: the game draws their glow at these points, under the hull)
         m.socket("pad%d" % (k + 1), x, 0.0, z)
     m.socket("wing", *wing)
-    m.socket("engine", 0.0, ENGINE_Y, z_back)
+    m.socket("engine", 0.0, engine_y, z_back)
     m.socket("pilot", *pilot)
     return m
 
@@ -147,45 +147,80 @@ def canopy(z0, z1, ybot, top, w, peak=0.35, mat="tint", sts=4):
     return ch_loft(st, mat, c0=0.05, c1=0.05)
 
 
+def _lerp_tab(tab, z):
+    """Linear interpolation in a table of rows (z, values...) sorted by decreasing z."""
+    for r0, r1 in zip(tab, tab[1:]):
+        if r1[0] <= z <= r0[0]:
+            t = (z - r0[0]) / (r1[0] - r0[0]) if r1[0] != r0[0] else 0.0
+            return [u + (v - u) * t for u, v in zip(r0[1:], r1[1:])]
+    return list((tab[0] if z > tab[0][0] else tab[-1])[1:])
+
+
+def _shell(rings, mat, cap1=True):
+    """A loft whose two end caps both face outward (loft's own first cap faces in); cap1 False: the back left open."""
+    p = loft(rings, mat, cap0=False, cap1=False, orient=False)
+    mf = mat if callable(mat) else (lambda i, j, c: mat)
+    r0, r1 = np.array(rings[0], float), np.array(rings[-1], float)
+    fan(p, r0[::-1], mf(0, 0, r0.mean(axis=0)))
+    n = len(p.f)
+    fan(p, r1, mf(len(rings) - 1, 0, r1.mean(axis=0)))
+    p.orient()
+    if not cap1:
+        p.f = p.f[:n]
+    return p
+
+
 # (the planforms measured on the user's top view of the six ships, the heights on their side view, 2026-10-15)
 def hull_needle():
-    m = Model("hull_needle", "Nova Streak: a faceted arrowhead widest near its back, a blunt paint2 nose, white pinstripes")
-    # (z, half width, bottom, top): the top a ridge, the bottom flat
-    prof = [(2.25, 0.31, 0.36, 0.64), (1.37, 0.49, 0.31, 0.76), (0.0, 0.92, 0.27, 0.90), (-1.46, 1.385, 0.17, 1.10),
-            (-1.84, 1.00, 0.15, 1.08)]
-    slope = [0.0, 0.40, 0.45, 0.50, 0.55, 1.0]        # from the shoulder (0) up to the ridge (1)
-    rings, labs = [], []
-    for z, w, yb, yt in prof[::-1]:
-        h = yt - yb
-        sh = (w * 0.95, yb + 0.32 * h)
-        rt = (w * 0.15, yt)
-        r, lab = [(w, yb), sh], ["side", "slope0"]
-        for k in range(1, len(slope) - 1):
-            t = slope[k]
-            r.append((sh[0] + (rt[0] - sh[0]) * t, sh[1] + (rt[1] - sh[1]) * t)); lab.append("slope%d" % k)
-        r.append(rt); lab.append("ridge")
-        left = [(-x, y) for x, y in r[::-1]]
-        llab = ["slope%d" % (len(slope) - 2 - k) for k in range(len(slope) - 1)] + ["side", "bottom"]
-        ring = r + left
-        labs = lab + llab
+    m = Model("hull_needle", "Nova Streak: a flat delta widest near its back, a paint2 nose block, a flat deck with a paint2 "
+              "panel and white pinstripes, a slate canopy wedge under a raised rear cowl")
+    # (z, half width W, bottom, knife edge, deck half D, deck y): the planform and the heights measured on the
+    # reference; the deck rises from the nose to the cowl
+    key = [(2.25, 0.28, 0.30, 0.36, 0.40, 0.50), (1.52, 0.60, 0.24, 0.33, 0.40, 0.62),
+           (-0.95, 1.52, 0.20, 0.33, 0.40, 0.86), (-1.50, 1.56, 0.20, 0.33, 0.40, 0.86)]
+    sx = [0.60, 0.555, 0.505, 0.46]                   # the two pinstripes (outer, inner), from the outer edge in
+    rings = []
+    for z in (2.25, 1.52, 1.34, 0.37, -0.95):
+        W, yb, ye, D, yd = _lerp_tab(key, z)
+        f = min(1.0, W / 0.62)                        # the nose: everything scaled in
+        D, P = D * f, 0.20 * f
+        sl = lambda x: ye + (yd - ye) * (W - x) / (W - D)
+        right = [(max(W * 0.7, W - 0.30), yb), (W, ye)] + [(x * f, sl(x * f)) for x in sx] + [(D, yd), (P, yd)]
+        ring = right + [(0.0, yd)] + [(-x, y) for x, y in right[::-1]]
         rings.append([(x, y, z) for x, y in ring])
+    labs = ["bevel", "slope", "stripe", "slope", "stripe", "slope", "deck", "mid",
+            "mid", "deck", "slope", "stripe", "slope", "stripe", "slope", "bevel", "bottom"]
 
     def mat(i, j, c):
         lab = labs[j % len(labs)]
-        if c[2] > 1.37:
-            return "paint2"                         # the blunt nose
-        if lab == "ridge" and 0.22 < c[2] < 1.37:
-            return "paint2"                         # the panel on the ridge
-        if lab in ("slope1", "slope3") and -1.0 < c[2] < 1.37:
-            return "white"                          # the pinstripes
+        if c[2] > 1.52:
+            return "paint2"                         # the nose block
         if lab == "bottom":
             return SL
+        if lab == "mid" and 0.37 < c[2] < 1.34:
+            return "paint2"                         # the panel on the deck
+        if lab == "stripe":
+            return "white"                          # the pinstripes
         return "paint1"
-    m.add(loft(rings, mat))
-    m.add(canopy(-0.95, 0.00, 0.86, 1.22, 0.30, 0.40))
-    m.add(ch_box(-0.20, 0.20, 0.95, 1.16, -1.86, -0.95, 0.06, "paint1"))
-    return finish(m, (1.20, 0.30, -1.30), (0.0, 0.76, -0.45),
-                  [(0.30, 1.40), (-0.30, 1.40), (0.90, -1.30), (-0.90, -1.30)], -1.84)
+    m.add(_shell(rings, mat, cap1=False))
+    # the rear cowl: the deck steps up at z -0.95 (its front cap the step), its sides fall to the knife edges, the
+    # back's corners chamfered in to the nozzle
+    cw = []
+    for z, W, ye, D, yd, yc, zt in ((-0.95, 1.52, 0.33, 0.58, 1.12, 1.22, -0.84), (-1.50, 1.56, 0.33, 0.58, 1.14, 1.24, -1.50),
+                                    (-1.86, 0.58, 0.38, 0.46, 1.08, 1.18, -1.86)):
+        right = [(max(W * 0.7, W - 0.30), 0.20, z), (W, ye, z), (D, yd, zt)]
+        cw.append(right + [(0.0, yc, zt + (zt - z) * 0.8)] + [(-x, y, zz) for x, y, zz in right[::-1]])
+    m.add(_shell(cw, lambda i, j, c: SL if j == 6 else "paint1"))
+    # the canopy: a slate wedge from the deck rising back under the cowl's front edge
+    cr = []
+    for z, top, w in ((0.08, 0.77, 0.22), (-0.30, 1.07, 0.28), (-1.00, 1.16, 0.28)):
+        yb = _lerp_tab(key, z)[4] - 0.06
+        cr.append([(w, yb, z), (w, top - 0.08, z), (w - 0.08, top, z), (-w + 0.08, top, z), (-w, top - 0.08, z),
+                   (-w, yb, z)])
+    m.add(_shell(cr, "tint"))
+    return finish(m, (1.30, 0.36, -1.20), (0.0, 0.52, -0.55),
+                  [(0.30, 1.40), (-0.30, 1.40), (0.90, -1.30), (-0.90, -1.30)], -1.86,
+                  engine_y=0.70)       # (the tail nozzle in the middle of the cowl's back face)
 
 
 def hull_comet():
