@@ -1,0 +1,81 @@
+# Cosmo Zoom! -- Mech Foundry: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Mech Foundry
+name_fr    = Fonderie Méca
+time       = dusk
+sky        = 3A2A7A FF8A5A
+ground     = 3A2A4A 433052
+groundkind = city
+road       = 4A5A8A 52628F
+rails      = FF8A1F 22E6FF
+walls      = C9B8A0 FFE14D
+neon       = FFE14D FF8A1F 22E6FF
+city       = 0.8
+width      = 15
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 1596 m, 45 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 0.0 45.9 0.0
+p = 0.0 91.8 0.0
+p = 0.0 137.7 0.0
+p = -3.8 151.7 0.0
+p = -14.0 161.9 0.0
+p = -28.0 165.7 0.0
+p = -73.6 165.7 0.0
+p = -119.1 165.7 0.0
+p = -133.1 169.4 0.0
+p = -143.4 179.7 0.0
+p = -147.1 193.7 0.0
+p = -147.1 251.3 0.0
+p = -150.9 265.3 0.0
+p = -161.1 275.6 0.0
+p = -175.1 279.3 0.0
+p = -228.7 279.3 0.0
+p = -282.3 279.3 0.0
+p = -335.9 279.3 0.0
+p = -389.5 279.3 0.0
+p = -424.5 269.9 1.2
+p = -450.1 244.3 3.8
+p = -459.5 209.3 6.0
+p = -459.5 157.4 8.1
+p = -459.5 105.6 10.3
+p = -459.5 53.7 12.2
+p = -459.5 1.9 13.5
+p = -459.5 -50.0 14.0
+p = -455.5 -65.0 14.0
+p = -444.5 -76.0 14.0
+p = -429.5 -80.0 14.0
+p = -370.6 -80.0 8.0
+p = -327.7 -80.0 4.5
+p = -284.7 -80.0 1.3
+p = -241.8 -80.0 0.0
+p = -219.3 -86.0 0.0
+p = -202.8 -102.5 0.0
+p = -186.4 -119.0 0.0
+p = -163.9 -125.0 0.0
+p = -109.4 -125.0 0.0
+p = -55.0 -125.0 0.0
+p = -27.5 -117.6 0.0
+p = -7.4 -97.5 0.0
+p = -0.0 -70.0 0.0
+p = 0.0 -35.0 0.0
+
+# the features (t: 0..1 of the lap)
+boost = 0.038 0.00
+items = 0.139
+boost = 0.293 0.50
+boost = 0.293 -0.50
+items = 0.490
+tunnel = 0.688 0.807
+jump = 0.862
+
+# the props
+prop = kk_cargo_stack both 14 1.5 0.834 0.903
+prop = kk_water_storage left 45 1.3 0.262 0.387
+scatter = kk_structure_tall 14 1.6
+scatter = kk_cargo_stack 30 2
+scatter = antenna_mast 8 1
+decor = neon_arch -389.5 -80.0 10.1 -270 1.00
