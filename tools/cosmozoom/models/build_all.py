@@ -25,11 +25,11 @@ for opt in ("items", "city", "nature", "props"):
 
 # The pilots' own ships (DESIGN.md 5) and colours, for the sheets.
 CREW = [   # (pilot, hull, wing, engine, (paint1, paint2)): the concept sheet's six ships, then two more
-    ("pilot_bolt", "hull_needle", "wing_swept", "engine_ion", ("#E63ACB", "#FF8A1F")),
+    ("pilot_bolt", "hull_needle", "wing_solar", "engine_ion", ("#E63ACB", "#FF8A1F")),
     ("pilot_bloop", "hull_comet", "wing_stubby", "engine_pods", ("#3FD7EE", "#9DEFFA")),
     ("pilot_bruno", "hull_whale", "wing_swept", "engine_twin", ("#FF8A1F", "#FFD23F")),
     ("pilot_zib", "hull_pod", "wing_stubby", "engine_star", ("#9BE03A", "#22C3B5")),
-    ("pilot_kiki", "hull_cube", "wing_swept", "engine_ring", ("#FFD23F", "#E63ACB")),
+    ("pilot_kiki", "hull_cube", "wing_stubby", "engine_ring", ("#FFD23F", "#E63ACB")),
     ("pilot_pepper", "hull_manta", "wing_solar", "engine_ion", ("#FF8A1F", "#22C3B5")),
     ("pilot_beep", "hull_cube", "wing_ray", "engine_pods", ("#22C3B5", "#FFF6E0")),
     ("pilot_squiggle", "hull_needle", "wing_ray", "engine_star", ("#8C52FF", "#FF4F9A")),

@@ -75,7 +75,7 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
 - **World**: **rounded pastel capsule towers** (pill-shaped buildings with stripes and caps), **floating grassy
   islands** with round low-poly trees and boulders, little arched bridges, and distant floating rocks.
 - **Ships**: the same six ships (§4.1), after the user's **reference sheet of the six ships** (2026-10-15):
-  **chamfered** low-poly — flat faces and crisp 45° bevels rather than round ones — vivid solid paint, opaque
+  **chamfered** low-poly — flat faces and crisp 45° bevels rather than round ones — vivid solid paint, wings in the body's colour (they read as part of the hull), opaque
   **slate-navy canopies, intakes and nozzles**, soft glowing exhaust plumes. Nova Streak a faceted arrowhead,
   Comet Chaser a narrow fuselage between two long boxes, Star Drifter big nacelles with lattice booms ahead,
   Plasma Runner two chunky octagonal pods pulling a little cockpit on glowing cables, Ringmaster a torpedo inside

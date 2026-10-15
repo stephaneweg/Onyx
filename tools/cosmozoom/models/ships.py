@@ -156,7 +156,7 @@ def hull_needle():
     rings = []
     for z, w, h in prof:
         rings.append([(w, Y0 + 0.04, z), (w, Y0 + 0.13 * h / 0.44, z), (w * 0.86, Y0 + h * 0.48, z), (w * 0.82, Y0 + h * 0.54, z),
-                      (w * 0.36, Y0 + h, z), (-w * 0.36, Y0 + h, z), (-w * 0.82, Y0 + h * 0.54, z), (-w * 0.86, Y0 + h * 0.48, z),
+                      (w * 0.14, Y0 + h, z), (-w * 0.14, Y0 + h, z), (-w * 0.82, Y0 + h * 0.54, z), (-w * 0.86, Y0 + h * 0.48, z),
                       (-w, Y0 + 0.13 * h / 0.44, z), (-w, Y0 + 0.04, z), (-w * 0.9, Y0, z), (w * 0.9, Y0, z)])
 
     def mat(i, j, c):
@@ -230,7 +230,6 @@ def hull_pod():
         return "paint1"
     m.add(ch_loft(sts, mat, c0=0.08, c1=0.04))
     m.add(canopy(-0.55, 0.55, 0.72, 1.06, 0.27, 0.40))
-    m.add(ch_box(-0.44, 0.44, 0.38, 0.48, -0.25, 0.35, 0.03, "paint2"))   # the band round its middle
     return finish(m, (0.40, 0.50, -0.40), (0.0, 0.62, -0.05),
                   [(0.26, 0.60), (-0.26, 0.60), (0.28, -0.60), (-0.28, -0.60)], -0.88, 0.13)
 
@@ -272,7 +271,7 @@ def hull_manta():
     # the raised centre and its front intake
     mid = [S(-1.15, 0.48, 0.16, 0.08, 0, 0.52), S(0.40, 0.46, 0.16, 0.08, 0, 0.52), S(1.15, 0.30, 0.10, 0.06, 0, 0.44)]
     m.add(ch_loft(mid, lambda lab, i, c: SL if lab == "bottom" else "paint1", c0=0.07, c1=0.06))
-    m.add(ch_box(-0.55, 0.55, 0.26, 0.40, 1.08, 1.30, 0.03, SL))
+    m.add(ch_box(-0.24, 0.24, 0.40, 0.50, 1.10, 1.24, 0.02, SL))
     m.add(canopy(-0.70, 0.55, 0.62, 0.98, 0.28, 0.42))
     for sx in (1, -1):
         m.add(tip_pod(sx * 1.66, 0.38, -1.50, 0.35, 0.18, 0.20))
@@ -282,7 +281,7 @@ def hull_manta():
 
 
 # ---- the wings: small chamfered fins -------------------------------------------------------------------------------
-def flat_fin(outline_xz, thick, mat="paint2", y=0.0, steps=1):
+def flat_fin(outline_xz, thick, mat="paint1", y=0.0, steps=1):
     """A fin lying flat: an outline (x, z) extruded in Y, its rim chamfered."""
     f = soft_fin(round_corners(outline_xz, 1, 0.12, 1), thick, mat, steps)
     f.v = np.stack([f.v[:, 0], f.v[:, 2] + y, f.v[:, 1]], axis=1)
@@ -324,7 +323,7 @@ def engine_ion():
 
 def engine_pods():
     m = Model("engine_pods", "Side Pods: two long chamfered boxes beside the hull, slate intakes, cyan cores")
-    X, Y, W, H, Z0, Z1 = 0.98, -0.02, 0.32, 0.32, 2.35, -0.30
+    X, Y, W, H, Z0, Z1 = 0.98, 0.04, 0.33, 0.40, 2.05, -0.40
     for sx in (1, -1):
         x = sx * X
         m.add(ch_box(x - W, x + W, Y - H, Y + H, Z1, Z0, 0.09, "paint1", top=(0.5,)))
@@ -389,20 +388,22 @@ def engine_twin():
 
 
 def oct_pod(x, y, z0, z1, w, mat="paint1", band="paint2"):
-    """An octagonal chamfered pod from z0 (back) to z1 (front), a band near its front."""
+    """An octagonal chamfered pod from z0 (back) to z1 (front), a groove (band) round its back third."""
     c = w * 0.38
-    p = ch_box(x - w, x + w, y - w, y + w, z0, z1, c, mat)
-    zb = z1 - (z1 - z0) * 0.30
-    p.add(ch_box(x - w - 0.02, x + w + 0.02, y - w - 0.02, y + w + 0.02, zb - 0.08, zb + 0.08, c, band))
+    zb = z0 + (z1 - z0) * 0.30
+    g = 0.05
+    sts = [S(z0 + c * 0.5, w, w, c, x, y), S(zb - 0.08, w, w, c, x, y), S(zb - 0.07, w - g, w - g, c - g * 0.4, x, y),
+           S(zb + 0.07, w - g, w - g, c - g * 0.4, x, y), S(zb + 0.08, w, w, c, x, y), S(z1 - c * 0.5, w, w, c, x, y)]
+    p = ch_loft(sts, lambda lab, i, cc: band if 2 <= i <= 3 else mat, c0=c * 0.5, c1=c * 0.5)
     return p
 
 
 def engine_star():
     m = Model("engine_star", "Plasma Pods: two chunky octagonal pods out ahead, pulling the cockpit on glowing cables")
-    X, Y, Z0, Z1, W = 1.10, 0.02, 4.10, 2.50, 0.38
+    X, Y, Z0, Z1, W = 1.10, 0.02, 4.00, 2.60, 0.40
     for sx in (1, -1):
         x = sx * X
-        m.add(oct_pod(x, Y, Z1, Z0, W))
+        m.add(oct_pod(x, Y, Z1, Z0, W, band="paint1"))
         m.add(ch_box(x - W * 0.72, x + W * 0.72, Y - W * 0.72, Y + W * 0.72, Z0 - 0.06, Z0 + 0.06, W * 0.25, SL))
         prof = [(W * 0.70, Z1 + 0.04), (W * 0.62, Z1 - 0.10), (W * 0.42, Z1 - 0.38), (0.0, Z1 - 0.38)]
         m.add(revolve_z([(0.0, Z1 + 0.04)] + prof, 8, lambda i, j, c: "purple_glow" if i >= 3 else SL, a0=PI / 8).tr(x, Y, 0))
@@ -419,10 +420,10 @@ def engine_star():
 
 def engine_ring():
     m = Model("engine_ring", "Ring Drive: a big chamfered ring round the hull's back, on four struts")
-    cy, cz, R, r = 0.18, 0.75, 1.00, 0.12
+    cy, cz, R, r = 0.20, 1.05, 0.95, 0.16
     m.add(soft_cyl(0.30, -0.25, 0.10, 0.08, 8, "paint2", steps=1))
     m.add(nozzle(0.26, -0.50, -0.20, "magenta_glow", 0, 0, 8, mat=SL))
-    ring = torus(R, r, 24, 6, "paint1").rot("x", 90).tr(0, cy, cz)
+    ring = torus(R, r, 24, 8, "paint1").rot("x", 90).tr(0, cy, cz)
     for k in range(4):
         a = PI / 4 + PI / 2 * k
         ring.add(tube([(0.38 * math.cos(a), cy + 0.38 * math.sin(a), cz), ((R - 0.06) * math.cos(a), cy + (R - 0.06) * math.sin(a), cz)],
