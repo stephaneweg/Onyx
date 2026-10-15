@@ -6,7 +6,7 @@
 #   hull_needle  "Nova Streak"   a faceted arrowhead, a paint2 nose tip and side panels, white pinstripes
 #   hull_comet   "Comet Chaser"  a narrow fuselage, a stepped cabin, its two pods on struts (measured on its GLB)
 #   hull_whale   "Star Drifter"  a long fuselage, a paint2 stripe, banded nacelles, lattice booms (measured on its GLB)
-#   hull_pod     "Plasma Runner" a small cockpit block (+ engine_star: two chunky octagonal pods ahead, on cables)
+#   hull_pod     "Plasma Runner" two chunky pods ahead, a plasma arc, cables back to a small cockpit (measured on its GLB)
 #   hull_cube    "Ringmaster"    an octagonal torpedo, a paint2 nose cone (+ engine_ring: a big ring round its back)
 #   hull_manta   "Manta Ray"     a wide flat delta, a slate intake in front, boxy pods at its tips
 # The wings: four small chamfered fins. The engines: slate nozzles with a soft glowing core.
@@ -345,6 +345,12 @@ def hull_comet():
                                    (-w, y, z1 - c), (c - w, y, z1), (w - c, y, z1)]
     m.add(_shell([fin(0.20, 0.92, 1.42, 0.11, 0.03), fin(0.50, 1.05, 1.31, 0.09, 0.03)],
                  lambda i, j, c: SL if c[1] < 0.21 else "paint1"))
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave its own exhausts;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 1.240, 0.730, -1.600)
+    m.socket("flame2", -1.240, 0.730, -1.600)
     return finish(m, (1.54, 0.80, -0.80), (0.0, 0.82, -0.20),
                   [(0.22, 1.75), (-0.22, 1.75), (1.24, -0.50), (-1.24, -0.50)], -1.84, engine_y=0.93)
 
@@ -474,22 +480,105 @@ def hull_whale():
     leg = lambda y, w, z0, z1: [(w, y, z0), (w, y, z1), (-w, y, z1), (-w, y, z0)]
     m.add(_shell([leg(0.20, 0.08, 0.77, 1.175), leg(0.24, 0.08, 0.77, 1.175), leg(0.33, 0.05, 0.885, 1.057),
                   leg(0.60, 0.05, 0.885, 1.057)], "paint1"))
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave its own exhausts;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 1.255, 0.720, -1.900)
+    m.socket("flame2", -1.255, 0.720, -1.900)
     return finish(m, (1.57, 0.72, -0.85), (0.0, 0.76, -0.48),
                   [(0.30, 1.60), (-0.30, 1.60), (1.25, -0.90), (-1.25, -0.90)], -1.76, engine_y=0.78)
 
 
-def hull_pod():
-    m = Model("hull_pod", "Plasma Runner: a small chamfered cockpit block, a slate canopy and front")
-    sts = [S(-0.55, 0.37, 0.25, 0.10, 0, 0.55), S(0.30, 0.37, 0.25, 0.10, 0, 0.55), S(0.54, 0.30, 0.19, 0.08, 0, 0.53)]
+# Plasma Runner, measured on the user's generated model (sections every 0.04 m): two chunky octagonal pods in front
+# (a slate intake recessed in a frame, a slate groove, a collar, a slate exhaust cone), a small cockpit block far
+# behind (side ears, a slate canopy, a raised rear block), two glowing cables back to it, a plasma arc between the pods
+_PR_PX, _PR_PY = 0.98, 0.535          # the +X pod's axis
+_PR_CK = [(-0.72, 0.175), (-1.10, 0.272), (-1.30, 0.286), (-1.46, 0.284), (-1.62, 0.266), (-1.83, 0.222)]  # (z, half w)
+_PR_ARC_X = (-0.64, -0.48, -0.32, -0.16, 0.0, 0.16, 0.32, 0.48, 0.64)
+_PR_ARC = [  # the plasma arc's four strands: (their y, their z) at _PR_ARC_X
+    ((0.56, 0.62, 0.68, 0.72, 0.70, 0.725, 0.72, 0.64, 0.56), (1.33, 1.36, 1.41, 1.43, 1.40, 1.42, 1.38, 1.36, 1.33)),
+    ((0.54, 0.60, 0.65, 0.62, 0.65, 0.62, 0.64, 0.66, 0.54), (1.33, 1.40, 1.38, 1.42, 1.39, 1.43, 1.37, 1.39, 1.33)),
+    ((0.53, 0.56, 0.52, 0.55, 0.53, 0.55, 0.47, 0.53, 0.53), (1.30, 1.27, 1.31, 1.28, 1.32, 1.28, 1.31, 1.27, 1.30)),
+    ((0.51, 0.47, 0.42, 0.40, 0.45, 0.41, 0.40, 0.47, 0.51), (1.28, 1.30, 1.26, 1.24, 1.29, 1.25, 1.28, 1.25, 1.28))]
 
-    def mat(lab, i, c):
-        if lab == "bottom" or c[2] > 0.52:
-            return SL
-        return "paint1"
-    m.add(ch_loft(sts, mat, c0=0.08, c1=0.06))
-    m.add(canopy(-0.30, 0.40, 0.72, 0.98, 0.22, 0.40))
-    return finish(m, (0.37, 0.50, -0.30), (0.0, 0.54, 0.05),
-                  [(0.24, 0.35), (-0.24, 0.35), (0.24, -0.35), (-0.24, -0.35)], -0.55, 0.13)
+
+def _pr_pod(sx):
+    """A pod: chamfered octagonal sections, the slate intake recessed in its front frame, a slate groove before the
+    collar, the round slate exhaust cone (8 sides) with a lip round its hollow back."""
+    r = lambda z, w, h, ch: [(sx * x, y, z) for x, y, _ in oct_ring(_PR_PX, _PR_PY, z, w, h, ch)]
+    body = (0.315, 0.33, 0.095)
+    rings = [r(2.37, 0.215, 0.235, 0.06), r(2.44, 0.215, 0.235, 0.06), r(2.44, 0.263, 0.278, 0.07), r(2.31, *body),
+             r(1.09, *body), r(1.075, 0.262, 0.285, 0.07), r(1.00, 0.262, 0.285, 0.07), r(0.995, 0.303, 0.323, 0.09),
+             r(0.79, 0.303, 0.323, 0.09), r(0.778, 0.272, 0.287, 0.08)]
+    p = _shell(rings, lambda i, j, c: SL if i in (0, 5) else "paint1")
+    prof = [(0.0, 0.80), (0.29, 0.80), (0.29, 0.77), (0.215, 0.29), (0.19, 0.22), (0.13, 0.22), (0.12, 0.28),
+            (0.0, 0.28)]
+    p.add(revolve_z([(q * 1.04, z) for q, z in prof], 8, SL, a0=PI / 8).tr(sx * 0.972, 0.52, 0))
+    # the arc's emitter: a glowing plate on the inner face
+    e = lambda x: [(sx * x, y, z) for z, y, _ in oct_ring(1.305, 0.535, 0.0, 0.075, 0.085, 0.025)]
+    p.add(_shell([e(0.64), e(0.68)], "pink_glow"))
+    return p
+
+
+def _pr_ck(z, top=0.79, bot=0.555):
+    w = _lerp_tab(_PR_CK, z)[0]
+    right = [(0.0, top), (w - 0.02, top), (w, top - 0.02), (w, bot + 0.02), (w - 0.02, bot), (0.0, bot)]
+    return [(x, y, z) for x, y in _nv_mirror(right)]
+
+
+def _pr_ear(sx):
+    """A side ear on the cockpit: a chamfered block, its back cut in, a slate socket for the cable in its front."""
+    def r(z, xo, x0=0.25, y0=0.567, y1=0.734, c=0.02):
+        pts = [(x0, y1), (xo - c, y1), (xo, y1 - c), (xo, y0 + c), (xo - c, y0), (x0, y0)]
+        return [(sx * x, y, z) for x, y in pts]
+    hole = lambda z: r(z, 0.36, 0.30, 0.615, 0.69, 0.015)
+    rings = [hole(-1.115), hole(-1.085), r(-1.085, 0.35), r(-1.115, 0.378), r(-1.46, 0.378), r(-1.62, 0.27)]
+    return _shell(rings, lambda i, j, c: SL if i == 0 else "paint1")
+
+
+def _pr_strand(pts, r=0.016):
+    return tube([(x, y, z) for x, y, z in pts], r, 4, "pink_glow")
+
+
+def hull_pod():
+    m = Model("hull_pod", "Plasma Runner: two chunky octagonal pods with slate intakes, grooves and exhaust cones, a "
+              "plasma arc between them, glowing cables back to a small cockpit with side ears and a slate canopy")
+    for sx in (1, -1):
+        m.add(_pr_pod(sx))
+        m.add(_pr_ear(sx))
+        # the cable: from the collar's back, along the cone's top, down to the ear's socket
+        m.add(tube([(sx * x, y, z) for x, y, z in ((0.845, 0.765, 0.80), (0.80, 0.735, 0.50), (0.70, 0.712, 0.10),
+                                                   (0.585, 0.692, -0.20), (0.475, 0.672, -0.50),
+                                                   (0.39, 0.662, -0.75), (0.345, 0.655, -1.00),
+                                                   (0.33, 0.652, -1.12))], 0.028, 5, "pink_glow"))
+    # the cockpit: the slab, the canopy, the raised rear block
+    sl = [_pr_ck(z) for z in (-0.72, -1.10, -1.30, -1.46, -1.62, -1.83)]
+    front = [(x * 0.9, 0.567 + (y - 0.555) * 0.9, -0.70) for x, y, _ in sl[0]]
+    back = [(x * 0.85, 0.567 + (y - 0.555) * 0.9, -1.86) for x, y, _ in _pr_ck(-1.83)]
+    m.add(_shell([front] + sl + [back], "paint1"))
+    cr = []
+    for z, top, sill in ((-0.965, 0.80, 0.80), (-1.03, 0.848, 0.845), (-1.10, 0.90, 0.855), (-1.40, 0.907, 0.855)):
+        right = [(0.0, top), (0.141, top), (0.152, sill), (0.162, 0.80), (0.162, 0.77), (0.0, 0.77)]
+        cr.append([(x, y, z) for x, y in _nv_mirror(right)])
+    m.add(_shell(cr, lambda i, j, c: "paint1" if j in (2, 7) else "tint"))   # (its lime sills)
+    rb = []
+    for z, top, tw, bw in ((-1.385, 0.942, 0.164, 0.196), (-1.52, 0.942, 0.160, 0.182), (-1.62, 0.89, 0.142, 0.172),
+                           (-1.70, 0.84, 0.125, 0.162), (-1.78, 0.796, 0.105, 0.15)):
+        right = [(0.0, top), (tw, top), (bw, 0.80), (bw, 0.77), (0.0, 0.77)]
+        rb.append([(x, y, z) for x, y in _nv_mirror(right)])
+    m.add(_shell(rb, "paint1"))
+    # the plasma arc: four zigzag strands between the emitters
+    for ys, zs in _PR_ARC:
+        m.add(_pr_strand(zip(_PR_ARC_X, ys, zs)))
+    # its engines are built in: the engine part is not drawn (its stats count), the flames leave its own exhausts;
+    # the canopy is opaque, no pilot drawn
+    m.socket("noengine", 0.0, 0.0, 0.0)
+    m.socket("nopilot", 0.0, 0.0, 0.0)
+    m.socket("flame1", 0.980, 0.710, 0.120)
+    m.socket("flame2", -0.980, 0.710, 0.120)
+    return finish(m, (0.378, 0.65, -1.30), (0.0, 0.50, -1.22),
+                  [(0.98, 1.80), (-0.98, 1.80), (0.22, -1.40), (-0.22, -1.40)], -1.80, engine_y=0.67)
 
 
 def hull_cube():

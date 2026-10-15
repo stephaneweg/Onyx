@@ -74,6 +74,10 @@ def assemble(hull, wing, engine, pilot, out_obj):
     HV, HF, HS = cz.read_obj(os.path.join(d, hull + ".obj"))
     S = dict(HS)
     parts = [(HV, HF)]
+    if "noengine" in S:       # (its engines built in: the game draws no engine part)
+        engine = None
+    if "nopilot" in S:        # (an opaque canopy: no pilot drawn)
+        pilot = None
     if wing:
         WV, WF, _ = cz.read_obj(os.path.join(d, wing + ".obj"))
         w = np.array(S.get("wing", (0.6, 0.4, -0.3)))

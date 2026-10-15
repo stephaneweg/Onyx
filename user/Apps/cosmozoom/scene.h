@@ -97,7 +97,12 @@ static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 		appendMesh (raw, *wing, M4::translate (w));
 		appendMesh (raw, *wing, M4::translate (V3 (-w.x, w.y, w.z)) * M4::scale (-1, 1, 1));
 	}
-	if (eng)
+	// a hull with its engines built in ("noengine": the engine part only counts in the stats, the flames leave the
+	// hull's own exhausts) or an opaque canopy ("nopilot": no pilot drawn) -- the ships made after the user's models
+	V3 tmp;
+	bool builtIn = hull && hull->point ("noengine", &tmp);
+	if (hull && hull->point ("nopilot", &tmp)) pil = 0;
+	if (eng && !builtIn)
 	{
 		V3 e = hull && hull->point ("engine", &at) ? at : V3 (0, 0.3f, -1.3f);
 		appendMesh (raw, *eng, M4::translate (e));

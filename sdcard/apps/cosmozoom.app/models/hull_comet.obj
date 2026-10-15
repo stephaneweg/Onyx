@@ -3,6 +3,10 @@
 # Metres, +Y up, +Z forward (the left is +X), faces counter-clockwise seen from outside.
 # MIT License -- Copyright (c) 2026 Stephane Wegener and the Onyx contributors (docs/LICENSING.md).
 mtllib cosmo.mtl
+#@ noengine 0.000 0.000 0.000
+#@ nopilot 0.000 0.000 0.000
+#@ flame1 1.240 0.730 -1.600
+#@ flame2 -1.240 0.730 -1.600
 #@ pad1 0.220 0.000 1.750
 #@ pad2 -0.220 0.000 1.750
 #@ pad3 1.240 0.000 -0.500
