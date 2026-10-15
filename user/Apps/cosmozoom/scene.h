@@ -430,6 +430,7 @@ struct Scene
 			M4 M = shipMatrix (R, i);
 			F.begin (VP * M, 0, B_ALPHA | B_NOZWRITE | B_CULL); F.mesh (ship[i].mesh, M4::identity (), 255, 0, 1); F.end ();
 		}
+		boxGlass (F, R, VP);
 		// what glows: the world's lights, the flames, the sparkles, the shields
 		for (int i = 0; i < R.n; i++)
 		{
@@ -599,20 +600,37 @@ struct Scene
 		}
 	}
 
+	// An item box's place, turning and bobbing (false: not there, waiting to come back)
+	bool boxMatrix (const Race &R, int b, M4 *M) const
+	{
+		const Box &B = R.box[b];
+		if (B.respawn > 0.5f) return false;
+		float grow = B.respawn > 0 ? clampf (1 - B.respawn * 2, 0, 1) : 1;
+		V3 p, u, r, f; R.T->surf (B.s, B.l, 1.3f + sinf (time * 3 + (float) b) * 0.2f, &p, &u, &r, &f);
+		float a = time * 1.6f + (float) b;
+		*M = M4::frame (-r, u, f, p) * M4::rotY (a) * M4::rotX (0.6f) * M4::rotZ (0.6f) * M4::scale (grow, grow, grow);
+		return true;
+	}
+	// The item boxes' see-through shells, with the other glass (after everything opaque)
+	void boxGlass (Frame &F, const Race &R, const M4 &VP)
+	{
+		if (!mBox) return;
+		for (int b = 0; b < R.nbox; b++)
+		{
+			M4 M; if (!boxMatrix (R, b, &M)) continue;
+			F.begin (VP * M, 0, B_ALPHA | B_NOZWRITE | B_CULL); F.mesh (*mBox, M4::identity (), 255, 0, 1); F.end ();
+		}
+	}
+
 	void dynamic (Frame &F, const Race &R, const M4 &VP)
 	{
 		const Track &T = *R.T;
 		// the item boxes: turning, bobbing
 		for (int b = 0; b < R.nbox; b++)
 		{
-			const Box &B = R.box[b];
-			float grow = B.respawn > 0 ? clampf (1 - B.respawn * 2, 0, 1) : 1;
-			if (B.respawn > 0.5f) continue;
-			V3 p, u, r, f; T.surf (B.s, B.l, 1.3f + sinf (time * 3 + (float) b) * 0.2f, &p, &u, &r, &f);
-			float a = time * 1.6f + (float) b;
-			M4 M = M4::frame (-r, u, f, p) * M4::rotY (a) * M4::rotX (0.6f) * M4::rotZ (0.6f) * M4::scale (grow, grow, grow);
+			M4 M; if (!boxMatrix (R, b, &M)) continue;
 			F.begin (VP * M, 0, B_CULL);
-			if (mBox) F.mesh (*mBox, M4::identity ());
+			if (mBox) F.mesh (*mBox, M4::identity ());		// (the '?' marks; the see-through shell: boxGlass)
 			else cube (F, 0.8f, time + (float) b);
 			F.end ();
 		}

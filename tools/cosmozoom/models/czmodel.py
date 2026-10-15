@@ -47,7 +47,7 @@ MATERIALS = [
     ("gold", "#FFC83D", ""),
     ("glass", "#BDF3FF", "d 0.35"),
     ("tint", "#4A5A8E", "d 0.88"),         # the ships' slate canopies (a helmet barely seen)
-    ("holo", "#9FF4FF", "d 0.40"),         # the item capsule's see-through shell
+    ("holo", "#9FF4FF", "d 0.72"),         # the item capsule's see-through shell
     ("bubble", "#FF8CC6", "d 0.45"),       # the plasma bubble
     ("paint1", "#E6E6E6", ""),             # the player's main colour (recoloured by the game)
     ("paint2", "#999999", ""),             # the player's second colour
