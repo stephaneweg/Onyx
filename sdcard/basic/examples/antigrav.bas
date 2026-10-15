@@ -1,7 +1,7 @@
 ' antigrav.bas -- Onyx BASIC: Antigrav, an anti-gravity racer in the manner of the mid-90s ones.
 '
 ' Everything is made by the program: the circuits (from a number: a closed loop that climbs, dives and
-' banks in its turns, with tunnels, arches, speed pads and weapon pads), the city around them, the eight
+' banks in its turns, with tunnels, arches, speed pads and weapon pads), the setting around them, the eight
 ' craft, the pictures (drawn with LINE / PSET and taken with GRAB3D), the music (the General MIDI
 ' synthesizer) and the sounds (the voices). No file is read but the system's language.
 '
@@ -11,7 +11,8 @@
 '   A gamepad: the d-pad or the left stick, A thrust, X fire, L / R air brakes, Start pause.
 '
 ' One to four players, as many as gamepads are plugged in (the first one plays on the keyboard too),
-' the screen shared between them; the computer's pilots make six craft in all. Six circuits, two
+' the screen shared between them; the computer's pilots make six craft in all. Six circuits, each in its
+' setting (a city at night, blue spires, a bay at sunset, a red canyon, snow, space), two
 ' classes (Venom, Rapier), one, three or five laps. Blue chevrons throw you forward; the red pads
 ' give a weapon: rockets, a homing missile, mines, a shield, a turbo. The best lap of each circuit
 ' and class is kept (SD:/apps/antigrav.app/times.txt). It starts full screen (antigrav window: in
@@ -25,7 +26,7 @@
 ' MIT licence -- the Onyx authors, 2026.
 
 CONST PI = 3.14159265
-CONST NSEG = 480, HW = 5, WALLH = 1.4, NSHIP = 6, NPROJ = 32, MAXBLD = 90, MAXP = 4
+CONST NSEG = 480, HW = 5, WALLH = 1.4, NSHIP = 6, NPROJ = 32, MAXBLD = 160, MAXP = 4
 CONST NCIRC = 6
 
 ' ---- the circuit -------------------------------------------------------------------------------
@@ -42,6 +43,12 @@ DIM SHARED mmx(60), mmy(60)                       ' the small map (-1..1)
 DIM SHARED seglen, tlen, groundY, circ, cname$(NCIRC), cseed(NCIRC)
 DIM SHARED dxs(4 * NSEG + 4), dys(4 * NSEG + 4), dzs(4 * NSEG + 4), dl(4 * NSEG + 4)
 DIM SHARED mtx(48), mty(48), mtz(48)             ' the mountains around
+DIM SHARED bkind(MAXBLD), bc2(MAXBLD)              ' the scenery: what each piece is (1 tower, 2 spire, 3 island, 4 mesa, 5 pine, 6 rock)
+DIM SHARED camp(NCIRC), chgt(NCIRC), ctun(NCIRC), texg(NCIRC)   ' each circuit: how twisty, how hilly, its tunnels; its ground
+DIM SHARED stx(90), sty(90), stz(90), nstar        ' the stars (directions)
+' the circuit's setting (SetTheme): the sky (horizon, top, below), the sun, the mountains, the haze, the neon
+DIM SHARED thSkyH, thSkyT, thSkyB, thSunG, thSunC, thSunX, thSunY, thSunZ, thSunS, thMtL, thMtH, thMtCap, thMtK
+DIM SHARED thFade, thNeon, thArch, thVault, thDecor, thBg, thTun
 
 ' ---- the craft ---------------------------------------------------------------------------------
 DIM SHARED sd(NSHIP), lx(NSHIP), v(NSHIP), vl(NSHIP), steer(NSHIP), thrust(NSHIP)
@@ -75,7 +82,7 @@ fontch$ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-!.:/<>"
 RESTORE BigFont
 FOR i = 1 TO LEN(fontch$): READ glyph$(i): NEXT
 RESTORE Circuits
-FOR i = 1 TO NCIRC: READ cname$(i), cseed(i): NEXT
+FOR i = 1 TO NCIRC: READ cname$(i), cseed(i), camp(i), chgt(i), ctun(i): NEXT
 RESTORE Pilots
 FOR i = 0 TO NSHIP - 1: READ aiName$(i), a, b: col1(i) = Hex2Rgb(a): col2(i) = Hex2Rgb(b): NEXT
 wname$(1) = T$("ROCKETS"): wname$(2) = T$("MISSILE"): wname$(3) = T$("MINES")
@@ -106,6 +113,7 @@ MakeModel
 LoadTimes
 circ = 1: klass = 0: laps = 3
 IF INSTR(UCASE$(COMMAND$), "LAPS1") THEN laps = 1
+i = INSTR(UCASE$(COMMAND$), "CIRCUIT="): IF i THEN circ = VAL(MID$(COMMAND$, i + 8, 1)): IF circ < 1 OR circ > NCIRC THEN circ = 1
 BuildCircuit circ
 
 DO
@@ -120,9 +128,10 @@ NoMusic:
   musOn = 0
   RESUME NEXT
 
-Circuits:    ' the circuits: their names, the numbers they are made from
-DATA "Nova Ring", 1207, "Cobalt Spire", 4410, "Helix Bay", 912, "Ember Canyon", 7781
-DATA "Glacier Run", 3356, "Zenith Arc", 6060
+Circuits:    ' the circuits: their names, the numbers they are made from, how twisty, how hilly, how many tunnels
+' -- and each its setting (SetTheme): a night city, blue spires, a bay at sunset, a red canyon, snow, space
+DATA "Nova Ring", 1207, 1, 1, 2, "Cobalt Spire", 4410, 1.25, .7, 3, "Helix Bay", 912, 1.45, .45, 1
+DATA "Ember Canyon", 7781, .9, 2.1, 2, "Glacier Run", 3356, .7, .6, 1, "Zenith Arc", 6060, 1.15, 2.6, 0
 
 Pilots:      ' the craft's colours, the computer's pilots (the players take the first ones: P1 blue, P2 red...)
 DATA "KESTREL", &H2A6BFF, &HF2F4FA, "VOLTA", &HE8402A, &HF6D44A, "ORBIT", &H39D17A, &H1C2830
@@ -287,10 +296,26 @@ SUB MakeTextures
   NEXT
   tex.glow = GRAB3D(0, 0, 32, 32)
 
-  ' the ground: a dark grid
+  ' the grounds, one a circuit: a dark grid (the city), a blue grid (the spires), the sea, the sand, the snow,
+  ' and space's (not drawn: the void below)
   LINE (0, 0)-(31, 31), RGB(10, 8, 22), BF
   LINE (0, 0)-(31, 0), RGB(70, 30, 110): LINE (0, 0)-(0, 31), RGB(70, 30, 110)
-  tex.ground = GRAB3D(0, 0, 32, 32)
+  texg(1) = GRAB3D(0, 0, 32, 32)
+  LINE (0, 0)-(31, 31), RGB(4, 10, 26), BF
+  LINE (0, 0)-(31, 0), RGB(30, 110, 170): LINE (0, 0)-(0, 31), RGB(30, 110, 170): LINE (0, 16)-(31, 16), RGB(14, 40, 70): LINE (16, 0)-(16, 31), RGB(14, 40, 70)
+  texg(2) = GRAB3D(0, 0, 32, 32)
+  FOR y = 0 TO 31: LINE (0, y)-(31, y), RGB(20, 70 + y, 120 + y): NEXT
+  FOR i = 1 TO 14: x = RND * 26: y = RND * 31: LINE (x, y)-(x + 3 + RND * 4, y), RGB(150, 210, 240): NEXT
+  texg(3) = GRAB3D(0, 0, 32, 32)
+  LINE (0, 0)-(31, 31), RGB(196, 112, 52), BF
+  FOR i = 1 TO 160: PSET (RND * 31, RND * 31), RGB(160 + RND * 60, 84 + RND * 40, 36 + RND * 20): NEXT
+  FOR x = 0 TO 31: PSET (x, 10 + 3 * SIN(x / 5)), RGB(150, 74, 34): PSET (x, 26 + 3 * SIN(x / 5 + 2)), RGB(226, 150, 86): NEXT
+  texg(4) = GRAB3D(0, 0, 32, 32)
+  LINE (0, 0)-(31, 31), RGB(226, 236, 248), BF
+  FOR i = 1 TO 120: PSET (RND * 31, RND * 31), RGB(190 + RND * 30, 206 + RND * 30, 232 + RND * 20): NEXT
+  texg(5) = GRAB3D(0, 0, 32, 32)
+  LINE (0, 0)-(31, 31), RGB(4, 4, 10), BF
+  texg(6) = GRAB3D(0, 0, 32, 32)
 
   ' the chequered banner of the start
   FOR y = 0 TO 3: FOR x = 0 TO 15
@@ -302,17 +327,79 @@ SUB MakeTextures
 END SUB
 
 ' ================================================================================================
+' The circuits' settings: the sky, the sun (or moon, or planet), the mountains, the haze, the neon,
+' the scenery's kind and colours
+' ================================================================================================
+SUB SetTheme (c)
+  SELECT CASE c
+    CASE 1   ' Nova Ring: a city at night, a low pink sun
+      thSkyH = RGB(120, 40, 90): thSkyT = RGB(10, 8, 30): thSkyB = RGB(70, 20, 60): thBg = RGB(8, 6, 24)
+      thSunG = RGB(255, 140, 90): thSunC = RGB(255, 230, 160): thSunX = 700: thSunY = 60: thSunZ = -300: thSunS = 260
+      thMtL = RGB(24, 12, 44): thMtH = RGB(60, 26, 80): thMtK = 1: thFade = .85
+      thNeon = RGB(60, 170, 255): thArch = RGB(255, 60, 170): thVault = RGB(40, 34, 62): thTun = RGB(200, 120, 255): thDecor = 1
+    CASE 2   ' Cobalt Spire: blue night, the moon, glowing spires
+      thSkyH = RGB(30, 60, 140): thSkyT = RGB(2, 4, 18): thSkyB = RGB(10, 24, 60): thBg = RGB(2, 4, 16)
+      thSunG = RGB(110, 160, 255): thSunC = RGB(230, 240, 255): thSunX = -300: thSunY = 330: thSunZ = 600: thSunS = 150
+      thMtL = RGB(6, 12, 30): thMtH = RGB(24, 44, 86): thMtK = .8: thFade = .85
+      thNeon = RGB(80, 255, 230): thArch = RGB(90, 140, 255): thVault = RGB(22, 40, 72): thTun = RGB(90, 220, 255): thDecor = 2
+    CASE 3   ' Helix Bay: the sea at sunset, islands and palms
+      thSkyH = RGB(255, 150, 90): thSkyT = RGB(70, 60, 150): thSkyB = RGB(40, 90, 140): thBg = RGB(40, 60, 110)
+      thSunG = RGB(255, 110, 50): thSunC = RGB(255, 240, 180): thSunX = 120: thSunY = 30: thSunZ = -760: thSunS = 320
+      thMtL = RGB(40, 50, 80): thMtH = RGB(110, 90, 120): thMtK = .45: thFade = .5
+      thNeon = RGB(255, 190, 90): thArch = RGB(255, 110, 80): thVault = RGB(76, 54, 66): thTun = RGB(255, 180, 120): thDecor = 3
+    CASE 4   ' Ember Canyon: a red desert at dusk, mesas
+      thSkyH = RGB(255, 110, 40): thSkyT = RGB(60, 14, 10): thSkyB = RGB(90, 30, 14): thBg = RGB(40, 10, 6)
+      thSunG = RGB(255, 80, 30): thSunC = RGB(255, 200, 120): thSunX = 600: thSunY = 110: thSunZ = 420: thSunS = 230
+      thMtL = RGB(70, 22, 12): thMtH = RGB(180, 64, 30): thMtK = 1.5: thFade = .7
+      thNeon = RGB(255, 140, 40): thArch = RGB(255, 200, 60): thVault = RGB(76, 34, 22): thTun = RGB(255, 120, 40): thDecor = 4
+    CASE 5   ' Glacier Run: snow in the day, pines, white peaks
+      thSkyH = RGB(215, 235, 255): thSkyT = RGB(60, 120, 210): thSkyB = RGB(170, 200, 230): thBg = RGB(170, 200, 230)
+      thSunG = RGB(255, 250, 210): thSunC = RGB(255, 255, 255): thSunX = -500: thSunY = 300: thSunZ = -500: thSunS = 150
+      thMtL = RGB(84, 104, 140): thMtH = RGB(250, 252, 255): thMtK = 1.3: thFade = .35
+      thNeon = RGB(120, 220, 255): thArch = RGB(60, 140, 255): thVault = RGB(80, 100, 130): thTun = RGB(150, 230, 255): thDecor = 5
+    CASE ELSE   ' Zenith Arc: space, a blue planet, floating rocks, the void below
+      thSkyH = RGB(60, 24, 90): thSkyT = RGB(2, 0, 12): thSkyB = RGB(8, 4, 26): thBg = RGB(0, 0, 6)
+      thSunG = RGB(60, 120, 255): thSunC = RGB(190, 225, 255): thSunX = 300: thSunY = 170: thSunZ = -620: thSunS = 330
+      thMtL = 0: thMtH = 0: thMtK = 0: thFade = .8
+      thNeon = RGB(200, 120, 255): thArch = RGB(120, 255, 160): thVault = RGB(30, 30, 52): thTun = RGB(255, 255, 255): thDecor = 6
+  END SELECT
+END SUB
+
+' The scenery's colours: four for the pieces (k 0..3), a second one (k 4: the mesas' tops, the spires' lights)
+FUNCTION DecoCol (d, k)
+  SELECT CASE d
+    CASE 1: IF k = 0 THEN c = RGB(60, 70, 110) ELSE IF k = 1 THEN c = RGB(90, 60, 120) ELSE IF k = 2 THEN c = RGB(50, 90, 110) ELSE c = RGB(110, 100, 120)
+    CASE 2: IF k = 4 THEN c = RGB(90, 220, 255) ELSE IF k MOD 2 THEN c = RGB(30, 50, 100) ELSE c = RGB(50, 70, 130)
+    CASE 3: IF k < 2 THEN c = RGB(220, 196, 130) ELSE c = RGB(80, 150, 70)
+    CASE 4: IF k = 4 THEN c = RGB(220, 120, 60) ELSE IF k MOD 2 THEN c = RGB(170, 70, 36) ELSE c = RGB(140, 56, 30)
+    CASE 5: c = RGB(40, 100, 60)
+    CASE ELSE: IF k MOD 2 THEN c = RGB(110, 100, 96) ELSE c = RGB(80, 76, 84)
+  END SELECT
+  DecoCol = c
+END FUNCTION
+
+' A colour made darker (k < 1) or lighter
+FUNCTION Shade (c, k)
+  r = ((c \ 65536) AND 255) * k: g = ((c \ 256) AND 255) * k: b = (c AND 255) * k
+  IF r > 255 THEN r = 255
+  IF g > 255 THEN g = 255
+  IF b > 255 THEN b = 255
+  Shade = RGB(r, g, b)
+END FUNCTION
+
+' ================================================================================================
 ' The circuit, from its number
 ' ================================================================================================
 SUB BuildCircuit (c)
+  SetTheme c
   RANDOMIZE cseed(c)
   M = 4 * NSEG
   ' a star-shaped loop (a radius for each angle: it never crosses itself) that climbs and dives
   f1 = 2 + INT(RND * 2): f2 = f1 + 1 + INT(RND * 2): f3 = 5 + INT(RND * 3)
   p1 = RND * 2 * PI: p2 = RND * 2 * PI: p3 = RND * 2 * PI
   g1 = 1 + INT(RND * 3): g2 = 3 + INT(RND * 3): q1 = RND * 2 * PI: q2 = RND * 2 * PI
-  h1 = 10 + RND * 16: h2 = 3 + RND * 7
-  amp = 1
+  h1 = (10 + RND * 16) * chgt(c): h2 = (3 + RND * 7) * chgt(c)
+  amp = camp(c)
   DO
     a1 = (.16 + RND * .14) * amp: a2 = (.08 + RND * .1) * amp: a3 = (.03 + RND * .05) * amp
     ' the horizontal length of the loop at radius 1, to make it NSEG segments of about 5 long
@@ -381,7 +468,7 @@ SUB BuildCircuit (c)
   groundY = groundY - 26
   ' tunnels, pads, arches
   FOR i = 0 TO NSEG - 1: kind(i) = 0: lane(i) = 0: NEXT
-  nt = 1 + INT(RND * 2)
+  nt = ctun(c)
   FOR k = 1 TO nt
     a = 60 + INT(RND * (NSEG - 140)): b = a + 22 + INT(RND * 22)
     FOR i = a TO b: kind(i MOD NSEG) = kind(i MOD NSEG) OR 1: NEXT
@@ -409,29 +496,45 @@ SUB BuildCircuit (c)
     wx1(i) = ex1(i) + ux(j) * WALLH - rx(j) * .3: wy1(i) = ey1(i) + uy(j) * WALLH - ry(j) * .3: wz1(i) = ez1(i) + uz(j) * WALLH - rz(j) * .3
     wx2(i) = ex2(i) + ux(j) * WALLH + rx(j) * .3: wy2(i) = ey2(i) + uy(j) * WALLH + ry(j) * .3: wz2(i) = ez2(i) + uz(j) * WALLH + rz(j) * .3
   NEXT
-  ' the city: blocks along the track, never on it
+  ' the scenery along the track, never on it: the setting's kind (towers, spires, islands, mesas, pines, rocks)
   nbld = 0
-  FOR i = 0 TO NSEG - 1 STEP 5
+  stp = 5: IF thDecor = 5 THEN stp = 3
+  FOR i = 0 TO NSEG - 1 STEP stp
     IF nbld < MAXBLD AND RND < .85 THEN
       sd0 = 1: IF RND < .5 THEN sd0 = -1
-      offs = HW + 9 + RND * 34
+      SELECT CASE thDecor
+        CASE 1: offs = HW + 9 + RND * 34: w = 4 + RND * 9: h = 8 + RND * RND * 70
+        CASE 2: offs = HW + 8 + RND * 40: w = 2 + RND * 2.5: h = 30 + RND * 80
+        CASE 3: offs = HW + 14 + RND * 50: w = 7 + RND * 12: h = w * .3
+        CASE 4: offs = HW + 12 + RND * 46: w = 8 + RND * 14: h = 10 + RND * 36
+        CASE 5: offs = HW + 5 + RND * 34: w = 1.8 + RND * 1.6: h = 7 + RND * 9
+        CASE ELSE: offs = HW + 14 + RND * 50: w = 2 + RND * 5: h = w
+      END SELECT
       x = px(i) + rx(i) * offs * sd0: z = pz(i) + rz(i) * offs * sd0
-      w = 4 + RND * 9
       ok = -1
       FOR k = 0 TO NSEG - 1 STEP 2
         IF (px(k) - x) ^ 2 + (pz(k) - z) ^ 2 < (HW + w * .75 + 4) ^ 2 THEN ok = 0: EXIT FOR
       NEXT
       IF ok THEN
         nbld = nbld + 1
-        bsx(nbld) = x: bsz(nbld) = z: bw(nbld) = w: bh(nbld) = 8 + RND * RND * 70
-        bsy(nbld) = groundY: bseg(nbld) = i
-        h = INT(RND * 4)
-        IF h = 0 THEN bcol(nbld) = RGB(60, 70, 110) ELSE IF h = 1 THEN bcol(nbld) = RGB(90, 60, 120) ELSE IF h = 2 THEN bcol(nbld) = RGB(50, 90, 110) ELSE bcol(nbld) = RGB(110, 100, 120)
+        bsx(nbld) = x: bsz(nbld) = z: bw(nbld) = w: bh(nbld) = h
+        bsy(nbld) = groundY: bseg(nbld) = i: bkind(nbld) = thDecor
+        IF thDecor = 6 THEN bsy(nbld) = py(i) + (RND - .4) * 40      ' (space: the rocks float)
+        bcol(nbld) = DecoCol(thDecor, INT(RND * 4)): bc2(nbld) = DecoCol(thDecor, 4)
       END IF
     END IF
   NEXT
   ' the mountains on the horizon
-  FOR i = 0 TO 47: mty(i) = 40 + RND * 120 + 60 * (i MOD 2): NEXT
+  FOR i = 0 TO 47: mty(i) = (40 + RND * 120 + 60 * (i MOD 2)) * thMtK: NEXT
+  ' the stars (the night of the spires, space)
+  nstar = 0
+  IF thDecor = 2 OR thDecor = 6 THEN
+    nstar = 90: IF thDecor = 2 THEN nstar = 50
+    FOR i = 1 TO nstar
+      a = RND * 2 * PI: e = .08 + RND * .9: IF thDecor = 6 THEN e = -.6 + RND * 1.5
+      stx(i) = COS(a) * COS(e): sty(i) = SIN(e): stz(i) = SIN(a) * COS(e)
+    NEXT
+  END IF
   ' the small map
   mx0 = 1E+09: mx1 = -1E+09: mz0 = 1E+09: mz1 = -1E+09
   FOR i = 0 TO NSEG - 1
@@ -470,7 +573,7 @@ END SUB
 ' Drawing a frame
 ' ================================================================================================
 SUB DrawWorld (camS)
-  SCENE3D RGB(8, 6, 24)
+  SCENE3D thBg
   CAMERA3D cex, cey, cez, ctx, cty, ctz, 70
   ' the camera's right and up (the glows face the camera)
   fx = ctx - cex: fy = cty - cey: fz = ctz - cez: l = SQR(fx * fx + fy * fy + fz * fz): fx = fx / l: fy = fy / l: fz = fz / l
@@ -482,39 +585,47 @@ SUB DrawWorld (camS)
   FOR k = 0 TO 23
     a0 = k * PI / 12: a1 = (k + 1) * PI / 12
     x0 = 800 * COS(a0): z0 = 800 * SIN(a0): x1 = 800 * COS(a1): z1 = 800 * SIN(a1)
-    COLOR3D RGB(120, 40, 90): VERTEX3D cex + x0, cey - 60, cez + z0
-    COLOR3D RGB(120, 40, 90): VERTEX3D cex + x1, cey - 60, cez + z1
-    COLOR3D RGB(10, 8, 30): VERTEX3D cex + x1, cey + 400, cez + z1
-    COLOR3D RGB(120, 40, 90): VERTEX3D cex + x0, cey - 60, cez + z0
-    COLOR3D RGB(10, 8, 30): VERTEX3D cex + x1, cey + 400, cez + z1
-    COLOR3D RGB(10, 8, 30): VERTEX3D cex + x0, cey + 400, cez + z0
-    COLOR3D RGB(70, 20, 60): VERTEX3D cex + x0, cey - 300, cez + z0
+    COLOR3D thSkyH: VERTEX3D cex + x0, cey - 60, cez + z0
+    COLOR3D thSkyH: VERTEX3D cex + x1, cey - 60, cez + z1
+    COLOR3D thSkyT: VERTEX3D cex + x1, cey + 400, cez + z1
+    COLOR3D thSkyH: VERTEX3D cex + x0, cey - 60, cez + z0
+    COLOR3D thSkyT: VERTEX3D cex + x1, cey + 400, cez + z1
+    COLOR3D thSkyT: VERTEX3D cex + x0, cey + 400, cez + z0
+    COLOR3D thSkyB: VERTEX3D cex + x0, cey - 300, cez + z0
     VERTEX3D cex + x1, cey - 300, cez + z1: VERTEX3D cex + x1, cey - 60, cez + z1
     VERTEX3D cex + x0, cey - 300, cez + z0: VERTEX3D cex + x1, cey - 60, cez + z1: VERTEX3D cex + x0, cey - 60, cez + z0
   NEXT
-  ' the sun: a glow low in the sky, then the mountains in front of it
+  ' the stars, the sun (the moon, the planet): glows, then the mountains in front of them
   TEXTURE3D tex.glow, 1: BLEND3D 2
-  sx = cex + 700: sy = cey + 60: sz = cez - 300
-  COLOR3D RGB(255, 140, 90)
-  Billboard sx, sy, sz, 260
-  COLOR3D RGB(255, 230, 160)
-  Billboard sx, sy, sz, 90
-  BLEND3D 0: TEXTURE3D 0
-  FOR k = 0 TO 47
-    a0 = k * PI / 24: a1 = (k + 1) * PI / 24: am = (a0 + a1) / 2
-    COLOR3D RGB(24, 12, 44)
-    VERTEX3D cex + 760 * COS(a0), cey - 60, cez + 760 * SIN(a0)
-    VERTEX3D cex + 760 * COS(a1), cey - 60, cez + 760 * SIN(a1)
-    COLOR3D RGB(60, 26, 80)
-    VERTEX3D cex + 760 * COS(am), cey - 60 + mty(k), cez + 760 * SIN(am)
+  FOR i = 1 TO nstar
+    b = 170 + (i MOD 4) * 28: COLOR3D RGB(b, b, MIN(255, b + 30))
+    Billboard cex + stx(i) * 700, cey + sty(i) * 700, cez + stz(i) * 700, 3.5 + (i MOD 3) * 1.5
   NEXT
+  sx = cex + thSunX: sy = cey + thSunY: sz = cez + thSunZ
+  COLOR3D thSunG
+  Billboard sx, sy, sz, thSunS
+  COLOR3D thSunC
+  Billboard sx, sy, sz, thSunS * .35
+  BLEND3D 0: TEXTURE3D 0
+  IF thMtK > 0 THEN
+    FOR k = 0 TO 47
+      a0 = k * PI / 24: a1 = (k + 1) * PI / 24: am = (a0 + a1) / 2
+      COLOR3D thMtL
+      VERTEX3D cex + 760 * COS(a0), cey - 60, cez + 760 * SIN(a0)
+      VERTEX3D cex + 760 * COS(a1), cey - 60, cez + 760 * SIN(a1)
+      COLOR3D thMtH
+      VERTEX3D cex + 760 * COS(am), cey - 60 + mty(k), cez + 760 * SIN(am)
+    NEXT
+  END IF
   DEPTH3D 1
 
-  ' the ground's grid around the eye
-  gx = INT(cex / 40) * 40: gz = INT(cez / 40) * 40
-  TEXTURE3D tex.ground, 0, 0: COLOR3D RGB(255, 255, 255)
-  VERTEX3D gx - 900, groundY, gz - 900, 0, 0: VERTEX3D gx - 900, groundY, gz + 900, 0, 45: VERTEX3D gx + 900, groundY, gz + 900, 45, 45
-  VERTEX3D gx - 900, groundY, gz - 900, 0, 0: VERTEX3D gx + 900, groundY, gz + 900, 45, 45: VERTEX3D gx + 900, groundY, gz - 900, 45, 0
+  ' the ground around the eye (space has none: the void below)
+  IF thDecor <> 6 THEN
+    gx = INT(cex / 40) * 40: gz = INT(cez / 40) * 40
+    TEXTURE3D texg(circ), 0, 0: COLOR3D RGB(255, 255, 255)
+    VERTEX3D gx - 900, groundY, gz - 900, 0, 0: VERTEX3D gx - 900, groundY, gz + 900, 0, 45: VERTEX3D gx + 900, groundY, gz + 900, 45, 45
+    VERTEX3D gx - 900, groundY, gz - 900, 0, 0: VERTEX3D gx + 900, groundY, gz + 900, 45, 45: VERTEX3D gx + 900, groundY, gz - 900, 45, 0
+  END IF
 
   c0 = INT(camS / seglen) - 4
   ' the track's floor
@@ -576,7 +687,7 @@ SUB DrawWorld (camS)
       FOR q = 0 TO 3
         a0 = q * PI / 4: a1 = (q + 1) * PI / 4
         d0 = -HW * 1.1 * COS(a0): h0 = WALLH + 6 * SIN(a0): d1 = -HW * 1.1 * COS(a1): h1 = WALLH + 6 * SIN(a1)
-        COLOR3D RGB((34 + q * 6) * sh, (30 + q * 5) * sh, (52 + q * 9) * sh)
+        COLOR3D Shade(thVault, (.85 + q * .16) * sh)
         TrackAt i * seglen, d0, h0: x0 = wx: y0 = wy: z0 = wz
         TrackAt i * seglen, d1, h1: x1 = wx: y1 = wy: z1 = wz
         TrackAt j * seglen, d1, h1: x2 = wx: y2 = wy: z2 = wz
@@ -587,20 +698,36 @@ SUB DrawWorld (camS)
     END IF
     IF kind(i) AND 8 THEN DrawArch i, k
   NEXT
-  ' the city (lit blocks)
+  ' the scenery (lit shapes; the pines are drawn by hand, after)
   LIGHT3D .4, 1, .3, 35: CULL3D 1
   FOR b = 1 TO nbld
     dd = (bseg(b) - c0 + NSEG * 4) MOD NSEG
-    IF dd < vdist + 10 THEN
-      PUSH3D
-      TRANSLATE3D bsx(b), bsy(b) + bh(b) / 2, bsz(b)
-      SCALE3D bw(b), bh(b), bw(b)
-      COLOR3D bcol(b)
-      CUBE3D 1
-      POP3D
+    IF dd < vdist + 10 AND bkind(b) <> 5 THEN
+      SELECT CASE bkind(b)
+        CASE 1, 2   ' a tower; a spire: a slim block and a slimmer one above
+          PUSH3D: TRANSLATE3D bsx(b), bsy(b) + bh(b) / 2, bsz(b): SCALE3D bw(b), bh(b), bw(b): COLOR3D bcol(b): CUBE3D 1: POP3D
+          IF bkind(b) = 2 THEN PUSH3D: TRANSLATE3D bsx(b), bsy(b) + bh(b) * 1.15, bsz(b): SCALE3D bw(b) * .45, bh(b) * .3, bw(b) * .45: CUBE3D 1: POP3D
+        CASE 3      ' an island (a flat dome) and its palm
+          PUSH3D: TRANSLATE3D bsx(b), bsy(b), bsz(b): SCALE3D 1, .3, 1: COLOR3D bcol(b): SPHERE3D bw(b), 8: POP3D
+          y = bsy(b) + bw(b) * .28
+          PUSH3D: TRANSLATE3D bsx(b), y, bsz(b): COLOR3D RGB(120, 84, 44): CYLINDER3D .45, 8, 5: POP3D
+          PUSH3D: TRANSLATE3D bsx(b), y + 8, bsz(b): SCALE3D 1, .3, 1: COLOR3D RGB(50, 160, 70): SPHERE3D 3.4, 6: POP3D
+        CASE 4      ' a mesa: a wide block, a narrower top of another colour
+          PUSH3D: TRANSLATE3D bsx(b), bsy(b) + bh(b) / 2, bsz(b): SCALE3D bw(b), bh(b), bw(b) * .8: COLOR3D bcol(b): CUBE3D 1: POP3D
+          PUSH3D: TRANSLATE3D bsx(b), bsy(b) + bh(b) * 1.12, bsz(b): SCALE3D bw(b) * .6, bh(b) * .24, bw(b) * .5: COLOR3D bc2(b): CUBE3D 1: POP3D
+        CASE ELSE   ' a rock floating in space
+          PUSH3D: TRANSLATE3D bsx(b), bsy(b), bsz(b): SCALE3D 1, .7, 1: COLOR3D bcol(b): SPHERE3D bw(b), 6: POP3D
+      END SELECT
     END IF
   NEXT
   LIGHT3D 0, 0, 0
+  IF thDecor = 5 THEN
+    CULL3D 0
+    FOR b = 1 TO nbld
+      dd = (bseg(b) - c0 + NSEG * 4) MOD NSEG
+      IF dd < vdist + 10 THEN Pine bsx(b), bsy(b), bsz(b), bw(b), bh(b), 1 - .6 * dd / (vdist + 10)
+    NEXT
+  END IF
   ' the craft
   CULL3D 0
   FOR n = 0 TO NSHIP - 1
@@ -612,7 +739,7 @@ SUB DrawWorld (camS)
   FOR k = 0 TO vdist STEP 2
     i = (c0 + k + NSEG * 4) MOD NSEG
     sh = 1 - k / (vdist + 4)
-    COLOR3D RGB(60 * sh, 170 * sh, 255 * sh)
+    COLOR3D Shade(thNeon, sh)
     Billboard wx1(i), wy1(i), wz1(i), 1.1
     Billboard wx2(i), wy2(i), wz2(i), 1.1
   NEXT
@@ -621,9 +748,15 @@ SUB DrawWorld (camS)
     IF kind(i) AND 1 THEN
       sh = 1 - k / (vdist + 4)
       TrackAt i * seglen, 0, WALLH + 5.6
-      COLOR3D RGB(200 * sh, 120 * sh, 255 * sh): Billboard wx, wy, wz, 1.6
+      COLOR3D Shade(thTun, sh): Billboard wx, wy, wz, 1.6
     END IF
   NEXT
+  IF thDecor = 2 THEN
+    FOR b = 1 TO nbld
+      dd = (bseg(b) - c0 + NSEG * 4) MOD NSEG
+      IF dd < vdist + 10 THEN COLOR3D Shade(bc2(b), .5 + .5 * SIN(t * 3 + b)): Billboard bsx(b), bsy(b) + bh(b) * 1.32, bsz(b), 3
+    NEXT
+  END IF
   FOR n = 0 TO NSHIP - 1
     dd = sd(n) - camS: dd = dd - tlen * INT(dd / tlen + .5)
     IF dd > -25 AND dd < vdist * seglen THEN
@@ -665,9 +798,25 @@ SUB Billboard (x, y, z, s)
   VERTEX3D x - ax, y - ay, z - az, 0, 0: VERTEX3D x + ax, y + ay, z + az, 1, 1: VERTEX3D x - bx, y - by, z - bz, 0, 1
 END SUB
 
-' Far away is darker (the night's haze).
+' A pine: two tiers of a four-sided cone, shaded face by face, white at the tips (snow); sh: the distance's haze.
+SUB Pine (x, y, z, w, h, sh)
+  FOR tier = 0 TO 1
+    yb = y + h * (.12 + tier * .36): ya = yb + h * (.62 - tier * .12): r = w * (1 - tier * .38)
+    FOR q = 0 TO 3
+      a0 = q * PI / 2 + .4: a1 = a0 + PI / 2
+      k = (.5 + .5 * COS(a0 + .8)) * sh
+      COLOR3D RGB(26 * k + 8, 84 * k + 10, 46 * k + 8)
+      VERTEX3D x + r * COS(a0), yb, z + r * SIN(a0): VERTEX3D x + r * COS(a1), yb, z + r * SIN(a1)
+      COLOR3D RGB(236 * sh, 244 * sh, 255 * sh): VERTEX3D x, ya, z
+    NEXT
+  NEXT
+  COLOR3D RGB(70 * sh, 46 * sh, 30 * sh)
+  VERTEX3D x - .3, y, z: VERTEX3D x + .3, y, z: VERTEX3D x, y + h * .2, z
+END SUB
+
+' Far away is darker (the haze: thicker at night).
 FUNCTION Fade (k)
-  f = 1 - (k / vdist) ^ 1.6 * .85
+  f = 1 - (k / vdist) ^ 1.6 * thFade
   IF f < .1 THEN f = .1
   c = 255 * f
   Fade = RGB(c, c, c)
@@ -676,7 +825,7 @@ END FUNCTION
 ' An arch over the track: two posts and a beam, neon coloured; the start's has the chequered banner.
 SUB DrawArch (i, k)
   sh = 1 - k / (vdist + 8)
-  IF i = 0 THEN c = RGB(240 * sh, 240 * sh, 255 * sh) ELSE c = RGB(255 * sh, 60 * sh, 170 * sh)
+  IF i = 0 THEN c = RGB(240 * sh, 240 * sh, 255 * sh) ELSE c = Shade(thArch, sh)
   COLOR3D c
   FOR side = -1 TO 1 STEP 2
     d = side * (HW + .6)
@@ -1395,6 +1544,8 @@ SUB LoadTimes
   IF NOT FILEEXISTS("SD:/apps/antigrav.app/times.txt") THEN EXIT SUB
   f = FREEFILE
   OPEN "SD:/apps/antigrav.app/times.txt" FOR INPUT AS #f
+  LINE INPUT #f, a$
+  IF a$ <> "v2" THEN CLOSE #f: EXIT SUB          ' (the times of the first circuits: they changed since)
   FOR c = 1 TO NCIRC
     IF EOF(f) THEN EXIT FOR
     INPUT #f, best(c, 0), best(c, 1)
@@ -1412,6 +1563,7 @@ SUB SaveTimes
     IF FILEEXISTS("SD:/apps/antigrav.app/app.txt") THEN
       f = FREEFILE
       OPEN "SD:/apps/antigrav.app/times.txt" FOR OUTPUT AS #f
+      PRINT #f, "v2"
       FOR c = 1 TO NCIRC: PRINT #f, best(c, 0); ","; best(c, 1): NEXT
       CLOSE #f
     END IF

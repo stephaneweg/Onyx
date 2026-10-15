@@ -24,7 +24,19 @@ The user first asked for wipeout-rewrite as a native game; ported (2026-10-13), 
   the speed on the Pi (each view draws ~5 000 vertices; `antigrav fps`), the pads in game.
 - **Asked next by the user**: (1) the console mode -- how to put the focus on Jet's address bar with a gamepad, and is there
   an on-screen keyboard: **done the same day** (below); (2) Antigrav in **CodeIsFun** (github.com/stephaneweg/CodeIsFun, the web Turtle Quest, whose BASIC
-  runs Arkanoid): its BASIC would need the 3D statements on **WebGL** (and VIEW3D, PADS).
+  runs Arkanoid): its BASIC would need the 3D statements on **WebGL** (and VIEW3D, PADS). **Done (2026-10-14/15)**:
+  CodeIsFun's `turtle/three3d.js` (WebGL, software fallback), gamepads, MIDI, files in the browser's storage, pages + PCOPY.
+- **2026-10-15, the user on the Pi: "it runs well, but the picture and the game's HUD flicker"**: the frame was drawn on
+  the page shown, and the runtime shows it ~50 times a second whenever it can (between the 3D and the HUD drawn over it).
+  Fixed: `SCREEN 12` and `13` have **two pages** now (basscreen.h's MODES; QBasic's had one), Antigrav draws on page 1
+  (`SCREEN , , 1, 0` each frame: a FULLSCREEN toggle cannot undo it) and shows it whole with `PCOPY 1, 0` before `PAUSE 1`
+  (onyx 2026.10.169, antigrav 1.0.2). Checked on the PC (a host checking every present); **not seen on the Pi yet**.
+- **2026-10-15, the user: vary the circuits and the settings**: each circuit has its character (`camp` twisty, `chgt`
+  hilly, `ctun` tunnels, in the Circuits DATA) and its setting (`SetTheme`: the sky, the sun / moon / planet, the
+  mountains, the haze, the neon, the ground texture `texg(c)`, the scenery `bkind`: towers, spires with lights,
+  islands with palms on the sea, mesas, pines in the snow (`Pine`, drawn by hand), rocks floating in space with stars).
+  The best laps file starts with `v2` (the old records are dropped: the circuits changed). `antigrav circuit=N`.
+  The same `.bas` runs in CodeIsFun (synced with `tools/sync-levels.py`). Screenshot: `screenshots/antigrav-circuits.png`.
 
 ## The console's on-screen keyboard, Jet's address bar with the pad (2026-10-14): built, published, NOT run on a Pi
 
