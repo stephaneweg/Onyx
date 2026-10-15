@@ -73,7 +73,7 @@ struct World
 	unsigned fogCol = 0;
 	struct Traffic { V3 c; float r, h, speed, ph; unsigned col; } traffic[16]; int ntraffic = 0;
 
-	static unsigned shade (unsigned c, const V3 &n) { return rgbScale (c, toonShade (norm (n), sunDir ())); }
+	static unsigned shade (unsigned c, const V3 &n) { return litColor (c, norm (n), sunDir ()); }
 
 	void build (const Track &T, ModelLib &lib, unsigned seed)
 	{
@@ -218,7 +218,7 @@ struct World
 		{
 			const int K = 24;
 			float sa = A.w / 15.0f, sb = B.w / 15.0f;
-			bool rib = (i % 3) == 0;
+			bool rib = (i % 3) == 0, rib2 = (i % 6) == 0;		// (a rib every 12 m)
 			auto TP = [&] (const Seg &S, float sc, float a, float rad)
 			{
 				V3 p; Track::surfOf (S.c, S.r, S.u, 0, cosf (a) * rad * sc, 1.8f * sc + sinf (a) * rad * sc, &p, 0, 0); return p;
@@ -231,25 +231,33 @@ struct World
 				// inside: darker toward the crown
 				unsigned ci = rgbScale (rib ? rgbMix (wall, 0xFFFFFF, 0.18f) : wall, 1.0f - 0.3f * fmaxf (0.0f, sinf (am)));	// (the rings show inside too)
 				L.face (TP (A, sa, a0, 7.5f), TP (B, sb, a0, 7.5f), TP (B, sb, a1, 7.5f), TP (A, sa, a1, 7.5f), shade (ci, -out), -out);
-				// outside, a rib raised every 6 m
-				float ro = rib ? 9.35f : 9.0f;
-				L.face (TP (A, sa, a0, ro), TP (B, sb, a0, ro), TP (B, sb, a1, ro), TP (A, sa, a1, ro), shade (rib ? ribc : wall, out), out);
-				if (rib)
+				// outside: a rib every 12 m, its sides chamfered at 45 degrees
+				auto TL = [&] (float t, float a, float rad) { return lerp (TP (A, sa, a, rad), TP (B, sb, a, rad), t); };
+				if (rib2)
 				{
-					L.face (TP (A, sa, a0, 9.0f), TP (A, sa, a1, 9.0f), TP (A, sa, a1, 9.35f), TP (A, sa, a0, 9.35f), shade (ribc, -A.f), -A.f);
-					L.face (TP (B, sb, a0, 9.0f), TP (B, sb, a1, 9.0f), TP (B, sb, a1, 9.35f), TP (B, sb, a0, 9.35f), shade (ribc, A.f), A.f);
+					static const float RT[4] = { 0.0f, 0.15f, 0.85f, 1.0f }, RR[4] = { 9.0f, 9.4f, 9.4f, 9.0f };
+					for (int j = 0; j < 3; j++)
+					{
+						V3 nj = out + A.f * (j == 0 ? -1.0f : j == 2 ? 1.0f : 0.0f);
+						L.face (TL (RT[j], a0, RR[j]), TL (RT[j + 1], a0, RR[j + 1]), TL (RT[j + 1], a1, RR[j + 1]), TL (RT[j], a1, RR[j]), shade (j == 1 ? ribc : rgbMix (ribc, wall, 0.4f), nj), nj);
+					}
 				}
+				else L.face (TP (A, sa, a0, 9.0f), TP (B, sb, a0, 9.0f), TP (B, sb, a1, 9.0f), TP (A, sa, a1, 9.0f), shade (wall, out), out);
 			}
-			// the tube's mouths: the wall's ring at its two ends
+			// the tube's mouths: the wall's ring at its two ends, its outer edge chamfered
 			bool first = !(T.seg[(i + T.n - 1) % T.n].flags & F_TUNNEL), last = !(B.flags & F_TUNNEL) || !(T.seg[(i + 2) % T.n].flags & F_TUNNEL);
 			for (int e = 0; e < 2; e++)
 			{
 				if (!(e == 0 ? first : last)) continue;
-				const Seg &S = e == 0 ? A : B; float sc = e == 0 ? sa : sb; V3 n = e == 0 ? -A.f : B.f;
+				float te = e == 0 ? 0.0f : 1.0f, ti = e == 0 ? 0.15f : 0.85f;
+				V3 n = e == 0 ? -A.f : B.f;
+				auto TL = [&] (float t, float a, float rad) { return lerp (TP (A, sa, a, rad), TP (B, sb, a, rad), t); };
 				for (int k = 0; k < K; k++)
 				{
-					float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
-					L.face (TP (S, sc, a0, 7.5f), TP (S, sc, a1, 7.5f), TP (S, sc, a1, 9.0f), TP (S, sc, a0, 9.0f), shade (ribc, n), n);
+					float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K, am = (a0 + a1) * 0.5f;
+					V3 out = A.r * cosf (am) + A.u * sinf (am);
+					L.face (TL (te, a0, 7.5f), TL (te, a1, 7.5f), TL (te, a1, 8.7f), TL (te, a0, 8.7f), shade (ribc, n), n);
+					L.face (TL (te, a0, 8.7f), TL (te, a1, 8.7f), TL (ti, a1, 9.0f), TL (ti, a0, 9.0f), shade (ribc, n + out), n + out);
 				}
 			}
 			// a light under the crown every 6 m
@@ -292,7 +300,7 @@ struct World
 		};
 		float ha = A.w * 0.5f, hb = B.w * 0.5f;
 		unsigned band = T.road[0];		// (one colour all along: no darker stretches)
-		unsigned stripe = T.rails[(i & 1)];
+		unsigned stripe = rgbScale (rgbVivid (T.rails[(i & 1)], 1.35f), 0.93f);	// (deeper than the files' pastels)
 		for (int k = 0; k + 1 < n; k++)
 		{
 			float la0, ha0, la1, ha1, lb0, hb0, lb1, hb1;
@@ -421,7 +429,8 @@ struct World
 	// cloud puffs, a few signs and lamps by the road, ships flying round ----------------------------------------------------
 	static unsigned pastel (Rng &rng, const Track &T)
 	{
-		static const unsigned P[] = { 0xFF8A80, 0xFFD966, 0x9EE6B8, 0xC9B6FF, 0xF4F6FF, 0x9AD7FF, 0xFFB38A, 0xB8F0E6 };
+		// (the user's reference: coral, lemon, mint, lilac, white, sky blue, apricot, pink -- saturated pastels)
+		static const unsigned P[] = { 0xF0705A, 0xF5D04A, 0x98D98A, 0xA98BEA, 0xEEF0F8, 0x7CBDF0, 0xF79A5A, 0xF29BB8 };
 		unsigned c = P[rng.n (8)];
 		return T.walls[0] ? rgbMix (c, T.walls[0], 0.25f) : c;
 	}
@@ -444,7 +453,8 @@ struct World
 						V3 p = S.c + V3 (S.r.x, 0, S.r.z) * ((float) side * d);
 						p.y = baseY;
 						if (!clearOfRoad (T, p, 18)) continue;
-						const Mesh *m = lib.get (TOWERS[rng.n (6)], pastel (rng, T), 0xF4F6FF, 0);
+						unsigned tc = pastel (rng, T);
+						const Mesh *m = lib.get (TOWERS[rng.n (6)], tc, rgbMix (tc, 0xFFFFFF, 0.22f), 0);	// (its top and bands its own colour, a little lighter)
 						float hs = rng.range (0.6f, 1.3f) * (row ? 1.2f : 1.0f), ws = rng.range (0.9f, 1.3f);
 						place (m, at (p, (float) rng.n (4) * PI / 2 + atan2f (S.f.x, S.f.z), ws, hs, ws), i / CHUNK);
 					}
@@ -471,7 +481,7 @@ struct World
 				{
 					float a = 2 * PI * (float) k / 36 + rng.range (-0.05f, 0.05f), rr = R + rng.range (0, 140);
 					V3 p (cx + cosf (a) * rr, baseY, cz + sinf (a) * rr);
-					place (lib.get (TOWERS[rng.n (6)], pastel (rng, T), 0xF4F6FF, 0), at (p, rng.range (0, 6.28f), 1.5f, rng.range (1.2f, 2.4f), 1.5f), -1);
+					{ unsigned tc = pastel (rng, T); place (lib.get (TOWERS[rng.n (6)], tc, rgbMix (tc, 0xFFFFFF, 0.22f), 0), at (p, rng.range (0, 6.28f), 1.5f, rng.range (1.2f, 2.4f), 1.5f), -1); }
 				}
 			}
 		}
@@ -674,7 +684,8 @@ struct World
 				auto P = [&] (float a, float e) { return V3 (cosf (a) * cosf (e) * rad, sinf (e) * rad, sinf (a) * cosf (e) * rad); };
 				auto C = [&] (float e, float a) {
 					float f = clampf ((e + 0.05f) / 0.85f, 0, 1); f = sqrtf (f);
-					unsigned c = rgbMix (T.sky[1], T.sky[0], f);
+					unsigned hor = tod <= Track::T_DUSK ? rgbMix (T.sky[1], T.sky[0], 0.35f) : T.sky[1];	// (a deeper horizon: no washed-out haze)
+					unsigned c = rgbVivid (rgbMix (hor, T.sky[0], f), 1.15f);
 					if (tod == Track::T_DUSK) c = rgbMix (c, 0xFF9A5A, clampf (1 - fabsf (wrapAngle (a - 0.8f)) / 1.2f, 0, 1) * (1 - f) * 0.5f);
 					return c; };
 				V3 p00 = P (a0, e0), p01 = P (a1, e0), p10 = P (a0, e1), p11 = P (a1, e1);

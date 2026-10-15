@@ -140,3 +140,14 @@ A storm cloud flies to the leader and slows them down	Un nuage d'orage file vers
 Warp Star	Étoile Warp
 A warp field: very fast, and nothing stops you	Un champ warp : très vite, et rien ne vous arrête
 No Fins	Sans ailerons
+Game	Jeu
+Pause	Pause
+View	Affichage
+Full Screen	Plein écran
+Show Frame Rate	Afficher les FPS
+Sound	Son
+Music On / Off	Musique oui / non
+Sounds On / Off	Bruitages oui / non
+Full Screen at 800 x 600	Plein écran en 800 x 600
+Full Screen at 1024 x 576	Plein écran en 1024 x 576
+Full Screen at the System's Size	Plein écran à la taille du système

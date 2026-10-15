@@ -7,13 +7,13 @@
 // French (the system's language). docs/cosmozoom/DESIGN.md is the design; docs/04 "Cosmo Zoom!" the user's guide.
 //
 //   Keyboard: Left / Right steer, Up or X accelerate, Down brake (and, held, throws a gadget backward), Z or C drift,
-//   Space the gadget, V look back, P or Esc pause, F full screen. Menus: arrows, Enter, Esc, R random (hangar).
+//   Space the gadget, V look back, P or Esc pause, F or F11 full screen, F12 the frame rate (the menu bar: Game, View, Sound). Menus: arrows, Enter, Esc, R random (hangar).
 //   Gamepad: the stick or the d-pad steer, A accelerate, B brake, L / R (L2 / R2) drift, X or Y the gadget, Start pause.
 //
 // Files: SD:/apps/cosmozoom.app/ tracks/*.trk (the circuits), cups.ini (the cups), models/*.obj (the 3D models),
 // save.ini (the trophies, the best times, the players' ships, the options; written by the game).
 // Command line (tests): demo (the title's race only), auto (the players' ships drive themselves), players=N,
-// window, fps, sharp (no GPU: the whole size drawn), race=<track> (straight into a race), screen=<title|menu|hangar|cups|results|podium|options>, seed=N.
+// window, fullscreen, fps, sharp (no GPU: the whole size drawn), race=<track> (straight into a race), screen=<title|menu|hangar|cups|results|podium|options>, seed=N.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 //
@@ -131,7 +131,7 @@ static void writeSave () { fk_kv_save (g_save, SAVE, "Cosmo Zoom! -- the trophie
 
 // ==== the platform: the picture, the GPU, the pads ======================================================================
 static unsigned *g_px; static int g_W, g_H, g_stride;
-static bool g_fs = false, g_window = false;
+static bool g_fs = false, g_window = false, g_fullArg = false;
 static Root *g_root;
 static bool g_gpu = false; static int g_hTex[TX_COUNT];
 static float *g_zb; static unsigned *g_soft; static int g_softCap = 0; static bool g_sharp = false;
@@ -1343,22 +1343,84 @@ public:
 	}
 	bool onKey (long k) override
 	{
+		if (Menu::current () && Menu::current ()->shortcut (k)) return true;
 		if (k == 'f' || k == 'F') { toggleFull = true; return true; }
 		return true;		// (the game polls the keys)
 	}
 	bool toggleFull = false;
 };
 
+// ---- the system's menu bar, as the other games: Game, View (full screen, the frame rate), Sound ---------------------------
+static GameRoot *g_groot;
+static void on_pause () { if (g_state == ST_RACE) { g_paused = !g_paused; g_pauseSel = 0; } }
+static void on_quit () { g_quitNow = true; }
+static void on_full () { if (g_groot) g_groot->toggleFull = true; }
+static void on_fps () { g_showFps = !g_showFps; }
+static void on_music () { g_musicOn = !g_musicOn; if (g_musicOn) g_music.start (0, 3); saveOptions (); }
+static void on_sounds () { g_sfxOn = !g_sfxOn; saveOptions (); }
+static void on_res0 (); static void on_res1 (); static void on_res2 ();
+static void publishMenu ()
+{
+	static Menu menu;
+	menu.menu (TR ("Game"));
+	menu.item (TR ("Pause"), "P", 0, on_pause);
+	menu.separator ();
+	menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), on_quit);
+	menu.menu (TR ("View"));
+	menu.item (TR ("Full Screen"), "F11", KEY_F1 + 10, on_full);
+	menu.item (TR ("Show Frame Rate"), "F12", KEY_F1 + 11, on_fps);
+	menu.separator ();
+	menu.item (TR ("Full Screen at 800 x 600"), "", 0, on_res0);
+	menu.item (TR ("Full Screen at 1024 x 576"), "", 0, on_res1);
+	menu.item (TR ("Full Screen at the System's Size"), "", 0, on_res2);
+	menu.menu (TR ("Sound"));
+	menu.item (TR ("Music On / Off"), "", 0, on_music);
+	menu.item (TR ("Sounds On / Off"), "", 0, on_sounds);
+	menu.publish ();
+}
+
+// Full screen at a size of its own (the user: smaller is faster): the screen switches to it while the game is full
+// screen, as the emulators' (their app.txt `resolution =`), and gets the system's size back after (kapi_screen_set)
+static const int FSRES[3][2] = { { 800, 600 }, { 1024, 576 }, { 0, 0 } };	// (the last: the system's)
+static int g_fsRes = 0, g_sysW = 0, g_sysH = 0; static bool g_resChanged = false;
 static unsigned *g_fsBuf; static int g_fsW, g_fsH;
+static void screenBack ()
+{
+	if (!g_resChanged) return;
+	kapi_screen_set (g_sysW, g_sysH);
+	g_resChanged = false;
+}
 static void fullscreen (GameRoot &root, bool on)
 {
 	if (on && !g_fs)
 	{
+		int tw = FSRES[g_fsRes][0], th = FSRES[g_fsRes][1], cw = 0, ch = 0;
+		kapi_screen_size (&cw, &ch);
+		if (tw && (cw != tw || ch != th) && kapi_screen_set (tw, th) == 0)
+		{
+			if (!g_resChanged) { g_sysW = cw; g_sysH = ch; }
+			g_resChanged = true;
+			for (int k = 0; k < 100; k++)		// (the screen changes between two frames: wait for it)
+			{
+				pump_events ();
+				kapi_screen_size (&cw, &ch);
+				if (cw == tw && ch == th) break;
+				kapi_msleep (10);
+			}
+		}
 		g_fsBuf = uk_win_fullscreen_begin (&g_fsW, &g_fsH);
-		if (g_fsBuf) g_fs = true;
+		if (g_fsBuf) g_fs = true; else screenBack ();
 	}
-	else if (!on && g_fs) { uk_win_fullscreen_end (); g_fs = false; root.invalidate (true); }
+	else if (!on && g_fs) { uk_win_fullscreen_end (); g_fs = false; screenBack (); root.invalidate (true); }
 }
+static void setFsRes (int r)
+{
+	g_fsRes = r; setInt ("options", "fsres", r); writeSave ();
+	if (g_fs && g_groot) { fullscreen (*g_groot, false); fullscreen (*g_groot, true); }
+}
+static void on_res0 () { setFsRes (0); }
+static void on_res1 () { setFsRes (1); }
+static void on_res2 () { setFsRes (2); }
 
 int main (void)
 {
@@ -1372,6 +1434,7 @@ int main (void)
 		if (!strcmp (p, "demo")) g_demo = true;
 		else if (!strcmp (p, "auto")) g_auto = true;
 		else if (!strcmp (p, "window")) g_window = true;
+		else if (!strcmp (p, "fullscreen")) g_fullArg = true;
 		else if (!strcmp (p, "fps")) g_showFps = true;
 		else if (!strcmp (p, "sharp")) g_sharp = true;
 		else if (!strncmp (p, "players=", 8)) g_players = clampi (atoi (p + 8), 1, 4);
@@ -1392,9 +1455,12 @@ int main (void)
 	int ww = sw >= 1400 ? 1280 : 960, wh = sw >= 1400 ? 720 : 540;
 	GameRoot root (ww, wh);
 	if (root.canvas.px == 0) return 1;
-	g_root = &root;
+	g_root = &root; g_groot = &root;
 	root.attach ();
-	if (!g_window) fullscreen (root, true);
+	g_fsRes = clampi (saveInt ("options", "fsres", 0), 0, 2);
+	publishMenu ();
+	// a window with the menu bar, as the other games; full screen if asked, or as it was left (View > Full Screen, F11)
+	if (g_fullArg || (!g_window && saveInt ("options", "fullscreen", 0))) fullscreen (root, true);
 	if (!g_ntracks) { fprintf (stderr, "cosmozoom: no circuit (cups.ini)\n"); }
 	titleRace ();
 	// the test entries
@@ -1407,7 +1473,7 @@ int main (void)
 	while (!should_exit () && !g_quitNow)
 	{
 		pump_events ();
-		if (root.toggleFull) { root.toggleFull = false; fullscreen (root, !g_fs); }
+		if (root.toggleFull) { root.toggleFull = false; fullscreen (root, !g_fs); setInt ("options", "fullscreen", g_fs); writeSave (); }
 		unsigned now = kapi_clock_us ();
 		float dt = (float) (now - last) / 1e6f; last = now;
 		if (dt > 0.1f) dt = 0.1f;
@@ -1427,5 +1493,6 @@ int main (void)
 	}
 	g_sfx.silence (); g_music.stop ();
 	if (g_fs) uk_win_fullscreen_end ();
+	screenBack ();
 	return 0;
 }

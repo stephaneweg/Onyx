@@ -1,6 +1,7 @@
 // A circuit's picture from a place on it, by the software renderer -> a .ppm (the PC; tests).
 //   view track.trk s out.ppm             (from the track, at s metres)
 //   view track.trk aerial out.ppm [deg]  (the whole circuit from far away, from the side `deg` around it)
+//   view track.trk side out.ppm s        (a place on the track from beside it, 30 m off, up 10 m)
 #include "Apps/cosmozoom/world.h"
 #include <stdio.h>
 #include <string.h>
@@ -9,8 +10,8 @@ static Track T; static World W; static ModelLib lib; static Frame F; static TexS
 int main (int argc, char **argv)
 {
 	const char *trk = argc > 1 ? argv[1] : "sdcard/apps/cosmozoom.app/tracks/harbour.trk";
-	bool aerial = argc > 2 && !strcmp (argv[2], "aerial");
-	float s = argc > 2 && !aerial ? (float) atof (argv[2]) : 0;
+	bool aerial = argc > 2 && !strcmp (argv[2], "aerial"), side = argc > 2 && !strcmp (argv[2], "side");
+	float s = side ? (argc > 4 ? (float) atof (argv[4]) : 0) : argc > 2 && !aerial ? (float) atof (argv[2]) : 0;
 	const char *out = argc > 3 ? argv[3] : "/tmp/view.ppm";
 	snprintf (lib.dir, sizeof lib.dir, "sdcard/apps/cosmozoom.app/models");
 	if (!T.load (trk)) { fprintf (stderr, "no track\n"); return 1; }
@@ -18,6 +19,7 @@ int main (int argc, char **argv)
 	const int w = aerial ? 1600 : 1280, h = aerial ? 900 : 720;
 	V3 eye = T.pointAt (s - 9, 0, 3.2f), at = T.pointAt (s + 6, 0, 1.0f);
 	float fov = 65, zfar = 1500;
+	if (side) { at = T.pointAt (s, 0, 2); eye = T.pointAt (s - 12, 30, 10); }
 	if (aerial)
 	{
 		// the circuit's bounds; the eye far out and up, looking at its middle

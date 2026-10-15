@@ -64,7 +64,11 @@ the track (`world.h` `roadProfile` / `profileRoad`): the lanes stretch with the 
 keep their shape and carry the rails' candy stripes. Tubes keep the plain rolled surface.
 The tunnels are the user's tube profile (`refs/road_profile/TunnelProfile.obj`, drawn for a 15 m road): a round tube
 hugging the road, 7.5 m inside, its wall 1.5 m, its centre 1.8 m above the lanes, scaled with the road's width; a
-raised lighter ring outside every 6 m (the ribbed look), the rings lighter inside too, lights under the crown.
+ribbed outside (a rib every 12 m, its sides chamfered at 45°), the mouths' outer edge chamfered, lighter rings inside every
+6 m, lights under the crown. Everything is lit by `mesh.h` `litColor` (the user: "colours with body"): a soft wrapped warm key light, the shade
+tinted by the sky (cool, saturated, never grey), the colours a little more saturated, a soft highlight; the towers'
+palette the reference's saturated pastels, a deeper sky at the horizon. The ships have their own studio light (`mesh.h` `shipShade`: a warm key light from
+above and behind, a cool sky fill, a darker underside, a glossy highlight).
 
 ### 1.1 The final direction: low-poly, a bit rounded
 

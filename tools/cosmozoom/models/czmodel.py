@@ -415,7 +415,8 @@ def loft(rings, mat="paint1", cap0=True, cap1=True, cap_mat=None, orient=True, c
         n = len(r)
         m = cm if cm is not None else mf(which, 0, ctr)
         for j in range(n):
-            faces.append(((s + j, s + (j + 1) % n, ci), m))
+            # (the first cap turned the other way: both caps face out of the loft)
+            faces.append(((s + j, s + (j + 1) % n, ci) if which else (s + (j + 1) % n, s + j, ci), m))
     p.f = faces
     if orient:
         p.orient()

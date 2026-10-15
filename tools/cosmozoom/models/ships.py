@@ -689,8 +689,8 @@ def _mr_slab(z, d):
 
 def _mr_deck(flip):
     """The slate canopy rising back to the hump (on top; flip: its twin underneath)."""
-    rows = ((-0.21, 0.975, 0.10, 0.16), (-0.40, 1.08, 0.15, 0.22), (-0.795, 1.10, 0.15, 0.22),
-            (-0.795, 1.13, 0.18, 0.27), (-1.00, 1.13, 0.18, 0.27), (-1.235, 1.04, 0.16, 0.25))
+    rows = ((-0.21, 0.975, 0.10, 0.16), (-0.40, 1.08, 0.15, 0.22), (-0.68, 1.095, 0.15, 0.22),
+            (-0.80, 1.13, 0.18, 0.27), (-1.00, 1.13, 0.18, 0.27), (-1.235, 1.04, 0.16, 0.25))
     rings = []
     for z, top, tw, bw in rows:
         r = [(0.0, top), (tw, top), (bw, 0.97), (bw, 0.93), (0.0, 0.93)]
@@ -711,23 +711,23 @@ def hull_manta():
     m = Model("hull_manta", "Manta Ray: a flat bevelled slab wider than long, a raised faceted centre, a slate slot in "
               "the nose, a slate canopy and hump (and their twins underneath), boxy paint2 pods at its tips")
     # the slab: its leading and trailing edges bevelled to a rim; its tips run into the pods
-    m.add(_shell([_mr_slab(0.98, 0.16), _mr_slab(0.12, 0.16), _mr_slab(-0.85, 0.16), _mr_slab(-1.015, 0.30),
-                  _mr_slab(-1.25, 0.30)], "paint1"))
+    m.add(_shell([_mr_slab(0.98, 0.16), _mr_slab(0.12, 0.16), _mr_slab(0.0, 0.04), _mr_slab(-0.85, 0.04),
+                  _mr_slab(-1.015, 0.30), _mr_slab(-1.20, 0.30)], "paint1"))
     # the centre: the slate slot recessed in the nose's frame, the slate exhaust recessed in the back
-    nose, back = _mr_centre(1.09), _mr_centre(-1.24)
+    nose = _mr_centre(1.09)
     inset = lambda ring, z, sx, sy: [(x * sx, 0.665 + (y - 0.665) * sy, z) for x, y, _ in ring]
     rings = [inset(nose, 1.04, 0.85, 0.55), inset(nose, 1.09, 0.85, 0.55)] + \
             [_mr_centre(z) for z in (1.09, 0.88, 0.68, 0.48, 0.28, 0.08, -0.22, -1.00, -1.20, -1.24)] + \
-            [inset(back, -1.24, 0.85, 0.5), inset(back, -1.19, 0.85, 0.5)]
+            [_mr_ring(z, [(0.0, 0.80), (0.20, 0.80), (0.25, 0.78), (0.48, 0.675)]) for z in (-1.24, -1.215)]
     m.add(_shell(rings, lambda i, j, c: SL if i == 0 or i >= len(rings) - 2 else "paint1"))
     m.add(_mr_deck(False))
     m.add(_mr_deck(True))
     for sx in (1, -1):
         m.add(_mr_pod(sx))
-        # the paint2 cheek on the nose's side
-        ck = lambda x, k: [(sx * x, 0.675 + y * k, 0.985 + z * k) for z, y, _ in
-                           oct_ring(0.0, 0.0, 0.0, 0.06, 0.085, 0.025)]
-        m.add(_shell([ck(0.34, 1.0), ck(0.43, 0.7)], "paint2"))
+        # the paint2 cheek down the nose's side, along the slab's leading edge
+        ck = lambda x, z, y1: [(sx * x, 0.56, z), (sx * (x + 0.035), 0.575, z), (sx * (x + 0.035), y1 - 0.015, z),
+                               (sx * x, y1, z), (sx * (x - 0.04), y1, z), (sx * (x - 0.04), 0.56, z)]
+        m.add(_shell([ck(0.355, 1.075, 0.74), ck(0.375, 1.02, 0.765), ck(0.45, 0.80, 0.755)], "paint2"))
     # its engines are built in: the engine part is not drawn (its stats count), the flames leave the pods' exhausts
     # and the centre's; the canopy is opaque, no pilot drawn
     m.socket("noengine", 0.0, 0.0, 0.0)

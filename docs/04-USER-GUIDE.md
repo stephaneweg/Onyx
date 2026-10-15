@@ -5726,7 +5726,7 @@ always give the same run, on the PC as on the Pi.
 islands and clouds -- soft rounded low-poly shapes --, by day, at sunset, at night and in deep space — drawn by the Raspberry Pi 4's **GPU** (the V3D; without one, by the processor, slower
 and blurrier). Eight racers, ships made of parts in the **hangar**, **gadgets** picked up from the item capsules,
 speed pads, jumps, loops, twisted sections of track and **tubes ridden on their outside** (steering takes the ship
-round the tube; the camera turns with it). It starts **full screen** (**F**: a window and back).
+round the tube; the camera turns with it). It opens in a **window with the system's menu bar**, as the other games: **Game** (Pause, Quit), **View** (**Full Screen**, F11 or F; **Show Frame Rate**, F12), **Sound** (the music, the sounds on or off). It remembers full screen for the next time; `cosmozoom fullscreen` starts there.
 
 ![Cosmo Zoom!: a race in Skyline City](../screenshots/cosmozoom.png)
 *A race in Skyline City: the shield's energy and the boost (top left), the times, the gadget's slot and the "BOOST ACTIVE"

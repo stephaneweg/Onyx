@@ -2,3 +2,4 @@
 name = Cosmo Zoom!
 category = Games
 stack = 4M
+resolution = 800x600

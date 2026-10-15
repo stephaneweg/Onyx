@@ -127,7 +127,7 @@ static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 		unsigned c = paintOf (T, b, raw);
 		if (T.paint) { T.base = c; for (int k = 0; k < 3; k++) T.col[k] = c; }
 	}
-	lightMesh (raw);
+	lightShip (raw);
 	if (lib.outline) addOutline (raw, 0.045f);
 	appendMesh (S.mesh, raw, M4::identity ());
 	S.length = raw.hi.z - raw.lo.z;

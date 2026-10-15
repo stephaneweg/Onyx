@@ -264,6 +264,32 @@ static void appendMesh (Mesh &dst, const Mesh &src, const M4 &M, unsigned (*reco
 }
 
 // The game's light: a sun from up-front-left, a soft ramp (never black), a little sky light from above.
+// The game's light (the user, 2026-10-15: "colours with body"): a soft wrapped key light, warm; the sky's cool fill
+// on what faces up, a warm bounce from below; the shadows tinted (cool and saturated, never grey); the colours a little
+// more saturated; a soft highlight on what faces the sun. Per channel: the light is coloured.
+static inline unsigned litColor (unsigned c, const V3 &n, const V3 &L, float gloss = 0.18f)
+{
+	float r = (float) ((c >> 16) & 255) / 255, g = (float) ((c >> 8) & 255) / 255, b = (float) (c & 255) / 255;
+	// more saturated (around its own grey)
+	float y = 0.30f * r + 0.59f * g + 0.11f * b;
+	r = y + (r - y) * 1.18f; g = y + (g - y) * 1.18f; b = y + (b - y) * 1.18f;
+	float d = dot (n, L), w = smooth01 (d * 0.55f + 0.5f);			// wrapped: soft from light to shade
+	float sky = 0.5f + 0.5f * n.y;						// faces up: the sky's light
+	// the light's colour: the sun warm, the shade lit by the sky (cool) and the ground's bounce (warm, dim)
+	float lr = 0.40f + 0.60f * w * 1.04f + 0.05f * (1 - sky), lg = 0.44f + 0.60f * w * 1.00f + 0.03f * (1 - sky), lb = 0.60f + 0.60f * w * 0.88f;
+	lr -= 0.10f * (1 - sky); lg -= 0.08f * (1 - sky); lb -= 0.04f * (1 - sky);	// the underside darker, still cool
+	r *= lr; g *= lg; b *= lb;
+	// the shade a little richer: the darker, the more saturated
+	float y2 = 0.30f * r + 0.59f * g + 0.11f * b, sat = 1.05f + 0.30f * (1 - w);
+	r = y2 + (r - y2) * sat; g = y2 + (g - y2) * sat; b = y2 + (b - y2) * sat;
+	// a soft highlight
+	V3 h = norm (L + V3 (0, 0.4f, 0));
+	float sp = clampf (dot (n, h), 0, 1); sp *= sp; sp *= sp; sp *= sp;
+	r += (1 - r) * gloss * sp; g += (1 - g) * gloss * sp; b += (1 - b) * gloss * sp;
+	int R = (int) (r * 255 + 0.5f), G = (int) (g * 255 + 0.5f), B = (int) (b * 255 + 0.5f);
+	R = R < 0 ? 0 : R > 255 ? 255 : R; G = G < 0 ? 0 : G > 255 ? 255 : G; B = B < 0 ? 0 : B > 255 ? 255 : B;
+	return (unsigned) (R << 16 | G << 8 | B);
+}
 static inline float toonShade (const V3 &n, const V3 &sun)
 {
 	float d = dot (n, sun);
@@ -318,7 +344,29 @@ static void lightMesh (Mesh &m, const V3 &sun = sunDir (), float creaseDeg = 40)
 	{
 		Tri &T = m.tris[i];
 		if (T.flags & (TRI_UNLIT | TRI_OUTLINE | TRI_GLOW)) continue;
-		for (int j = 0; j < 3; j++) T.col[j] = rgbScale (T.col[j], toonShade (nrm[i * 3 + j], sun));
+		for (int j = 0; j < 3; j++) T.col[j] = litColor (T.col[j], nrm[i * 3 + j], sun);
+	}
+	free (nrm);
+}
+
+// The ships' studio light (the user, 2026-10-15: "their colour looks flat"): a warm key light from above and behind
+// (the chase camera's side), a cool sky fill on top, a darker underside, a small glossy highlight -- in the ship's
+// own space, baked in its vertex colours.
+static inline unsigned shipShade (unsigned col, const V3 &n)
+{
+	static const V3 key = norm (V3 (-0.45f, 0.85f, -0.45f));
+	return litColor (col, n, key, 0.32f);
+}
+static void lightShip (Mesh &m, float creaseDeg = 40)
+{
+	V3 *nrm = (V3 *) malloc (sizeof (V3) * (size_t) (m.tris.n * 3 + 1));
+	if (!nrm) return;
+	cornerNormals (m, nrm, cosf (creaseDeg * PI / 180));
+	for (int i = 0; i < m.tris.n; i++)
+	{
+		Tri &T = m.tris[i];
+		if (T.flags & (TRI_UNLIT | TRI_OUTLINE | TRI_GLOW)) continue;
+		for (int j = 0; j < 3; j++) T.col[j] = shipShade (T.col[j], nrm[i * 3 + j]);
 	}
 	free (nrm);
 }

@@ -98,6 +98,15 @@ struct M4
 };
 
 // ---- colours: 0xRRGGBB ---------------------------------------------------------------------------------------------
+// a colour more (k > 1) or less saturated, around its own grey
+static inline unsigned rgbVivid (unsigned c, float k)
+{
+	float r = (float) ((c >> 16) & 255), g = (float) ((c >> 8) & 255), b = (float) (c & 255);
+	float y = 0.30f * r + 0.59f * g + 0.11f * b;
+	int R = (int) (y + (r - y) * k + 0.5f), G = (int) (y + (g - y) * k + 0.5f), B = (int) (y + (b - y) * k + 0.5f);
+	R = R < 0 ? 0 : R > 255 ? 255 : R; G = G < 0 ? 0 : G > 255 ? 255 : G; B = B < 0 ? 0 : B > 255 ? 255 : B;
+	return (unsigned) (R << 16 | G << 8 | B);
+}
 static inline unsigned rgbMix (unsigned a, unsigned b, float f)
 {
 	f = clampf (f, 0, 1);
