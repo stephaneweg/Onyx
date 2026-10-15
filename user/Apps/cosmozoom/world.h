@@ -132,14 +132,19 @@ struct World
 				L.face (u0, u1, v1, v0, shade (rgbScale (T.road[0], 0.7f), -nm), -nm);
 			}
 		}
-		// faint lane marks (lighter, dashed)
-		if (!start && (i % 6) < 3)
+		// the lane grooves: thin darker lines, continuous
+		if (!start && tube <= 0.4f)
 			for (int k = -1; k <= 1; k += 2)
 			{
-				float l = (float) k * (tube > 0.4f ? 0 : A.w / 6), lb = (float) k * (tube > 0.4f ? 0 : B.w / 6), wl = 0.12f;
-				if (tube > 0.4f) continue;
-				L.face (SP (A, l - wl, 0.02f), SP (A, l + wl, 0.02f), SP (B, lb + wl, 0.02f), SP (B, lb - wl, 0.02f), shade (rgbMix (band, 0xFFFFFF, 0.3f), A.u), A.u);
+				float l = (float) k * A.w / 6, lb = (float) k * B.w / 6, wl = 0.07f;
+				L.face (SP (A, l - wl, 0.015f), SP (A, l + wl, 0.015f), SP (B, lb + wl, 0.015f), SP (B, lb - wl, 0.015f), shade (rgbScale (band, 0.84f), A.u), A.u);
 			}
+		// a speed pad's darker panel under its glowing chevrons
+		if ((A.flags & F_BOOST) && tube <= 0.4f)
+		{
+			float la = A.lane * A.w * 0.5f, lb = A.lane * B.w * 0.5f, hw = 2.3f;
+			L.face (SP (A, la - hw, 0.02f), SP (A, la + hw, 0.02f), SP (B, lb + hw, 0.02f), SP (B, lb - hw, 0.02f), shade (rgbScale (T.road[0], 0.72f), A.u), A.u);
+		}
 		// a tube's white rings every 20 m
 		if (tube > 0.4f && (i % 10) == 0)
 			for (int k = 0; k < cols; k++)
@@ -167,11 +172,25 @@ struct World
 				V3 fn = outA * sinf ((t0 + t1) * 0.5f) + nA * cosf ((t0 + t1) * 0.5f);
 				L.face (p0, q0, q1, p1, shade (sc, fn), fn);
 			}
-			// the rail: an 8-sided round bar on the edge, its stripes in turn (2 m each)
+			// the kerb: a raised rounded lip along the edge, inside the road's width (lighter on top)
+			{
+				static const float KP[][2] = { { -1.05f, 0.0f }, { -0.80f, 0.20f }, { -0.50f, 0.38f }, { -0.18f, 0.47f }, { 0.0f, 0.40f }, { 0.04f, 0.0f } };
+				const int NK = 6;
+				unsigned kc = rgbMix (T.road[0], 0xFFFFFF, 0.12f);
+				for (int k = 0; k + 1 < NK; k++)
+				{
+					auto KPt = [&] (const Seg &S, float e, const V3 &n, const V3 &out, int j) { V3 o = SP (S, s * e, 0); return o + out * KP[j][0] + n * KP[j][1]; };
+					V3 p0 = KPt (A, ea, nA, outA, k), p1 = KPt (A, ea, nA, outA, k + 1), q0 = KPt (B, eb, nB, outB, k), q1 = KPt (B, eb, nB, outB, k + 1);
+					V3 fn = nA * (KP[k + 1][0] - KP[k][0]) - outA * (KP[k + 1][1] - KP[k][1]);
+					if (dot (fn, nA) < 0) fn = -fn;
+					L.face (p0, q0, q1, p1, shade (k < 2 ? rgbScale (kc, 0.94f) : kc, fn), fn);
+				}
+			}
+			// the rail: an 8-sided round bar on the kerb, its stripes in turn (2 m each)
 			unsigned rc = T.rails[(i & 1)];
 			const int K = 8;
-			float rr = 0.42f;
-			V3 cA = SP (A, s * (ea - 0.35f), rr * 0.8f), cB = SP (B, s * (eb - 0.35f), rr * 0.8f);
+			float rr = 0.36f;
+			V3 cA = SP (A, s * (ea - 0.3f), 0.45f + rr * 0.85f), cB = SP (B, s * (eb - 0.3f), 0.45f + rr * 0.85f);
 			for (int k = 0; k < K; k++)
 			{
 				float t0 = 2 * PI * (float) k / K, t1 = 2 * PI * (float) (k + 1) / K;
@@ -180,8 +199,7 @@ struct World
 				V3 fn = (d0A + d1A) * 0.5f;
 				L.face (cA + d0A * rr, cB + d0B * rr, cB + d1B * rr, cA + d1A * rr, shade (rc, fn), fn);
 			}
-			// a small round post under the rail now and then (a joint)
-			if ((i % 12) == 0) box (L, cA + nA * 0.1f, cA - nA * 0.9f, 0.18f, rgbScale (T.road[0], 0.75f));
+
 		}
 		// the tunnel: a rounded arch with lighter ribs
 		if (tun)
@@ -610,14 +628,22 @@ struct World
 				planet (c, r, T.neon[k % 3], k == 0);
 			}
 		}
-		// clouds by day / dusk: flat white puffs low in the sky
+		// clouds by day / dusk: round cumulus -- a big ball and smaller ones around it, a flat bluish underside
 		if (tod <= Track::T_DUSK)
-			for (int k = 0; k < 22; k++)
+			for (int k = 0; k < 18; k++)
 			{
-				float a = rng.range (0, 2 * PI), e = rng.range (0.03f, 0.3f);
+				float a = rng.range (0, 2 * PI), e = rng.range (0.06f, 0.34f);
 				V3 c = V3 (cosf (a) * cosf (e), sinf (e), sinf (a) * cosf (e)) * 800;
-				unsigned col = tod == Track::T_DUSK ? 0xFFC8B0 : 0xFFFFFF;
-				for (int j = 0; j < 4; j++) puff (c + V3 (rng.range (-40, 40), rng.range (-5, 10), rng.range (-40, 40)), rng.range (25, 50), col);
+				V3 side = norm (V3 (-sinf (a), 0, cosf (a)));
+				unsigned col = tod == Track::T_DUSK ? 0xFFD8C4 : 0xFFFFFF;
+				float R0 = rng.range (34, 58);
+				puff (c, R0, col);
+				int n = 3 + (int) rng.range (0, 3);
+				for (int j = 0; j < n; j++)
+				{
+					float t = rng.range (-1, 1);
+					puff (c + side * (t * R0 * 1.5f) + V3 (0, -R0 * 0.25f * fabsf (t), 0), R0 * rng.range (0.5f, 0.75f), col);
+				}
 			}
 		(void) lib;
 	}
@@ -652,17 +678,26 @@ struct World
 	}
 	void puff (const V3 &c, float r, unsigned col)
 	{
-		const int S = 10, Rr = 4;
+		// a ball of cloud cut flat underneath: white on top, a soft blue-grey below
+		const int S = 12, Rr = 6;
+		const float e00 = -0.35f;
 		for (int j = 0; j < Rr; j++)
 			for (int k = 0; k < S; k++)
 			{
-				float e0 = PI / 2 * (float) j / Rr, e1 = PI / 2 * (float) (j + 1) / Rr;
+				float e0 = e00 + (PI / 2 - e00) * (float) j / Rr, e1 = e00 + (PI / 2 - e00) * (float) (j + 1) / Rr;
 				float a0 = 2 * PI * (float) k / S, a1 = 2 * PI * (float) (k + 1) / S;
-				auto P = [&] (float a, float e) { return c + V3 (cosf (a) * cosf (e) * r, sinf (e) * r * 0.55f, sinf (a) * cosf (e) * r); };
-				unsigned cc = rgbScale (col, 0.86f + 0.14f * (float) j / Rr);
-				skyObj.tri (P (a0, e0), P (a1, e1), P (a1, e0), cc);
-				skyObj.tri (P (a0, e0), P (a0, e1), P (a1, e1), cc);
+				auto P = [&] (float a, float e) { return c + V3 (cosf (a) * cosf (e) * r, sinf (e) * r * 0.85f, sinf (a) * cosf (e) * r); };
+				auto C = [&] (float e) { return rgbMix (rgbMix (col, 0xC9D8F0, 0.55f), col, smooth01 ((e - e00) / (PI / 2 - e00) * 1.6f)); };
+				skyObj.tri (P (a0, e0), P (a1, e1), P (a1, e0), C (e0), C (e1), C (e0));
+				skyObj.tri (P (a0, e0), P (a0, e1), P (a1, e1), C (e0), C (e1), C (e1));
 			}
+		// the flat bottom
+		for (int k = 0; k < S; k++)
+		{
+			float a0 = 2 * PI * (float) k / S, a1 = 2 * PI * (float) (k + 1) / S;
+			auto P = [&] (float a) { return c + V3 (cosf (a) * cosf (e00) * r, sinf (e00) * r * 0.85f, sinf (a) * cosf (e00) * r); };
+			skyObj.tri (P (a0), P (a1), c + V3 (0, sinf (e00) * r * 0.85f, 0), rgbMix (col, 0xC9D8F0, 0.6f));
+		}
 	}
 };
 

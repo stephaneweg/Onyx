@@ -192,7 +192,7 @@ struct Camera
 		camL += T.wrapL (C.s, C.l - camL) * clampf (dt * 6, 0, 1);
 		camH += (C.h - camH) * clampf (dt * 5, 0, 1);
 		camBack += (wantBack - camBack) * clampf (dt * 3, 0, 1);
-		V3 want = T.pointAt (C.s - camBack, camL, camH * 0.7f + 2.9f);
+		V3 want = T.pointAt (C.s - camBack, camL, camH * 0.7f + 3.5f);
 		V3 wantAt = T.pointAt (C.s + 9, camL * 0.5f + C.l * 0.5f, C.h * 0.8f + 1.3f);
 		if (look > 0) { want = T.pointAt (C.s + 7, C.l, C.h + 2.2f); wantAt = T.pointAt (C.s - 6, C.l, C.h + 0.8f); }
 		if (!init || look > 0) { eye = want; at = wantAt; up = u; init = true; }
@@ -366,9 +366,19 @@ struct Scene
 		{
 			const Craft &C = R.c[i];
 			V3 p, u, r, f; T.surf (C.s, C.l, 0.06f, &p, &u, &r, &f);
-			float sz = 1.3f / (1 + C.h * 0.2f), a = 110 / (1 + C.h * 0.3f);
-			V3 fx2 = f * (sz * 1.5f), rx = r * sz;
-			F.quad (p - fx2 - rx, p - fx2 + rx, p + fx2 + rx, p + fx2 - rx, 0x100820, (unsigned) a);
+			// a soft round shadow: a fan, dark under the hull, clear at its rim (the ship's length and width)
+			float lift = 1 + C.h * 0.25f, a = 165 / (1 + C.h * 0.3f);
+			float hl = fmaxf (ship[i].length, 2.5f) * 0.55f * lift, hw = hl * 0.62f;
+			const int K = 16;
+			Vtx *v = F.room (K * 3); if (!v) continue;
+			for (int k = 0; k < K; k++)
+			{
+				float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
+				setVtx (v[0], p, 0, 0, 0x1A1030, (unsigned) a);
+				setVtx (v[1], p + f * (cosf (a1) * hl) + r * (sinf (a1) * hw), 0, 0, 0x1A1030, 0);
+				setVtx (v[2], p + f * (cosf (a0) * hl) + r * (sinf (a0) * hw), 0, 0, 0x1A1030, 0);
+				v += 3;
+			}
 		}
 		F.end ();
 		dynamic (F, R, VP);
@@ -426,7 +436,7 @@ struct Scene
 					V3 d = b - a; if (len (d) < 0.01f) continue;
 					V3 side = norm (cross (d, a - cam.eye));
 					float f0 = 1 - (float) j / ShipModel::TRAIL, f1 = 1 - (float) (j + 1) / ShipModel::TRAIL;
-					unsigned c0 = rgbScale (col, 0.5f * f0 * f0), c1 = rgbScale (col, 0.5f * f1 * f1);
+					unsigned c0 = rgbScale (col, 0.3f * f0 * f0 * f0), c1 = rgbScale (col, 0.3f * f1 * f1 * f1);	// (soft, fading fast)
 					Vtx *v = F.room (6); if (!v) break;
 					V3 a0 = a - side * (wdt * f0), a1 = a + side * (wdt * f0), b0 = b - side * (wdt * f1), b1 = b + side * (wdt * f1);
 					setVtx (v[0], a0, 0, 0, c0); setVtx (v[1], a1, 0, 0, c0); setVtx (v[2], b1, 0, 0, c1);
@@ -443,7 +453,7 @@ struct Scene
 			F.quad (q.p - cr * s - cu * s, q.p + cr * s - cu * s, q.p + cr * s + cu * s, q.p - cr * s + cu * s, col);
 		}
 		F.end ();
-		F.begin (VP, 0, B_ADD | B_NOZWRITE);
+		F.begin (VP, TX_GLOW, B_ADD | B_NOZWRITE | B_LINEAR | B_CLAMP);
 		for (int i = 0; i < R.n; i++)
 		{
 			const Craft &C = R.c[i];
@@ -451,23 +461,24 @@ struct Scene
 			const ShipModel &S = ship[i];
 			float thr = C.v > 1 ? clampf (C.v / 30, 0.3f, 1.0f) : 0.3f;
 			if (C.boostT > 0) thr *= 1.8f;
+			// the exhausts: soft plumes, a few glowing puffs shrinking backward, in the hull's colour toward pink
 			for (int k = 0; k < S.nflame; k++)
 			{
 				V3 p = M.point (S.flames[k]);
 				V3 back = norm (M.dir (V3 (0, 0, -1)));
-				float L = 0.8f + thr * 1.4f + sinf (time * 40 + (float) k) * 0.15f;
-				unsigned col = C.boostT > 0 ? 0xFFA040 : rgbMix (PAINTS[clampi (C.build.paint, 0, NPAINT - 1)], 0xFFFFFF, 0.5f);
-				flame (F, p, back, L, 0.32f, col, cr, cu);
+				float L = 0.8f + thr * 1.6f + sinf (time * 40 + (float) k) * 0.12f;
+				unsigned col = C.boostT > 0 ? 0xFFA040 : rgbMix (PAINTS[clampi (C.build.paint, 0, NPAINT - 1)], 0xFF8CD8, 0.55f);
+				plume (F, p, back, L, 0.42f, col, cr, cu);
 			}
+		}
+		F.end ();
+		F.begin (VP, 0, B_ADD | B_NOZWRITE);
+		for (int i = 0; i < R.n; i++)
+		{
+			const Craft &C = R.c[i];
+			M4 M = shipMatrix (R, i);
+			const ShipModel &S = ship[i];
 			if (S.hasArc) arc (F, M.point (S.arc[0]), M.point (S.arc[1]), cr, cu, (unsigned) i * 7919u);
-			// the hover pads: soft cyan discs of light under the hull, pulsing
-			for (int k = 0; k < S.npad; k++)
-			{
-				V3 c = M.point (S.pads[k] - V3 (0, 0.05f, 0)), ax = M.dir (V3 (0.35f, 0, 0)), az = M.dir (V3 (0, 0, 0.35f));
-				unsigned pc = rgbScale (0x7FE8FF, 0.55f + 0.2f * sinf (time * 9 + (float) k));
-				F.quad (c - ax - az, c + ax - az, c + ax + az, c - ax + az, pc);
-				F.quad (c - ax + az, c + ax + az, c + ax - az, c - ax - az, pc);
-			}
 			if (C.shieldT > 0 || C.bubbleT > 0)
 				sphere (F, M.point (V3 (0, 0.4f, 0)), C.bubbleT > 0 ? 2.0f : 2.3f, C.bubbleT > 0 ? 0x2A5A80 : rgbScale (0x5CF2C8, 0.35f + 0.1f * sinf (time * 6)));
 		}
@@ -497,6 +508,19 @@ struct Scene
 				F.quad (prev - upv * w, p - upv * w, p + upv * w, prev + upv * w, col);
 				prev = p;
 			}
+		}
+	}
+	// an exhaust's plume: glow sprites along it, the first bright and wide, the last faint and small
+	static void plume (Frame &F, const V3 &p, const V3 &dir, float L, float r, unsigned col, const V3 &cr, const V3 &cu)
+	{
+		const int K = 5;
+		for (int k = 0; k < K; k++)
+		{
+			float f = (float) k / (K - 1);
+			V3 c = p + dir * (L * f * 0.9f);
+			float s = r * (1.25f - 0.8f * f);
+			unsigned cc = rgbScale (k == 0 ? rgbMix (col, 0xFFFFFF, 0.45f) : col, 0.85f * (1 - f * 0.75f));
+			F.quad (c - cr * s - cu * s, c + cr * s - cu * s, c + cr * s + cu * s, c - cr * s + cu * s, cc);
 		}
 	}
 	static void flame (Frame &F, const V3 &p, const V3 &dir, float L, float r, unsigned col, const V3 &cr, const V3 &cu)
@@ -540,7 +564,7 @@ struct Scene
 			float lane = S.lane * S.w * 0.5f, s0 = (float) i * SEG;
 			// the chevrons scroll forward (the texture's t), pulsing
 			float sc = fmodf (time * 2.0f, 1.0f);
-			unsigned col = rgbMix (0xFF8C2B, 0xFFE14D, 0.5f + 0.5f * sinf (time * 8));
+			unsigned col = rgbMix (0x3FD8FF, 0xB8FFFF, 0.5f + 0.5f * sinf (time * 8));
 			V3 a = T.pointAt (s0, lane - 2.0f, 0.05f), b = T.pointAt (s0, lane + 2.0f, 0.05f);
 			V3 c = T.pointAt (s0 + SEG, lane + 2.0f, 0.05f), d = T.pointAt (s0 + SEG, lane - 2.0f, 0.05f);
 			float t0 = (float) (i % 3) / 3.0f - sc;

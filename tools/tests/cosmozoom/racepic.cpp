@@ -19,7 +19,7 @@ int main (int argc, char **argv)
 	for (int i = 0; i < 8; i++) { R.c[i].pilot = i; R.c[i].build = PILOTS[i].build; R.c[i].human = false; R.c[i].skill = 0.9f + 0.012f * i; }
 	tx.make (); R.start (&T, 8, 3, 1, 5);
 	S.load (T, 3); S.ships (R);
-	const int w = 640, h = 360; static unsigned px[w * h]; static float zb[w * h];
+	const int w = 1280, h = 720; static unsigned px[w * h]; static float zb[w * h];
 	int shot = 0; int follow = argc > 3 ? atoi (argv[3]) : 7;
 	float when[16]; int nw = 0;
 	for (int k = 4; k < argc && nw < 16; k++) when[nw++] = (float) atof (argv[k]);
