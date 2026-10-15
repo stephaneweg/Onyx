@@ -636,10 +636,10 @@ def hull_cube():
     tr = [[(1.01 * r * math.cos(a), cy + 1.01 * r * math.sin(a), z) for a in (2 * PI * k / 12 for k in range(12))]
           for z, cy, r in _RM_TAIL]
     m.add(_shell(tr, lambda i, j, c: SL if i >= 9 else "paint2"))
-    # the canopy, rising back into the dorsal block
+    # the canopy (opaque slate), rising back into the dorsal block
     m.add(_shell([_rm_deck(z, t, tw, bw, 1.212) for z, t, tw, bw in
                   ((0.34, 1.218, 0.10, 0.15), (0.25, 1.26, 0.13, 0.18), (0.15, 1.31, 0.14, 0.19),
-                   (0.00, 1.36, 0.14, 0.195), (-0.18, 1.39, 0.14, 0.195), (-0.42, 1.402, 0.14, 0.195))], "tint"))
+                   (0.00, 1.36, 0.14, 0.195), (-0.18, 1.39, 0.14, 0.195), (-0.42, 1.402, 0.14, 0.195))], SL))
     m.add(_shell([_rm_deck(z, t, tw, bw, 1.23) for z, t, tw, bw in
                   ((-0.40, 1.40, 0.14, 0.22), (-0.47, 1.437, 0.155, 0.25), (-0.80, 1.437, 0.155, 0.25),
                    (-0.85, 1.41, 0.12, 0.24))], "paint1"))
@@ -655,7 +655,7 @@ def hull_cube():
     m.socket("noengine", 0.0, 0.0, 0.0)
     m.socket("nopilot", 0.0, 0.0, 0.0)
     m.socket("flame1", 0.0, 1.012, -1.870)
-    return finish(m, (0.385, 0.85, 0.20), (0.0, 1.21, -0.10),
+    return finish(m, (0.385, 0.85, 0.75), (0.0, 1.21, -0.10),
                   [(0.25, 1.40), (-0.25, 1.40), (0.25, -1.20), (-0.25, -1.20)], -1.86, engine_y=1.01)
 
 

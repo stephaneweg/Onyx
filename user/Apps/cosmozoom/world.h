@@ -104,7 +104,7 @@ struct World
 	// where it is one; no pylons -- the track floats ----------------------------------------------------------------------
 	void roadSeg (const Track &T, int i, VList &L, VList &G, VList &C)
 	{
-		(void) G; (void) C;
+		(void) C;
 		const Seg &A = T.seg[i], &B = T.seg[(i + 1) % T.n];
 		if ((A.flags & F_GAP) && !(B.flags & F_GAP)) { gapEdge (T, B, L); }
 		if (A.flags & F_GAP) { if (!(T.seg[(i + T.n - 1) % T.n].flags & F_GAP)) gapEdge (T, A, L); return; }
@@ -211,24 +211,46 @@ struct World
 
 			}
 		}
-		// the tunnel: a rounded arch with lighter ribs
+		// the tunnel: a ribbed vault from the road's edges -- raised lighter rings every 6 m, darker toward its crown,
+		// lights along the top (the user's reference: a ribbed tube)
 		if (tun)
 		{
-			const int K = 10;
-			float ra = A.w * 0.5f + 1.8f, rb = B.w * 0.5f + 1.8f;
-			bool rib = (i % 4) == 0;
+			const int K = 14;
+			float wa = A.w * 0.5f + 0.15f, wb = B.w * 0.5f + 0.15f, Ht = 7.5f;
+			bool rib = (i % 3) == 0;
+			float in = rib ? 0.35f : 0.0f;
+			auto VP = [&] (const Seg &S, float half, float a, float inset)
+			{
+				float x = cosf (a) * (half - inset), y = sinf (a) * (Ht - inset) + 0.2f;
+				V3 p; Track::surfOf (S.c, S.r, S.u, 0, x, y, &p, 0, 0); return p;
+			};
+			unsigned base = rib ? rgbMix (T.walls[0], 0xFFFFFF, 0.3f) : T.walls[0];
 			for (int k = 0; k < K; k++)
 			{
 				float a0 = PI * (float) k / K, a1 = PI * (float) (k + 1) / K;
-				V3 p0 = A.c + A.r * (cosf (a0) * ra) + A.u * (sinf (a0) * ra * 0.7f);
-				V3 p1 = A.c + A.r * (cosf (a1) * ra) + A.u * (sinf (a1) * ra * 0.7f);
-				V3 q0 = B.c + B.r * (cosf (a0) * rb) + B.u * (sinf (a0) * rb * 0.7f);
-				V3 q1 = B.c + B.r * (cosf (a1) * rb) + B.u * (sinf (a1) * rb * 0.7f);
-				V3 inward = A.c - (p0 + p1) * 0.5f;
-				unsigned c = rib ? rgbMix (T.walls[0], 0xFFFFFF, 0.35f) : T.walls[0];
+				float crown = sinf ((a0 + a1) * 0.5f);
+				unsigned c = rgbScale (base, 1.0f - 0.35f * crown);
+				V3 p0 = VP (A, wa, a0, in), p1 = VP (A, wa, a1, in), q0 = VP (B, wb, a0, in), q1 = VP (B, wb, a1, in);
+				V3 inward = A.u * (-sinf ((a0 + a1) * 0.5f)) - A.r * cosf ((a0 + a1) * 0.5f);
 				L.face (p0, q0, q1, p1, shade (c, inward), inward);
-				V3 o = (p0 - A.c) * 0.1f, oq = (q0 - B.c) * 0.1f, o1 = (p1 - A.c) * 0.1f, oq1 = (q1 - B.c) * 0.1f;
-				L.face (p0 + o, q0 + oq, q1 + oq1, p1 + o1, shade (T.walls[0], -inward), -inward);
+				// the outside, a little bigger
+				V3 o0 = VP (A, wa, a0, -0.4f), o1 = VP (A, wa, a1, -0.4f), r0 = VP (B, wb, a0, -0.4f), r1 = VP (B, wb, a1, -0.4f);
+				L.face (o0, r0, r1, o1, shade (T.walls[0], -inward), -inward);
+				// a rib's sides (it stands out of the wall)
+				if (rib)
+				{
+					V3 w0 = VP (A, wa, a0, 0), w1 = VP (A, wa, a1, 0);
+					L.face (w0, w1, p1, p0, shade (base, -A.f), -A.f);
+					V3 x0 = VP (B, wb, a0, 0), x1 = VP (B, wb, a1, 0);
+					L.face (x0, q0, q1, x1, shade (base, A.f), A.f);
+				}
+			}
+			// a light under the crown every 6 m
+			if (rib)
+			{
+				V3 c = VP (A, wa, PI / 2, in + 0.05f);
+				V3 dx = A.r * 1.4f, dz = A.f * 0.6f;
+				G.face (c - dx - dz, c + dx - dz, c + dx + dz, c - dx + dz, 0xFFF2C0, -A.u);
 			}
 		}
 	}
