@@ -61,12 +61,16 @@ MATERIALS = [
     ("red_glow", "#FF4A5A", ""),           # warning lights on masts
     ("orange_glow", "#FFB04A", ""),
     ("darkgreen", "#2EAD6B", ""),          # leaves in the shade
+    ("grass", "#7CCB4E", ""),              # the islands' grass tops
+    ("leaf", "#4DB86A", ""),               # tree canopies, bushes
+    ("rock", "#A27E66", ""),               # the islands' rocky undersides
+    ("pebble", "#A99A8C", ""),             # boulders
     ("stone", "#B7A8C9", ""),              # rocks (a lilac grey)
     ("sand", "#F8DC9A", ""),
     ("wood", "#B8774A", ""),
     ("peach", "#FFC4A3", ""),
 ]
-assert len(MATERIALS) <= 46
+assert len(MATERIALS) <= 48
 
 
 def hex_kd(h):

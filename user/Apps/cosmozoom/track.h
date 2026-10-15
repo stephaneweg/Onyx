@@ -363,7 +363,7 @@ struct Track
 			if (p.x < lo.x) lo.x = p.x; if (p.y < lo.y) lo.y = p.y; if (p.z < lo.z) lo.z = p.z;
 			if (p.x > hi.x) hi.x = p.x; if (p.y > hi.y) hi.y = p.y; if (p.z > hi.z) hi.z = p.z;
 		}
-		groundY = lo.y - 3.0f;
+		groundY = lo.y - ((!strcmp (groundKind, "clouds") || !strcmp (groundKind, "islands")) ? 55.0f : 3.0f);	// (a sea of clouds: far below the floating track)
 	}
 
 	// The loops: at each one's place, the centre line goes round a vertical circle (radius R), drifting sideways by

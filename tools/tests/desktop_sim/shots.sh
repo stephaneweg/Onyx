@@ -417,7 +417,7 @@ if want cosmozoom; then			# (Cosmo Zoom!: its own build and run, tools/tests/cos
 					#  software renderer at its whole size; a 1920 x 1080 desktop: a 1280 x 720 window; a step = 10 ms)
 	CZ="env SIM_SCREEN=1920x1080 SIM_TMP=$OUT/cz sh tools/tests/cosmozoom/sim.sh"
 	CW=$(printf 'wait;%.0s' $(seq 1500))
-	$CZ "$PNG/cosmozoom.png" "hold 0x100;$CW" window sharp race=harbour
+	$CZ "$PNG/cosmozoom.png" "hold 0x100;$CW" window sharp race=skyline
 	$CZ "$PNG/cosmozoom-hangar.png" "$(printf 'wait;%.0s' $(seq 80))" window sharp screen=hangar
 	$CZ "$PNG/cosmozoom-cups.png" "$(printf 'wait;%.0s' $(seq 80))" window sharp screen=cups
 	$CZ "$PNG/cosmozoom-title.png" "$(printf 'wait;%.0s' $(seq 150))" window sharp

@@ -3,15 +3,15 @@
 
 name       = Lava Moon
 name_fr    = Lune de Lave
-time       = night
-sky        = 1A1440 A0402A
-ground     = 2A1A2A 3A1A22
+time       = dusk
+sky        = 5A4AA8 FF9A7A
+ground     = B8806E AE7866
 groundkind = rock
-road       = 1A2A6C 1F3278
-rails      = FF8A1F 22E6FF
-walls      = 2A2440 FF8A1F
-neon       = FF8A1F 22E6FF FF2BD6
-city       = 0.15
+road       = 9A8AD8 A292DC
+rails      = FFB07A FFF0C0
+walls      = FFB8A0 FFF0C0
+neon       = FFB07A FFF0C0 C8B8FF
+city       = 0.3
 width      = 15
 laps       = 3
 edge       = FFFFFF

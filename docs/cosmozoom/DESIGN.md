@@ -1,12 +1,13 @@
 # Cosmo Zoom — design
 
-*A native 3D anti-gravity racer for Onyx (Raspberry Pi 4). It is a **neon-night arcade racer** with a
-**cel-shaded comic-book look**: angular hover ships with long glowing trails race at night through futuristic
-neon cities, on dark-blue roads streaked with light, between glowing magenta and cyan rails. The colours are
-vivid and saturated, with dark outlines. It is not cute, and it is friendly for children: no violence, no gore. The spirit comes from `sdcard/basic/examples/antigrav.bas` (the spline track, the banked turns,
-the speed pads, the split screen). From the kart-racing genre it takes the items, the cups and the catch-up.
-Our own twist is the **tube sections** that you ride on the *outside* of a cylinder. Every name, model,
-texture and tune here is our own. MIT licence (the Onyx authors, 2026).*
+*A native 3D anti-gravity racer for Onyx (Raspberry Pi 4). It is **low-poly, a bit rounded**: soft bevelled
+3D shapes in the KayKit / Kenney manner, soft lighting, no outlines, vivid pastel colours. Six chunky-but-sleek
+hover ships race on floating teal tracks under a bright blue sky, among pastel towers and grassy floating
+islands. It is friendly for children: no violence, no gore. The spirit comes from
+`sdcard/basic/examples/antigrav.bas` (the spline track, the banked turns, the speed pads, the split screen).
+From the kart-racing genre it takes the items, the cups and the catch-up. Our own twist is the **tube
+sections** that you ride on the *outside* of a cylinder. Every name, model, texture and tune here is our own.
+MIT licence (the Onyx authors, 2026).*
 
 **App name**: `cosmozoom`. The program is `user/Apps/cosmozoom/`; on the card it is `sdcard/apps/cosmozoom.app/`
 (`main`, `models/`, `lang/fr.txt`, `times.txt`, `save.ini`). On-screen title: **COSMO ZOOM**, with the subtitle
@@ -15,6 +16,7 @@ texture and tune here is our own. MIT licence (the Onyx authors, 2026).*
 **Mock-ups** are made by `python3 tools/cosmozoom/mockups.py` in `docs/cosmozoom/mockups/`. The script's
 `CIRCUITS` / `CUPS` tables hold the same 13 circuits and 4 cups as §7 (the mock-ups show the night look; the
 HUD mock-ups predate the final HUD layout of §9, which is the reference). It is one list: change both together.
+**The mock-ups belong to the dropped directions (§1.2): the reference look is `refs/art-direction.png`.**
 
 | | |
 |---|---|
@@ -44,55 +46,53 @@ HUD mock-ups predate the final HUD layout of §9, which is the reference). It is
   with a bright blue sky, light clouds, cream/sand/white towers with terraces, billboards still glowing, a
   grey-blue track with cyan streaks, and magenta/cyan rails. So it is **one style at three times of day**: the
   circuits alternate **day, dusk and night** (§7.4), and everything must be **polished like an AAA game** (§1.3).
+- **2026-10-15 e** (**final, approved by the user**): the user disliked the drawn/comic styles. Their approved
+  image is `refs/art-direction.png`: **3D low-poly, a bit rounded**, soft lighting, no outlines, vivid pastels.
+  The neon-city and cartoon directions were tried and **dropped**. What stays from them: the six ships, the
+  helmeted pilots, the gadgets, the circuits and tubes, the HUD layout, and the AAA polish bar.
 
 ---
 
 ## 1. Art direction
 
-### 1.1 Chosen: "Velocity Grid" — one neon-city style, by day, at dusk and at night
+### 1.1 The final direction: low-poly, a bit rounded
 
-The description below is the **night** version, the signature. **Day** keeps every element and changes the
-light:
-- a bright blue sky with light stylised clouds;
-- towers in cream, sand and white, with terraces, glass and coloured trims;
-- a **grey-blue track** (`#6F86A8`) with cyan streaks;
-- rails and billboards that still glow, though less strongly.
+![Art direction](refs/art-direction.png)
 
-**Dusk** uses an orange-to-violet sky, warm walls, and lights coming on. Each circuit's palette is in §7.4.
+*The user's approved image (2026-10-15). It is the reference for every model, colour and effect.*
 
-- **Mood**: a futuristic racing league run at night through neon megacities. It feels fast, electric and
-  spectacular, like a comic book in motion. It is cool, never cute, and never scary or gloomy: the night is
-  **deep blue, full of light and colour**, never black.
-- **Sky**: a deep blue → indigo gradient (`#0B1A4A` at the zenith to `#2A3FA0` at the horizon). There are a few
-  stars, and flying ships and traffic lights crossing the sky. A pale moon or ringed planet appears now and
-  then.
-- **City**: tall **dark-blue skyscrapers** (`#16245E` / `#1E3480`) with grids of lit windows (cyan, warm
-  yellow), and big glowing **neon billboards** in magenta, cyan and yellow-green. The billboards carry our own
-  words: "VELOCITY GRID", "COSMO ZOOM", "HYPER", team logos. In the background, **stacked elevated highways**
-  curve away with streams of light trails.
-- **Track**: a **dark-blue road** (`#1A2A6C`) streaked with bright **cyan and white light lines** that run
-  along the track (speed streaks). On both sides are **neon rails**: a glowing magenta band on one side and a
-  cyan band on the other, with chevrons scrolling in the direction of the race. **Boost pads** glow cyan with a
-  big arrow. Tube sections are dark blue with cyan rings.
-- **Ships**: the 6 ships of the user's concept sheet (§4.1). They are angular and crisp-edged, with vivid
-  saturated colour blocks and dark outlines, and they leave **long glowing trails** in their colours.
-- **Pilots**: human racers in helmets with closed visors (§5).
-- **Rendering**: **cel-shaded comic look**: 2-tone flat colours, **dark outlines** on every ship and building,
-  and strong neon glows (additive) on rails, signs, trails and pads.
-- **Variety**: the circuits alternate day, dusk and night (§7.4): 3 by day, 3 at dusk, 7 at night.
+- **Shapes**: 3D low-poly with **soft bevels and rounded edges** (the KayKit / Kenney feel). The forms are
+  chunky but clean; there are no sharp spikes and no thin details.
+- **Light**: soft and sunny. A gentle key light, a sky-blue fill and a soft ambient occlusion feel at
+  contacts. **No outlines, no cel bands, no neon.**
+- **Colours**: vivid pastels: coral, peach, lemon, mint, lilac, sky, pink and teal. The ships are more
+  saturated than the world, so that they read first.
+- **Sky**: a bright blue gradient with **round white puffy clouds** (low-poly).
+- **Track**: a **teal** floating ribbon with a slightly lighter centre and soft edges. The **rails are round
+  tubes, candy-striped in pastels** (pink/mint/cream). **Glowing cyan chevron pads** are the boosts.
+  **Translucent "?" cubes** are the item capsules.
+- **Tubes and loops**: teal ribbed tubes and loops arching over the track, in the same colour as the road.
+- **World**: **rounded pastel capsule towers** (pill-shaped buildings with stripes and caps), **floating grassy
+  islands** with round low-poly trees and boulders, little arched bridges, and distant floating rocks.
+- **Ships**: the same six ships (§4.1), in **rounded** versions: soft bevels, chunky pods, glossy pastel-vivid
+  paint, small dark canopies, soft glowing exhaust plumes (pink/lilac).
+- **Pilots**: helmeted humans (§5), modelled in the same rounded low-poly way.
 
-### 1.2 Earlier proposals of the same day (not chosen)
+### 1.2 Directions tried and dropped (2026-10-15)
 
 ![Directions](mockups/proposals.png)
 
-- **Candy Cosmos**: animal mascots, chubby ships. Too cute.
-- **Sky Circuit** (daylight, mint tracks, white architecture): kept only as a variant palette for a few
-  circuits.
-- **Retro Rocket Rally**: 1950s tin toys. Too retro.
+- **Candy-cartoon** (animal mascots, chubby toy ships): too cute.
+- **Sky Circuit** (flat cel-shaded daylight, Aero GPX mood): a drawn look; the user disliked it.
+- **Neon-city comic** (night, outlines, neon billboards, by day / dusk / night): also a drawn look; dropped.
+- **Retro rockets**: too retro.
+
+The mock-ups in `mockups/` show these dropped looks. They remain useful only for layouts: the screens, the
+HUD, the circuit maps.
 
 ### 1.3 AAA polish (the quality bar)
 
-- **Cohesion**: one art bible. The same outline width, the same cel ramp, the same neon colours and the same
+- **Cohesion**: one art bible. The same bevel sizes, the same soft light ramp, the same pastel palette and the same
   HUD frame everywhere. No placeholder art ships.
 - **Motion**: 60 fps with 1 player and a steady 30 fps with 4. Camera springs, FOV kick and speed lines in
   boosts. Trails always smooth. No pop-in (fog and LOD fades over 0.3 s).
@@ -104,7 +104,7 @@ light:
   - slow motion (0.5×, 1 s) at the finish line;
   - an animated results screen and podium;
   - every menu transition animated (slides, 0.2 s).
-- **Fake bloom**: additive glow sprites around every neon source and a soft vignette. These are cheap on the
+- **Soft glow**: additive glow sprites on the boost pads, plumes and cubes, and a soft vignette. These are cheap on the
   Pi and give the "lit" look.
 - **Detail density**: billboards with our own animated words; flying traffic in the sky; window grids;
   stacked highways with moving light trails; crowds in the stands; sparks on wall scrapes.
@@ -128,81 +128,85 @@ forward. **Drifting** charges a mini-boost. Collecting **energy cells** makes yo
 
 ### 3.0 Style references
 
-- **Main reference** (given by the user, 2026-10-15): the look of the indie racer *Aero GPX*. We use it as a
-  *mood* only: we copy none of its assets, names, logo or layouts.
-- **Asset style references** (CC0): KayKit "Space Base Bits" (Kay Lousberg) and Kenney "Toy Car Kit". We keep
-  only their *clean bevelled modelling* and *soft colours*, not their toy proportions. Being CC0, some of
-  their buildings, antennas, crates and rocks **may be imported as background props**, after these steps:
-  - convert them to our `.obj` conventions (§11);
-  - recolour them to white, grey and our accents;
-  - stretch them toward longer, sleeker forms where useful;
-  - credit them in the About box and in `docs/LICENSING.md`.
+- **The reference**: `refs/art-direction.png` (§1.1), approved by the user.
+- **Asset style references** (CC0): KayKit "Space Base Bits" (Kay Lousberg) and Kenney "Toy Car Kit". Their
+  modelling is the target: soft bevels, rounded boxes, chunky readable forms, soft colours. Being CC0, some of
+  their props (rocks, trees, crates, antennas, domes) **may be imported**, provided they are:
+  - converted to our `.obj` conventions (§11);
+  - recoloured to our palette;
+  - credited in the About box and in `docs/LICENSING.md`.
 
   Their cars are not used.
 
 ### 3.1 Rendering style (for the programmer and the modeller)
 
-- **Low-poly, cel-shaded comic look.** Each material has a flat colour. Lighting is per vertex on the CPU with a
-  **2-step cel ramp** (lit 1.00, shade 0.65). The key light is a cool blue moonlight from above; neon colours
-  add a **rim light** (+0.25 toward the nearest rail's colour on faces at ≥ 70° from the camera).
-- **Outlines**: inverted-hull outlines in dark navy `#070B24`: +0.03 m on ships, +0.06 m on buildings and big
-  props. They are skipped beyond 80 m and in 3–4 player mode if needed.
-- **Neon glow** (additive, with a small radial or strip texture) is part of the look:
-  - rails, billboards, window grids, boost pads, engine exhausts and trails, capsules, energy cells;
-  - at most ~2000 glow quads a frame;
-  - window grids are textures, not geometry.
-- **Sky**: a gradient dome, a star layer, and 3–6 **skyline cards**: flat silhouettes of towers with lit
-  windows, in 2 depths for parallax. Fog runs from 120 m to 240 m toward the horizon blue `#2A3FA0`.
-- **Track surface**: dark blue `#1A2A6C` with lighter panels `#22378A`. **Light streaks** are thin cyan/white
-  lines along the track, some scrolling. The underside is `#101B4A`.
-- **Rails**: a glowing band 0.8 m high, magenta `#FF2BD6` on the left and cyan `#22E6FF` on the right, with
-  white chevrons that scroll forward.
-- **Boost pads**: cyan glow with a big white arrow.
-- **Textures** are generated at start-up and are 64×64 or smaller:
-  - the panel grid and the light streaks;
-  - the rail chevrons, the boost arrow, the start-line checker;
-  - the window grid (lit/unlit cells);
-  - the billboard words (an atlas of our own words and logos);
-  - the radial glow;
-  - the digits;
-  - the team logos.
+- **Low-poly, rounded, smooth-lit.**
+  - Every edge is bevelled: 0.05–0.1 m with 2 segments on ships, 0.1–0.3 m on props.
+  - Cylinders and capsules use 10–16 sides.
+  - The normals are **smoothed across bevels** and flat on the big faces, so the shapes look soft.
+- **Lighting** is per vertex on the CPU:
+  - a soft key light from the upper left (`(-0.35, 0.85, 0.4)`), a sky-blue fill from above, a warm bounce from
+    below at 15 %;
+  - a **smooth** ramp, not banded; the shadow side is never darker than 0.6;
+  - a fake contact shadow: a soft dark blob under every ship and prop, on the track and the islands.
+- **No outlines. No neon.** Glow is used only, and softly (additive, ≤ 0.5), on:
+  - the boost chevrons (cyan);
+  - the engine plumes (pink, lilac or cyan);
+  - the item cubes' inner light.
+- **Translucency**: the "?" cubes (alpha 0.55, a white "?" inside), the canopies (dark glass with a white
+  highlight), the shield bubble.
+- **Fog**: a light blue haze from 140 m to 260 m that softens the distant islands and towers.
+- **Textures** are few and tiny, generated at start-up:
+  - the rail stripes;
+  - the chevrons;
+  - the "?" glyph;
+  - the start checker;
+  - the digits and team logos;
+  - a soft radial glow;
+  - the window bands of the towers.
 
 ### 3.2 The master palette (material `Kd` values for the `.mtl` files)
 
 | Name | Hex | Kd (r g b) | Use |
 |---|---|---|---|
-| outline | `#070B24` | 0.027 0.043 0.141 | outlines, HUD strokes |
-| sky top | `#0B1A4A` | 0.043 0.102 0.290 | sky zenith |
-| sky low | `#2A3FA0` | 0.165 0.247 0.627 | horizon, fog |
-| tower | `#16245E` | 0.086 0.141 0.369 | skyscrapers |
-| tower light | `#1E3480` | 0.118 0.204 0.502 | lit faces of towers |
-| road | `#1A2A6C` | 0.102 0.165 0.424 | track surface |
-| road panel | `#22378A` | 0.133 0.216 0.541 | track panels |
-| road under | `#101B4A` | 0.063 0.106 0.290 | track sides and underside |
-| neon magenta | `#FF2BD6` | 1.000 0.169 0.839 | left rail, billboards (glow) |
-| neon cyan | `#22E6FF` | 0.133 0.902 1.000 | right rail, boost pads, streaks (glow) |
-| neon lime | `#B8FF2E` | 0.722 1.000 0.180 | billboards, energy (glow) |
-| neon yellow | `#FFE14D` | 1.000 0.882 0.302 | windows, warnings |
-| hot pink | `#FF4FA0` | 1.000 0.310 0.627 | ship colour, trails |
-| orange | `#FF8A1F` | 1.000 0.541 0.122 | ship colour |
-| lime | `#7CF06A` | 0.486 0.941 0.416 | ship colour |
-| teal | `#1FD1C1` | 0.122 0.820 0.757 | ship colour |
-| violet | `#8A5CFF` | 0.541 0.361 1.000 | ship colour |
-| white | `#F2F6FF` | 0.949 0.965 1.000 | ship panels, streaks |
-| steel | `#5B6E9A` | 0.357 0.431 0.604 | metal parts |
-| canopy | `#24345E` | 0.141 0.204 0.369 | canopies, visors |
+| sky top | `#3E8EF0` | 0.243 0.557 0.941 | sky zenith |
+| sky low | `#A9DBFF` | 0.663 0.859 1.000 | horizon, fog |
+| cloud | `#FFFFFF` | 1.000 1.000 1.000 | clouds |
+| track teal | `#2E9C93` | 0.180 0.612 0.576 | track surface, tubes, loops |
+| track light | `#4FB7AC` | 0.310 0.718 0.675 | track centre, tube ribs |
+| track side | `#1F7A73` | 0.122 0.478 0.451 | track sides and underside |
+| rail pink | `#E89BB0` | 0.910 0.608 0.690 | rail stripes |
+| rail mint | `#A8E0C2` | 0.659 0.878 0.761 | rail stripes |
+| rail cream | `#F4EBD9` | 0.957 0.922 0.851 | rail stripes |
+| boost cyan | `#7DF2FF` | 0.490 0.949 1.000 | chevron pads (soft glow) |
+| coral | `#F4775E` | 0.957 0.467 0.369 | towers, ships |
+| peach | `#F9A77C` | 0.976 0.655 0.486 | towers |
+| lemon | `#F5DC5B` | 0.961 0.863 0.357 | towers, ships |
+| mint | `#9FE3B5` | 0.624 0.890 0.710 | towers |
+| lilac | `#B9A6F2` | 0.725 0.651 0.949 | towers |
+| sky pastel | `#9CCBF2` | 0.612 0.796 0.949 | towers |
+| grass | `#6CC46A` | 0.424 0.769 0.416 | island tops, trees |
+| tree dark | `#3E9A55` | 0.243 0.604 0.333 | tree shade |
+| earth | `#A0785A` | 0.627 0.471 0.353 | island undersides |
+| rock | `#9A8E86` | 0.604 0.557 0.525 | boulders |
+| ship magenta | `#C8329A` | 0.784 0.196 0.604 | Nova Streak |
+| ship orange | `#FF8A2A` | 1.000 0.541 0.165 | Nova Streak nose, Star Drifter, Manta Ray |
+| ship cyan | `#5FD6F0` | 0.373 0.839 0.941 | Comet Chaser |
+| ship lime | `#A6E04A` | 0.651 0.878 0.290 | Plasma Runner |
+| ship yellow | `#F7C832` | 0.969 0.784 0.196 | Star Drifter, Ringmaster |
+| plume pink | `#FF8AD8` | 1.000 0.541 0.847 | engine plumes (soft glow) |
+| canopy | `#2F3E66` | 0.184 0.243 0.400 | canopies, visors |
 
-The daylight variant palette (Sky Circuit) is in `mockups.py` for the 3 non-night circuits.
-
-![Palette](mockups/palette.png)
+No pure black and no neon saturation. The world stays pastel; the ships carry the strongest colours.
 
 ### 3.3 HUD and menus look
 
-- **Panels**: dark translucent panels (`#0B1A4A` at 75 %) with **cyan neon frames** (2 px, glowing), and
-  angled corners.
-- **Text**: big white bold italic numbers with a dark outline; labels in small caps (cyan or white).
-- **Accents**: chevrons on banners ("BOOST ACTIVE"); the energy bar is segmented from green to red.
-- The font is DejaVu Sans Bold Oblique (a sharper OFL font may be added later). Every text goes through
+- **Panels**: **rounded deep-blue translucent panels** (`#1E2A5A` at 70 %, corner radius 30 % of the height),
+  with a 2 px **light rim** (white at 40 %) and a **soft drop shadow**. No neon frames.
+- **Text**: **white bold italic**, with a soft dark shadow; labels in small caps. Accent colours (lemon, mint,
+  coral, cyan) are used only for bars and highlights.
+- **Bars**: rounded pills. The energy bar goes green → yellow → coral; the boost bar is peach.
+- The font is DejaVu Sans Bold Oblique (a rounder OFL font may be added later). Every text goes through
   `TR ("…")`; buttons are sized for French.
 
 ---
@@ -445,55 +449,54 @@ vertical circle of radius 12 m.
 
 ### 7.3 The circuits
 
+(The look of each circuit is in §7.4.)
+
 ![Circuits](mockups/circuits.png)
 
 | # | Circuit EN / FR | World (the look) | Length | Key features | Signature props | Hazards |
 |---|---|---|---|---|---|---|
-| 1 | **Neon Harbour** / Port Néon | a neon port city at night; the league's home | 1500 m | wide, gentle banking, one jump between two piers, 2 boost pads; the tutorial | skyscrapers, "VELOCITY GRID" billboards, docked ships, stacked highways | none |
-| 2 | **Dome Bay** / Baie des Dômes | an ocean city of lit glass domes at night | 1650 m | a **short tube** above the black-blue sea, a wave jump, a shortcut over a sandbar (needs a boost) | glowing domes, sea platforms, a lighthouse beam | water geysers (bump) |
-| 3 | **Mech Foundry** / Fonderie Méca | a night factory district, sparks and orange furnaces | 1700 m | right-angle turns, a **conveyor** section, a tunnel through the assembly hall, a crate jump | robot arms, cranes, neon warning signs | pistons at the chicane (bump) |
-| 4 | **Glow Jungle** / Jungle Lumineuse | a bioluminescent alien jungle around a neon research city | 1900 m | a **figure-8** with a bridge, a vine tunnel, a waterfall jump, a shortcut | glowing plants (cyan, lime), research towers, lit waterfalls | bouncy pods on the shortcut |
-| 5 | **Crystal Moon** / Lune de Cristal | *aurora variant*: ice and crystal under green-and-violet aurora | 2000 m | hairpins, **slippery crystal** patches, an ice-cave tunnel, a big ski jump | glowing crystal spires, observatories | rolling ice blocks |
-| 6 | **Asteroid Rings** / Anneaux d'Astéroïdes | a lit mining colony on a planet's ring, in space | 2100 m | **low-gravity jumps**, a hollow-asteroid tunnel, a **tube** between two rocks | ringed planet, mining rigs with lights, beacons | drifting rocks (bump) |
-| 7 | **Skyline City** / Cité Skyline | the tallest neon city: the track weaves between towers | 2200 m | **one loop**, a banked spiral round a tower, a **tube** across the central gap | towers, sky-bridges, giant billboards, flying traffic | crosswinds between towers |
-| 8 | **Twin Sun Dunes** / Dunes des Deux Soleils | *sunset variant*: a desert planet with two setting suns | 2150 m | big dune jumps, a canyon tunnel, a shortcut over a dune | sand-sail ships, crystal pyramids, a lit outpost | sand bursts |
-| 9 | **Lava Moon** / Lune de Lave | a volcano moon at night, glowing orange lava, lit heat-shield stations | 2400 m | a **corkscrew tube** around the cone, lava-rock jumps, a tunnel through the volcano | volcano, glowing rivers, cooling towers | lava splashes (a bounce, never a fall) |
-| 10 | **Hyper Cylinder** / Hyper Cylindre | a long tube course between neon towers | 2300 m | **mostly tube (≈ 70 %)**: three long tubes joined by short flat roads and one jump; spiral boost lines | towers, giant rings, holo-signs | gravity-well buoys on the tube |
-| 11 | **Star Carnival** / Fête Spatiale | a neon amusement park in orbit | 2600 m | **one loop** through a giant ring, a **tube** around the ferris wheel's axle, a bumper zone | lit ferris wheel, carousel rings, fireworks | bumper saucers |
-| 12 | **Aurora Forest** / Forêt Aurore | *aurora variant*: a forest of giant crystal trees under aurora | 2500 m | a root tunnel, root jumps, a **tube** along a giant trunk, a shortcut through a hollow log | crystal trees, light-pods, lit walkways | falling seed-pods (slow puddles) |
-| 13 | **Starlight Ribbon** / Ruban d'Étoiles | the final: a light-road through the stars above the Velocity Grid's capital | 3200 m | **two loops**, a long **spiral tube**, the most jumps, boost chains | the league's stadium, giant ring gates, the city far below | none: speed is the hazard |
+| 1 | **Neon Harbour** / Port Néon | a pastel harbour town of capsule towers; the league's home | 1500 m | wide, gentle banking, one jump between two piers, 2 boost pads; the tutorial | capsule towers, floating islands, docked ships, arched bridges | none |
+| 2 | **Dome Bay** / Baie des Dômes | pastel glass domes on a turquoise sea | 1650 m | a **short tube** above the waves, a wave jump, a shortcut over a sandbar (needs a boost) | glowing domes, sea platforms, a lighthouse beam | water geysers (bump) |
+| 3 | **Mech Foundry** / Fonderie Méca | a cheerful pastel factory island | 1700 m | right-angle turns, a **conveyor** section, a tunnel through the assembly hall, a crate jump | robot arms, cranes, rounded warning signs | pistons at the chicane (bump) |
+| 4 | **Glow Jungle** / Jungle Lumineuse | a lush jungle of round trees and giant leaves on grassy islands | 1900 m | a **figure-8** with a bridge, a vine tunnel, a waterfall jump, a shortcut | giant leaves, round trees, research towers, waterfalls | bouncy pods on the shortcut |
+| 5 | **Crystal Moon** / Lune de Cristal | a snowy moon with lilac crystals, cold daylight | 2000 m | hairpins, **slippery crystal** patches, an ice-cave tunnel, a big ski jump | glowing crystal spires, observatories | rolling ice blocks |
+| 6 | **Asteroid Rings** / Anneaux d'Astéroïdes | a mining colony on a planet's ring, in pastel space | 2100 m | **low-gravity jumps**, a hollow-asteroid tunnel, a **tube** between two rocks | ringed planet, mining rigs with lights, beacons | drifting rocks (bump) |
+| 7 | **Skyline City** / Cité Skyline | the tallest pastel capsule-tower city: the track weaves between towers | 2200 m | **one loop**, a banked spiral round a tower, a **tube** across the central gap | towers, sky-bridges, round signs, flying traffic | crosswinds between towers |
+| 8 | **Twin Sun Dunes** / Dunes des Deux Soleils | a desert planet with two setting suns | 2150 m | big dune jumps, a canyon tunnel, a shortcut over a dune | sand-sail ships, crystal pyramids, a lit outpost | sand bursts |
+| 9 | **Lava Moon** / Lune de Lave | a volcano moon at sunset, soft rounded volcanoes, glowing lava rivers | 2400 m | a **corkscrew tube** around the cone, lava-rock jumps, a tunnel through the volcano | volcano, glowing rivers, cooling towers | lava splashes (a bounce, never a fall) |
+| 10 | **Hyper Cylinder** / Hyper Cylindre | a long tube course between floating islands above the clouds | 2300 m | **mostly tube (≈ 70 %)**: three long tubes joined by short flat roads and one jump; spiral boost lines | towers, giant rings, holo-signs | gravity-well buoys on the tube |
+| 11 | **Star Carnival** / Fête Spatiale | a pastel amusement park at sunset | 2600 m | **one loop** through a giant ring, a **tube** around the ferris wheel's axle, a bumper zone | lit ferris wheel, carousel rings, fireworks | bumper saucers |
+| 12 | **Aurora Forest** / Forêt Aurore | a forest of giant crystal trees under a soft aurora night (the only night) | 2500 m | a root tunnel, root jumps, a **tube** along a giant trunk, a shortcut through a hollow log | crystal trees, light-pods, lit walkways | falling seed-pods (slow puddles) |
+| 13 | **Starlight Ribbon** / Ruban d'Étoiles | the final: a ribbon through a pastel galaxy | 3200 m | **two loops**, a long **spiral tube**, the most jumps, boost chains | the league's stadium, giant ring gates, the city far below | none: speed is the hazard |
 
 **Remix** circuits (cup 4) are the same tracks **driven in reverse**, at dusk. Their boost pads
 and capsule rows are rearranged. Nothing new needs to be modelled.
 
-### 7.4 Time of day and palette per circuit
+### 7.4 The circuits' looks (intent)
 
-Columns:
-- **Sky**: zenith → horizon.
-- **Ground**: what lies below or around the track.
-- **Rails**: the left rail and the right rail.
-- **Walls / trims**: the buildings.
-- **Billboards**: the main neon colours.
+All circuits share the §1.1 style: the teal ribbon, the pastel candy rails, the round clouds and the rounded
+props. **Most are by day; a few at sunset; two in space; at most one soft night.** The level designer is
+re-colouring the circuits now, so this table gives the **intent**; the exact colours live in the circuit
+files.
 
-| # | Circuit | Time | Sky | Ground | Track surface | Rails | Walls / trims | Billboards |
-|---|---|---|---|---|---|---|---|---|
-| 1 | Neon Harbour | night | `#0B1A4A` → `#2A3FA0` | harbour water `#101B4A` | `#1A2A6C` | `#FF2BD6` / `#22E6FF` | `#16245E` / `#22E6FF` | magenta, cyan, lime |
-| 2 | Dome Bay | **day** | `#2F86F0` → `#BFE6FF` | sea `#1FA6C9` | `#6F86A8` | `#FF2BD6` / `#22E6FF` | cream `#F2E8D8` / `#FF8A1F` | magenta, cyan |
-| 3 | Mech Foundry | **dusk** | `#3A2A7A` → `#FF8A5A` | `#3A2A4A` | `#4A5A8A` | `#FF8A1F` / `#22E6FF` | sand `#C9B8A0` / `#FFE14D` | yellow, orange |
-| 4 | Glow Jungle | night | `#0B2A4A` → `#1F6A6A` | jungle `#0F3A2A` | `#1A2A6C` | `#B8FF2E` / `#22E6FF` | `#16245E` / `#B8FF2E` | lime, cyan |
-| 5 | Crystal Moon | night (aurora) | `#0B1A4A` → `#3FD9A0` | snow `#DCEBFF` | `#2A4A9A` | `#8A5CFF` / `#22E6FF` | white `#E8F2FF` / `#8A5CFF` | violet, cyan |
-| 6 | Asteroid Rings | night (space) | `#05092A` → `#3A2A6A` | rocks `#5A4A6A` | `#1A2A6C` | `#FF2BD6` / `#FFE14D` | `#2A2A4A` / `#FFE14D` | magenta, yellow |
-| 7 | Skyline City | **day** | `#2F86F0` → `#CFEAFF` | plazas `#E8E0D0` | `#7A8CB0` | `#FF2BD6` / `#22E6FF` | cream `#F4EEE2` / `#22E6FF` | magenta, cyan, lime |
-| 8 | Twin Sun Dunes | **dusk** (sunset) | `#3A3A9A` → `#FF9A5A` | sand `#F2B878` | `#8A7A9A` | `#FF4FA0` / `#FFE14D` | sand `#F2D8B0` / `#FF8A1F` | orange, pink |
-| 9 | Lava Moon | night | `#1A1440` → `#A0402A` | rock `#2A1A2A`, lava `#FF8A1F` | `#1A2A6C` | `#FF8A1F` / `#22E6FF` | `#2A2440` / `#FF8A1F` | orange, cyan |
-| 10 | Hyper Cylinder | **day** | `#1F6FEB` → `#BFE6FF` | clouds `#FFFFFF` | tube `#6F86A8`, cyan rings | stripes `#FF2BD6` | white `#F2F6FF` / `#FF2BD6` | magenta, cyan |
-| 11 | Star Carnival | **dusk** | `#2A1A6A` → `#FF6FB0` | `#3A2A5A` | `#2A3A7A` | `#FFE14D` / `#FF2BD6` | cream `#F2E8D8` / `#FFE14D` | yellow, magenta, lime |
-| 12 | Aurora Forest | night (aurora) | `#1A2F6A` → `#B85CFF` | forest `#1F3A3A` | `#2A4A9A` | `#B8FF2E` / `#8A5CFF` | white `#E8F2FF` / `#B8FF2E` | lime, violet |
-| 13 | Starlight Ribbon | night | `#05092A` → `#2A3FA0` | the city far below `#16245E` | `#22378A` | `#FF2BD6` / `#22E6FF` | `#16245E` / `#22E6FF` | all the neons |
+| # | Circuit | Time | Intent |
+|---|---|---|---|
+| 1 | Neon Harbour | day | the home circuit: a pastel harbour town of capsule towers on islands, a blue bay, white boats |
+| 2 | Dome Bay | day | glassy pastel domes on the sea, turquoise water, a short tube above the waves |
+| 3 | Mech Foundry | day | a cheerful pastel factory island: rounded cranes, gears, conveyor lanes in lemon and coral |
+| 4 | Glow Jungle | day | lush round trees, giant leaves, waterfalls between grassy islands, mint and lime |
+| 5 | Crystal Moon | day (cold) | a snowy moon with lilac crystals under a pale blue sky |
+| 6 | Asteroid Rings | **space** | a bright pastel starfield, a big ringed planet, rounded asteroids; the track floats in space |
+| 7 | Skyline City | day | the tallest pastel capsule-tower city; the track weaves between towers and bridges |
+| 8 | Twin Sun Dunes | **sunset** | peach dunes, two warm suns low on the horizon, a coral and lilac sky |
+| 9 | Lava Moon | **sunset** | a warm orange sky, soft rounded volcanoes, glowing (not scary) lava rivers |
+| 10 | Hyper Cylinder | day | long teal tubes strung between floating islands high above the clouds |
+| 11 | Star Carnival | **sunset** | a pastel amusement park: ferris wheel, carousel rings, balloons, a pink sky |
+| 12 | Aurora Forest | **soft night** (the only one) | a deep-blue but light night with green-lilac aurora and round glowing pods; never dark |
+| 13 | Starlight Ribbon | **space** | the final: a ribbon through a pastel galaxy, giant rings, planets passing by |
 
-In all: 3 day, 3 dusk, 7 night. The **Remixes** (Galaxy Cup) are always at dusk. Every circuit has the same
-road light streaks: cyan `#22E6FF` and white, with an intensity of 1.0 at night, 0.7 at dusk and 0.5 by day.
-In the code, a circuit's palette is one record of these 9 values.
+The **Remixes** (Galaxy Cup) run at sunset. Some circuit names still carry words from the dropped
+directions ("Neon Harbour", "Glow Jungle"); they may be renamed with the level designer.
 
 ### 7.5 Cups
 
@@ -540,18 +543,18 @@ Title ─► Main menu ─► (Grand Prix | Single Race | Time Trial | Options)
    ─► Fly-over intro (3 s) ─► Countdown ─► Race ─► Results ─► next race | Podium
 ```
 
-- **Title**: the logo COSMO ZOOM in a slanted italic, white with magenta and cyan neon offsets. Behind it is
-  the neon city at night; three ships cross with long trails; "PRESS START". After 20 s idle, a demo race plays.
-- **Pilot select**: 8 helmet portraits in neon frames, each with the team logo, name, number and colours.
+- **Title**: the logo COSMO ZOOM in rounded white bold italic with a soft shadow. Behind it is a day circuit
+  like the reference image, with the six ships flying by; "PRESS START". After 20 s idle, a demo race plays.
+- **Pilot select**: 8 helmet portraits in rounded panels, each with the team logo, name, number and colours.
 - **Hangar** (`garage.png`):
   - the ship on a lit platform;
   - tabs Pilot / Ship / Wings / Engine / Livery, with a grid of choices;
   - the stat bars with the preview of the change, the livery colours and patterns;
   - Random (Y) and Test drive (X).
-- **Cup select** (`cup_select.png`): 4 neon-framed cards, each with a trophy, the 4 circuits and the medals
+- **Cup select** (`cup_select.png`): 4 rounded cards, each with a trophy, the 4 circuits and the medals
   per class. The class tabs are on top.
-- **Race HUD** (`race_hud.png`) follows the user's reference image: dark translucent panels with cyan neon
-  frames.
+- **Race HUD** (`race_hud.png`; the layout below is kept): **rounded deep-blue translucent panels with a light
+  rim and a soft shadow**, with **white bold italic text** (§3.3).
   - **top left**:
     - a **shield emblem** next to a segmented **ENERGY** bar (green → yellow → red; it is the shield/energy:
       hits and wall scrapes drain it, energy cells refill it);
@@ -566,7 +569,7 @@ Title ─► Main menu ─► (Grand Prix | Single Race | Time Trial | Options)
   - **bottom right**: a framed **mini-map** (tube sections drawn thicker), and next to it **LAP 2/4** and
     **PLACE 3rd** in big white text.
 - **Results / Podium**: slanted rows that slide in, with the points flying into the totals. On the podium the
-  top-3 ships hover over a lit podium stage; the pilots stand and wave; neon confetti and fireworks.
+  top-3 ships hover over a lit podium stage; the pilots stand and wave; pastel confetti and fireworks.
 - **Split screen** (`race_split4.png`): the HUD shrinks (scale = view height / 720, at least 0.5). The
   leaderboard and the dial are hidden; only the energy bar, the gadget slot, the digital speed, LAP and PLACE
   remain.
@@ -606,7 +609,7 @@ Title ─► Main menu ─► (Grand Prix | Single Race | Time Trial | Options)
 | World | Style | GM programs | Tempo |
 |---|---|---|---|
 | Title / menus | bright synth-pop theme | Synth Brass (63), Saw Lead (82), Synth Bass 1 (39) | 128 |
-| Neon Harbour, Skyline City | night electro-pop | Square Lead (81), Pad Warm (90), Electric Piano (5) | 132 |
+| Neon Harbour, Skyline City | sunny electro-pop | Square Lead (81), Pad Warm (90), Electric Piano (5) | 132 |
 | Dome Bay, Asteroid Rings | chill drum-and-bass | Pad New Age (89), Fretless Bass (36), Vibraphone (12) | 170 (half-time feel) |
 | Mech Foundry, Hyper Cylinder | driving techno-funk | Saw Lead (82), Clavinet (8), Synth Bass 2 (40) | 136 |
 | Glow Jungle, Aurora Forest | tropical house | Kalimba (109), Marimba (13), Pan Flute (76) | 124 |
@@ -706,8 +709,8 @@ The modeller makes these objects:
 
 | World | Props |
 |---|---|
-| shared (neon city) | `skyscraper_a/b/c` (40–150 each: tall boxes with chamfers; lit-window texture), `billboard` (16–40, neon word atlas, glow), `highway_stack` (300, elevated curved road with light-trail strips by code), `sky_bridge` (200), `flying_car` (60, crosses the sky), `airship` (250), `grandstand` (300), `pylon` (100, light strip), `skyline_card` (8, the sky silhouettes), `planet_ringed` (300), `antenna` (80, blinking) |
-| Neon Harbour | `billboard_big` (40, glow atlas), `landing_pad` (100), `control_tower` (300), `hangar` (250) |
+| shared | `capsule_tower_a/b/c` (60–200 each: rounded pastel pill towers with stripes and caps), `island_grass` (150–300: floating grassy island, earth underside), `tree_round` (40–80), `boulder` (30–60), `arch_bridge` (120), `cloud_puff` (60–120), `sign_round` (40), `airship` (250), `grandstand` (300), `planet_ringed` (300, space circuits), `antenna` (80) |
+| Neon Harbour | `boat` (120), `landing_pad` (100), `control_tower` (300), `hangar` (250) |
 | Dome Bay | `glass_dome` (200), `sea_platform` (200), `lighthouse` (250), `buoy` (60) |
 | Mech Foundry | `gear` (120, spins), `robot_arm` (300, 3 parts), `crane` (250), `crate` (12), `piston` (60) |
 | Glow Jungle | `giant_leaf` (80), `seed_pod` (120), `waterfall` (40, scrolling), `research_station` (300) |

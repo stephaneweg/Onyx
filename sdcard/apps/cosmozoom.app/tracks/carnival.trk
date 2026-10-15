@@ -4,14 +4,14 @@
 name       = Star Carnival
 name_fr    = Fête Spatiale
 time       = dusk
-sky        = 2A1A6A FF6FB0
-ground     = 3A2A5A 43325F
-groundkind = city
-road       = 2A3A7A 32427F
-rails      = FFE14D FF2BD6
-walls      = F2E8D8 FFE14D
-neon       = FFE14D FF2BD6 B8FF2E
-city       = 0.4
+sky        = 6A5AC8 FFB0C8
+ground     = FFFFFF FFF0F4
+groundkind = islands
+road       = F0A0C8 F4A8CE
+rails      = FFE88A A8F0FF
+walls      = FFE0F0 FFE88A
+neon       = FFE88A F0A0C8 A8F0FF
+city       = 0.6
 width      = 16
 laps       = 3
 edge       = FFFFFF
@@ -85,7 +85,6 @@ items = 0.856
 boost = 0.018 0.40
 
 # the props
-prop = neon_arch both 90 0.5
 scatter = holo_ring 10 1.5
 decor = holo_ring -175.5 471.1 -0.6 -100 1.40
 decor = holo_ring -533.5 -5.9 -37.0 -200 5.00

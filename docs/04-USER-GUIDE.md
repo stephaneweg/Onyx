@@ -5722,14 +5722,14 @@ always give the same run, on the PC as on the Pi.
 
 ### Cosmo Zoom!, the anti-gravity racer (`cosmozoom`)
 
-**Cosmo Zoom!** (category *Games*) is a 3D racing game of anti-gravity ships through neon cities, by day, at dusk,
-at night and in deep space — drawn by the Raspberry Pi 4's **GPU** (the V3D; without one, by the processor, slower
+**Cosmo Zoom!** (category *Games*) is a 3D racing game of anti-gravity ships on floating tracks among pastel towers,
+islands and clouds -- soft rounded low-poly shapes --, by day, at sunset, at night and in deep space — drawn by the Raspberry Pi 4's **GPU** (the V3D; without one, by the processor, slower
 and blurrier). Eight racers, ships made of parts in the **hangar**, **gadgets** picked up from the item capsules,
 speed pads, jumps, loops, twisted sections of track and **tubes ridden on their outside** (steering takes the ship
 round the tube; the camera turns with it). It starts **full screen** (**F**: a window and back).
 
-![Cosmo Zoom!: a race in Neon Harbour](../screenshots/cosmozoom.png)
-*A race by night: the shield's energy and the boost (top left), the times, the gadget's slot and the "BOOST ACTIVE"
+![Cosmo Zoom!: a race in Skyline City](../screenshots/cosmozoom.png)
+*A race in Skyline City: the shield's energy and the boost (top left), the times, the gadget's slot and the "BOOST ACTIVE"
 banner (top centre), the leaderboard (top right), the speed (bottom left), the map, the lap and the place (bottom
 right).*
 

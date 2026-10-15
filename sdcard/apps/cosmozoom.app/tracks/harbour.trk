@@ -1,17 +1,17 @@
-# Cosmo Zoom! -- Neon Harbour: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# Cosmo Zoom! -- Sky Harbour: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
 # MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
 
-name       = Neon Harbour
-name_fr    = Port Néon
-time       = night
-sky        = 0B1A4A 2A3FA0
-ground     = 101B4A 13205A
-groundkind = water
-road       = 1A2A6C 1F3278
-rails      = FF2BD6 22E6FF
-walls      = 16245E 22E6FF
-neon       = FF2BD6 22E6FF B8FF2E
-city       = 0.9
+name       = Sky Harbour
+name_fr    = Port du Ciel
+time       = day
+sky        = 4FA8F0 D4ECFF
+ground     = 6ED6D2 78DCD8
+groundkind = sea
+road       = 7DB8EC 86C0F0
+rails      = FF9E9E FFFFFF
+walls      = FFFFFF FF9E9E
+neon       = FF9E9E 8FD8FF FFE08A
+city       = 1
 width      = 18
 laps       = 3
 edge       = FFFFFF
@@ -74,10 +74,7 @@ boost = 0.799 0.40
 prop = kk_cargo_stack left 16 1.6 0.437 0.606
 scatter = kk_landingpad 7 1.2
 scatter = traffic_ship 6 7
-decor = neon_arch -412.8 242.3 1.0 -180 1.10
-decor = neon_arch -430.9 -8.7 1.0 -180 1.10
 decor = traffic_ship -457.8 222.3 -3.0 -170 9.00
 decor = traffic_ship -480.9 31.3 -3.0 -185 11.00
 decor = traffic_ship -370.8 162.3 -3.0 0 8.00
 decor = holo_ring -244.3 303.9 10.4 -60 1.40
-decor = antenna_mast -216.8 -207.6 -3.0 -270 1.20

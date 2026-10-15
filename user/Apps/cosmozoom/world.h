@@ -1,9 +1,9 @@
 //
-// world.h -- a circuit's scenery, made once when it is loaded: the road (its plates, its light streaks, the rails and
-// their force fields, its underside and the pylons under it, the tunnels, the tubes, the gaps), the start gate, the
-// city around it (the towers in the circuit's colours, the neon billboards, the lamps, the highways far off), the
-// ground (plazas, sea, sand, snow...) and the sky (day, dusk, night, aurora, deep space: the stars, the nebulae, the
-// planets, the clouds) -- cut into pieces of CHUNK segments, each with a sphere around it: only the pieces in front of
+// world.h -- a circuit's scenery, made once when it is loaded, in the soft rounded low-poly look of the user's
+// reference (docs/cosmozoom/refs/art-direction.png): the road (a thick floating slab with rounded edges, striped round
+// rails, the tunnels, the tubes, the gaps), the start gate, the city around it (rounded capsule towers in pastel
+// colours, signs), floating islands with round trees and rocks, cloud puffs, the ground (a sea of clouds, the sea,
+// land) and the sky (day, dusk, night, aurora, deep space: the stars, the nebulae, the planets, the clouds) -- cut into pieces of CHUNK segments, each with a sphere around it: only the pieces in front of
 // the camera are sent to the GPU. What moves (the speed pads, the capsules, the traffic) is drawn each picture by the
 // scene.
 //
@@ -26,7 +26,7 @@ struct ModelLib
 	char name[MAX][24]; Mesh *raw[MAX]; int n = 0;
 	struct Variant { int model; unsigned c1, c2; bool outline; Mesh *m; } var[MAXV]; int nvar = 0;
 	char dir[160] = "";
-	bool outline = true;			// (the ships' parts are taken raw: buildShip lights them together)
+	bool outline = false;			// (the soft look: no black outline; the ships' parts are taken raw by buildShip)
 	const Mesh *rawMesh (const char *nm)
 	{
 		for (int i = 0; i < n; i++) if (!strcmp (name[i], nm)) return raw[i];
@@ -44,7 +44,6 @@ struct ModelLib
 		bool ol = withOutline < 0 ? outline : withOutline != 0;
 		int mi = index (nm);
 		if (mi < 0 || !raw[mi]) return 0;
-		if (!outline && withOutline < 0) return raw[mi];		// (raw: the ships' parts)
 		for (int i = 0; i < nvar; i++) if (var[i].model == mi && var[i].c1 == c1 && var[i].c2 == c2 && var[i].outline == ol) return var[i].m;
 		Mesh *m = new Mesh;
 		appendMesh (*m, *raw[mi], M4::identity ());
@@ -100,9 +99,12 @@ struct World
 		far.bound (); farGlow.bound ();
 	}
 
-	// ---- the road: plates, light streaks, the rails and their force fields; rolled into a tube where it is one -------
+	// ---- the road (the soft low-poly look, docs/cosmozoom/refs/art-direction.png): a thick floating slab with
+	// rounded edges, a smooth surface with faint lane marks, a striped round rail along each edge; rolled into a tube
+	// where it is one; no pylons -- the track floats ----------------------------------------------------------------------
 	void roadSeg (const Track &T, int i, VList &L, VList &G, VList &C)
 	{
+		(void) G; (void) C;
 		const Seg &A = T.seg[i], &B = T.seg[(i + 1) % T.n];
 		if ((A.flags & F_GAP) && !(B.flags & F_GAP)) { gapEdge (T, B, L); }
 		if (A.flags & F_GAP) { if (!(T.seg[(i + T.n - 1) % T.n].flags & F_GAP)) gapEdge (T, A, L); return; }
@@ -110,111 +112,78 @@ struct World
 		bool closed = A.tube > 0.985f && B.tube > 0.985f;
 		bool tun = (A.flags & F_TUNNEL) != 0 && tube <= 0;
 		bool start = (A.flags & F_START) || i == T.n - 1;
-		bool seam = (i & 3) == 3;
 		auto SP = [&] (const Seg &S, float l, float h, V3 *n = 0, V3 *lat = 0) { V3 p; Track::surfOf (S.c, S.r, S.u, S.tube, l, h, &p, n, lat); return p; };
-		// the surface: plates across (more of them as it rolls round)
-		int cols = 4 + (int) (tube * 16 + 0.5f);
-		float ea = A.w * 0.5f - (closed ? 0 : 0.6f), eb = B.w * 0.5f - (closed ? 0 : 0.6f);
+		// the surface
+		int cols = 4 + (int) (tube * 20 + 0.5f);
+		float ea = A.w * 0.5f, eb = B.w * 0.5f;
+		unsigned band = ((i / 8) & 1) ? T.road[1] : T.road[0];
 		for (int k = 0; k < cols; k++)
 		{
 			float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
-			float g = (k == 0 && !closed) ? 0 : 0.05f, g1 = (k == cols - 1 && !closed) ? 0 : 0.05f;
-			V3 na;
-			V3 a0 = SP (A, f0 * ea + g, 0), a1 = SP (A, f1 * ea - g1, 0);
-			V3 b0 = SP (B, f0 * eb + g, 0), b1 = SP (B, f1 * eb - g1, 0);
+			V3 a0 = SP (A, f0 * ea, 0), a1 = SP (A, f1 * ea, 0), b0 = SP (B, f0 * eb, 0), b1 = SP (B, f1 * eb, 0);
 			V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
-			unsigned c = T.road[(i / 4) & 1];
-			if (tube > 0.4f) c = (k % 5 == 0) ? rgbMix (T.road[0], T.rails[0], 0.75f) : T.road[(k & 1)];	// (a tube: stripes along it)
-			if (seam) c = rgbScale (c, 0.88f);
-			if (start) c = ((k + (i == T.n - 1 ? 1 : 0)) & 1) ? 0xFFFFFF : 0x202040;
+			unsigned c = band;
+			if (tube > 0.4f) c = (k % 5 == 2) ? rgbMix (T.road[0], 0xFFFFFF, 0.25f) : T.road[0];	// (a tube: light stripes along it)
+			if (start) c = ((k + (i == T.n - 1 ? 1 : 0)) & 1) ? 0xFFFFFF : 0x2A3350;
 			L.face (a0, a1, b1, b0, shade (c, nm), nm);
-			if (k > 0 || closed)
-			{
-				V3 s0 = SP (A, f0 * ea - 0.05f, -0.02f), s1 = SP (A, f0 * ea + 0.05f, -0.02f);
-				V3 t0 = SP (B, f0 * eb - 0.05f, -0.02f), t1 = SP (B, f0 * eb + 0.05f, -0.02f);
-				L.face (s0, s1, t1, t0, rgbScale (T.road[0], 0.6f), nm);
-			}
 			if (!closed)
 			{
-				V3 u0 = SP (A, f0 * (ea + 0.6f), -0.5f), u1 = SP (A, f1 * (ea + 0.6f), -0.5f);
-				V3 v0 = SP (B, f0 * (eb + 0.6f), -0.5f), v1 = SP (B, f1 * (eb + 0.6f), -0.5f);
-				L.face (u0, u1, v1, v0, rgbScale (T.wall, 0.55f), -nm);
+				V3 u0 = SP (A, f0 * ea, -1.1f), u1 = SP (A, f1 * ea, -1.1f), v0 = SP (B, f0 * eb, -1.1f), v1 = SP (B, f1 * eb, -1.1f);
+				L.face (u0, u1, v1, v0, shade (rgbScale (T.road[0], 0.7f), -nm), -nm);
 			}
 		}
-		// the light streaks: long thin glowing lines along the road (cyan and white), dashed
-		if (!start)
-		{
-			static const float LANES[] = { -0.82f, -0.55f, -0.18f, 0.18f, 0.55f, 0.82f };
-			for (int k = 0; k < 6; k++)
+		// faint lane marks (lighter, dashed)
+		if (!start && (i % 6) < 3)
+			for (int k = -1; k <= 1; k += 2)
 			{
-				int ph = (i + k * 3) % 9;
-				if (ph > 5 && k != 0 && k != 5) continue;
-				float l = LANES[k];
-				float wl = (k == 0 || k == 5) ? 0.14f : 0.07f;
-				unsigned c = (k == 2 || k == 3) ? 0xFFFFFF : 0x22E6FF;
-				if (tube > 0.4f) c = 0xFFFFFF;
-				c = rgbScale (c, glowK * ((k == 0 || k == 5) ? 0.8f : 0.55f));
-				V3 nm = A.u;
-				G.face (SP (A, l * ea - wl, 0.03f), SP (A, l * ea + wl, 0.03f), SP (B, l * eb + wl, 0.03f), SP (B, l * eb - wl, 0.03f), c, nm);
+				float l = (float) k * (tube > 0.4f ? 0 : A.w / 6), lb = (float) k * (tube > 0.4f ? 0 : B.w / 6), wl = 0.12f;
+				if (tube > 0.4f) continue;
+				L.face (SP (A, l - wl, 0.02f), SP (A, l + wl, 0.02f), SP (B, lb + wl, 0.02f), SP (B, lb - wl, 0.02f), shade (rgbMix (band, 0xFFFFFF, 0.3f), A.u), A.u);
 			}
-		}
 		// a tube's white rings every 20 m
 		if (tube > 0.4f && (i % 10) == 0)
 			for (int k = 0; k < cols; k++)
 			{
 				float f0 = -1 + 2.0f * (float) k / (float) cols, f1 = -1 + 2.0f * (float) (k + 1) / (float) cols;
 				V3 nm = SP (A, (f0 + f1) * 0.5f * ea, 0) - SP (A, (f0 + f1) * 0.5f * ea, -1);
-				G.face (SP (A, f0 * ea, 0.04f), SP (A, f1 * ea, 0.04f), SP (B, f1 * eb, 0.04f) * 0.3f + SP (A, f1 * ea, 0.04f) * 0.7f, SP (B, f0 * eb, 0.04f) * 0.3f + SP (A, f0 * ea, 0.04f) * 0.7f, rgbScale (0xFFFFFF, 0.6f), nm);
+				L.face (SP (A, f0 * ea, 0.03f), SP (A, f1 * ea, 0.03f), SP (B, f1 * eb, 0.03f) * 0.4f + SP (A, f1 * ea, 0.03f) * 0.6f, SP (B, f0 * eb, 0.03f) * 0.4f + SP (A, f0 * ea, 0.03f) * 0.6f, shade (0xF4F6FF, nm), nm);
 			}
-		if (closed) { pylon (T, A, i, L, G); return; }
+		if (closed) return;
+		// the edges: rounded down to the underside, a striped round rail on top
 		for (int side = -1; side <= 1; side += 2)
 		{
 			float s = (float) side;
-			unsigned rail = T.rails[side < 0 ? 0 : 1];
 			V3 nA, latA, nB, latB;
-			V3 ai = SP (A, s * ea, 0), ao = SP (A, s * A.w * 0.5f, 0, &nA, &latA);
-			V3 bi = SP (B, s * eb, 0), bo = SP (B, s * B.w * 0.5f, 0, &nB, &latB);
-			// the edge: a bright strip in the rail's colour, white now and then
-			L.face (ai, ao, bo, bi, ((i / 3) & 1) ? rail : rgbMix (rail, 0xFFFFFF, 0.5f), nA);
-			// the rail: a low metal kerb, its top glowing in the rail's colour, chevrons on its side
+			V3 ao = SP (A, s * ea, 0, &nA, &latA), bo = SP (B, s * eb, 0, &nB, &latB);
 			V3 outA = latA * s, outB = latB * s;
-			V3 ci = ao + nA * 0.4f, co = ao + outA * 0.8f + nA * 0.4f;
-			V3 di = bo + nB * 0.4f, dO = bo + outB * 0.8f + nB * 0.4f;
-			L.face (ao, bo, di, ci, ((i & 3) == 0) ? rgbMix (rail, 0xFFFFFF, 0.3f) : shade (rgbScale (T.wall, 0.8f), -outA), -outA);
-			L.face (ci, co, dO, di, rgbScale (T.wall, 0.75f), nA);
-			V3 e0 = co - nA * 0.9f, e1 = dO - nB * 0.9f;
-			L.face (co, dO, e1, e0, shade (rgbScale (T.wall, 0.7f), outA), outA);
-			// the glowing tube along the rail's top
+			// the slab's rounded side: a half round from the top edge down to the underside
+			const int R = 4;
+			unsigned sc = rgbScale (T.road[0], 0.82f);
+			for (int k = 0; k < R; k++)
 			{
-				V3 m0 = (ci + co) * 0.5f + nA * 0.05f, m1 = (di + dO) * 0.5f + nB * 0.05f;
-				G.face (m0 - outA * 0.18f, m0 + outA * 0.18f, m1 + outB * 0.18f, m1 - outB * 0.18f, rail, nA);
-				G.face (m0, m1, m1 + nB * 0.25f, m0 + nA * 0.25f, rgbScale (rail, 0.7f), -outA);
+				float t0 = PI * (float) k / R, t1 = PI * (float) (k + 1) / R;
+				auto E = [&] (const V3 &o, const V3 &n, const V3 &out, float t) { return o - n * (0.55f - 0.55f * cosf (t)) + out * (0.4f * sinf (t)); };
+				V3 p0 = E (ao, nA, outA, t0), p1 = E (ao, nA, outA, t1), q0 = E (bo, nB, outB, t0), q1 = E (bo, nB, outB, t1);
+				V3 fn = outA * sinf ((t0 + t1) * 0.5f) + nA * cosf ((t0 + t1) * 0.5f);
+				L.face (p0, q0, q1, p1, shade (sc, fn), fn);
 			}
-			// the force field over the rail: see-through, in the rail's colour, clearer toward its top (none in a tunnel)
-			if (!tun && tube < 0.3f)
+			// the rail: an 8-sided round bar on the edge, its stripes in turn (2 m each)
+			unsigned rc = T.rails[(i & 1)];
+			const int K = 8;
+			float rr = 0.42f;
+			V3 cA = SP (A, s * (ea - 0.35f), rr * 0.8f), cB = SP (B, s * (eb - 0.35f), rr * 0.8f);
+			for (int k = 0; k < K; k++)
 			{
-				float wh = 1.6f;
-				V3 w0 = (ci + co) * 0.5f, x0 = (di + dO) * 0.5f;
-				unsigned gc = rgbMix (rail, 0xFFFFFF, 0.2f);
-				Vtx *p;
-				C.v.reserve (C.v.n + 6);
-				p = C.v.push (); setVtx (*p, w0, 0, 0, gc, 110);
-				p = C.v.push (); setVtx (*p, x0, 0, 0, gc, 110);
-				p = C.v.push (); setVtx (*p, x0 + nB * wh, 0, 0, gc, 0);
-				p = C.v.push (); setVtx (*p, w0, 0, 0, gc, 110);
-				p = C.v.push (); setVtx (*p, x0 + nB * wh, 0, 0, gc, 0);
-				p = C.v.push (); setVtx (*p, w0 + nA * wh, 0, 0, gc, 0);
-				if ((i % 6) == 0)	// a post now and then: a slim pillar, a light on its top
-				{
-					V3 base = (ci + co) * 0.5f;
-					box (L, base + nA * 1.6f, base, 0.13f, rgbScale (T.wall, 0.9f));
-					V3 tip = base + nA * 1.7f;
-					G.face (tip - outA * 0.25f - nA * 0.15f, tip + outA * 0.25f - nA * 0.15f, tip + outA * 0.25f + nA * 0.15f, tip - outA * 0.25f + nA * 0.15f, rail, -A.f);
-				}
+				float t0 = 2 * PI * (float) k / K, t1 = 2 * PI * (float) (k + 1) / K;
+				V3 d0A = nA * cosf (t0) + outA * sinf (t0), d1A = nA * cosf (t1) + outA * sinf (t1);
+				V3 d0B = nB * cosf (t0) + outB * sinf (t0), d1B = nB * cosf (t1) + outB * sinf (t1);
+				V3 fn = (d0A + d1A) * 0.5f;
+				L.face (cA + d0A * rr, cB + d0B * rr, cB + d1B * rr, cA + d1A * rr, shade (rc, fn), fn);
 			}
+			// a small round post under the rail now and then (a joint)
+			if ((i % 12) == 0) box (L, cA + nA * 0.1f, cA - nA * 0.9f, 0.18f, rgbScale (T.road[0], 0.75f));
 		}
-		pylon (T, A, i, L, G);
-		// the tunnel: a tube of ribs, bright rings now and then
+		// the tunnel: a rounded arch with lighter ribs
 		if (tun)
 		{
 			const int K = 10;
@@ -223,15 +192,15 @@ struct World
 			for (int k = 0; k < K; k++)
 			{
 				float a0 = PI * (float) k / K, a1 = PI * (float) (k + 1) / K;
-				V3 p0 = A.c + A.r * (cosf (a0) * ra) + A.u * (sinf (a0) * ra * 0.6f);
-				V3 p1 = A.c + A.r * (cosf (a1) * ra) + A.u * (sinf (a1) * ra * 0.6f);
-				V3 q0 = B.c + B.r * (cosf (a0) * rb) + B.u * (sinf (a0) * rb * 0.6f);
-				V3 q1 = B.c + B.r * (cosf (a1) * rb) + B.u * (sinf (a1) * rb * 0.6f);
+				V3 p0 = A.c + A.r * (cosf (a0) * ra) + A.u * (sinf (a0) * ra * 0.7f);
+				V3 p1 = A.c + A.r * (cosf (a1) * ra) + A.u * (sinf (a1) * ra * 0.7f);
+				V3 q0 = B.c + B.r * (cosf (a0) * rb) + B.u * (sinf (a0) * rb * 0.7f);
+				V3 q1 = B.c + B.r * (cosf (a1) * rb) + B.u * (sinf (a1) * rb * 0.7f);
 				V3 inward = A.c - (p0 + p1) * 0.5f;
-				if (rib) G.face (p0, q0, q1, p1, (k & 1) ? T.rails[1] : T.rails[0], inward);
-				else L.face (p0, q0, q1, p1, shade ((k & 1) ? T.wall : rgbScale (T.wall, 0.85f), inward), inward);
-				V3 o = (p0 - A.c) * 0.08f, oq = (q0 - B.c) * 0.08f, o1 = (p1 - A.c) * 0.08f, oq1 = (q1 - B.c) * 0.08f;
-				L.face (p0 + o, q0 + oq, q1 + oq1, p1 + o1, shade (rgbScale (T.walls[0], 0.9f), -inward), -inward);
+				unsigned c = rib ? rgbMix (T.walls[0], 0xFFFFFF, 0.35f) : T.walls[0];
+				L.face (p0, q0, q1, p1, shade (c, inward), inward);
+				V3 o = (p0 - A.c) * 0.1f, oq = (q0 - B.c) * 0.1f, o1 = (p1 - A.c) * 0.1f, oq1 = (q1 - B.c) * 0.1f;
+				L.face (p0 + o, q0 + oq, q1 + oq1, p1 + o1, shade (T.walls[0], -inward), -inward);
 			}
 		}
 	}
@@ -247,27 +216,6 @@ struct World
 			L.face (p0, p1, p1 - S.u * 1.2f, p0 - S.u * 1.2f, c, S.f);
 			L.face (p0, p1, p1 - S.u * 1.2f, p0 - S.u * 1.2f, c, -S.f);
 		}
-	}
-	// the anti-gravity pylons under a raised road: a slim column, glowing rings
-	void pylon (const Track &T, const Seg &A, int i, VList &L, VList &G)
-	{
-		if (i % 14 != 0 || (A.flags & (F_LOOP | F_TWIST))) return;
-		if (!strcmp (T.groundKind, "none")) return;
-		V3 top = A.c - A.u * (A.tube > 0.5f ? 2 * TUBE_R : 1.6f);
-		if (top.y - T.groundY < 3.0f) return;
-		V3 bot (top.x, T.groundY, top.z);
-		// not through a road below (a crossing, a corkscrew's lower coil)
-		for (int j = 0; j < T.n; j++)
-		{
-			const Seg &S = T.seg[j];
-			if (S.c.y > top.y - 3) continue;
-			float dx = S.c.x - top.x, dz = S.c.z - top.z, rr = S.w * 0.5f + 3 + (S.tube > 0.5f ? TUBE_R : 0);
-			if (dx * dx + dz * dz < rr * rr) return;
-		}
-		box (L, top, bot, 0.7f, rgbMix (T.walls[0], 0xFFFFFF, 0.2f));
-		box (L, bot + V3 (0, 1.2f, 0), bot, 1.8f, rgbScale (T.walls[0], 0.8f));
-		int k = 0;
-		for (float y = bot.y + 4; y < top.y - 1; y += 6, k++) ring (G, V3 (top.x, y, top.z), 0.95f, rgbScale (T.rails[k & 1], glowK));
 	}
 	// a glowing ring around a vertical axis
 	static void ring (VList &G, const V3 &c, float r, unsigned col)
@@ -347,90 +295,121 @@ struct World
 		place (g, M4::frame (-S.r, S.u, S.f, S.c, sc, sc, sc), 0);
 	}
 
-	// ---- the city: towers in the circuit's colours along the track, billboards, lamps, highways far off ----------------
+	// ---- the city: rounded capsule towers in pastel colours rising from below, floating islands with trees and rocks,
+	// cloud puffs, a few signs and lamps by the road, ships flying round ----------------------------------------------------
+	static unsigned pastel (Rng &rng, const Track &T)
+	{
+		static const unsigned P[] = { 0xFF8A80, 0xFFD966, 0x9EE6B8, 0xC9B6FF, 0xF4F6FF, 0x9AD7FF, 0xFFB38A, 0xB8F0E6 };
+		unsigned c = P[rng.n (8)];
+		return T.walls[0] ? rgbMix (c, T.walls[0], 0.25f) : c;
+	}
 	void city (const Track &T, ModelLib &lib, Rng &rng)
 	{
-		if (T.city <= 0) return;
 		static const char *TOWERS[] = { "tower_setback", "tower_chamfer", "tower_round", "tower_stepped", "tower_twin", "tower_slim" };
-		static const char *BOARDS[] = { "billboard_pole", "billboard_tall", "billboard_pole" };
-		unsigned wall = T.walls[0], trim = T.walls[1];
-		// towers: a row each side, every ~35 m / density, 25..90 m from the road
-		int step = (int) (34.0f / (SEG * clampf (T.city, 0.2f, 1.5f)));
-		for (int side = -1; side <= 1; side += 2)
-			for (int i = rng.n (step); i < T.n; i += step + rng.n (3))
+		float baseY = T.groundY;
+		// the towers: rows each side, every ~35 m / density, 30..120 m from the road, standing on the ground below
+		if (T.city > 0)
+		{
+			int step = (int) (36.0f / (SEG * clampf (T.city, 0.2f, 1.5f)));
+			for (int side = -1; side <= 1; side += 2)
+				for (int i = rng.n (step); i < T.n; i += step + rng.n (3))
+				{
+					const Seg &S = T.seg[i];
+					if (S.flags & (F_LOOP | F_TWIST)) continue;
+					for (int row = 0; row < 2; row++)
+					{
+						float d = S.w * 0.5f + 30 + (float) row * 40 + rng.range (0, 25);
+						V3 p = S.c + V3 (S.r.x, 0, S.r.z) * ((float) side * d);
+						p.y = baseY;
+						if (!clearOfRoad (T, p, 18)) continue;
+						const Mesh *m = lib.get (TOWERS[rng.n (6)], pastel (rng, T), 0xF4F6FF, 0);
+						float hs = rng.range (0.6f, 1.3f) * (row ? 1.2f : 1.0f), ws = rng.range (0.9f, 1.3f);
+						place (m, at (p, (float) rng.n (4) * PI / 2 + atan2f (S.f.x, S.f.z), ws, hs, ws), i / CHUNK);
+					}
+				}
+			// signs by the road, every ~140 m, the sides in turn
+			int bstep = (int) (140 / SEG);
+			for (int i = bstep / 2, k = 0; i < T.n; i += bstep, k++)
 			{
 				const Seg &S = T.seg[i];
-				if (S.flags & (F_LOOP | F_TWIST)) continue;
-				for (int row = 0; row < 2; row++)
+				if (S.flags & (F_LOOP | F_TWIST | F_TUNNEL) || S.tube > 0) continue;
+				float side = (k & 1) ? 1.0f : -1.0f;
+				V3 p = S.c + V3 (S.r.x, 0, S.r.z) * (side * (S.w * 0.5f + 8)) - V3 (0, 6, 0);
+				if (!clearOfRoad (T, p, 4)) continue;
+				V3 face = norm (V3 (-S.f.x, 0, -S.f.z) * 0.8f + V3 (-S.r.x, 0, -S.r.z) * side * 0.6f);
+				const Mesh *m = lib.get ("billboard_pole", pastel (rng, T), T.neon[k % 3], 0);
+				place (m, at (p, atan2f (face.x, face.z), 1, 1, 1), i / CHUNK, T.neon[k % 3]);
+			}
+			// the far ring: more towers (a real city only)
+			if (T.city >= 0.5f)
+			{
+				float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
+				float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 150;
+				for (int k = 0; k < 36; k++)
 				{
-					float d = S.w * 0.5f + 22 + (float) row * 38 + rng.range (0, 22);
-					V3 p = S.c + V3 (S.r.x, 0, S.r.z) * ((float) side * d);
-					p.y = T.groundY;
-					float rad = 12;
-					if (!clearOfRoad (T, p, rad + 6)) continue;
-					const char *nm = TOWERS[rng.n (6)];
-					unsigned w = rgbScale (wall, rng.range (0.85f, 1.12f));
-					const Mesh *m = lib.get (nm, w, trim, 0);
-					float hs = rng.range (0.6f, 1.5f) * (row ? 1.25f : 1.0f), ws = rng.range (0.85f, 1.2f);
-					float yaw = atan2f (S.f.x, S.f.z) + (float) rng.n (4) * PI / 2;
-					place (m, at (p, yaw, ws, hs, ws), i / CHUNK);
-					// an antenna on some
-					if (rng.f () < 0.25f && m) place (lib.get ("antenna_mast", 0xFF000000u, 0xFF000000u, 0), at (p + V3 (0, (m->hi.y) * hs, 0), yaw, 1, 1, 1), i / CHUNK);
+					float a = 2 * PI * (float) k / 36 + rng.range (-0.05f, 0.05f), rr = R + rng.range (0, 140);
+					V3 p (cx + cosf (a) * rr, baseY, cz + sinf (a) * rr);
+					place (lib.get (TOWERS[rng.n (6)], pastel (rng, T), 0xF4F6FF, 0), at (p, rng.range (0, 6.28f), 1.5f, rng.range (1.2f, 2.4f), 1.5f), -1);
 				}
 			}
-		// billboards facing the road, every ~70 m, the sides in turn
-		int bstep = (int) (70 / SEG);
-		for (int i = bstep / 2, k = 0; i < T.n; i += bstep, k++)
-		{
-			const Seg &S = T.seg[i];
-			if (S.flags & (F_LOOP | F_TWIST | F_TUNNEL) || S.tube > 0) continue;
-			float side = (k & 1) ? 1.0f : -1.0f;
-			float d = S.w * 0.5f + 7 + rng.range (0, 5);
-			V3 p = S.c + V3 (S.r.x, 0, S.r.z) * (side * d);
-			p.y = fminf (S.c.y - 1.5f, T.groundY + 30);
-			if (S.c.y - T.groundY < 12) p.y = T.groundY;
-			if (!clearOfRoad (T, p, 4)) continue;
-			// facing the coming ships: turned toward the road and back up the track
-			V3 face = norm (V3 (-S.f.x, 0, -S.f.z) * 0.8f + V3 (-S.r.x, 0, -S.r.z) * side * 0.6f);
-			float yaw = atan2f (face.x, face.z);
-			const Mesh *m = lib.get (BOARDS[k % 3], rgbScale (wall, 0.8f), T.neon[k % 3]);
-			place (m, at (p, yaw, 1, 1, 1), i / CHUNK, T.neon[k % 3]);
 		}
-		// street lamps along the rails
-		int lstep = (int) (36 / SEG);
-		for (int i = 0, k = 0; i < T.n; i += lstep, k++)
-		{
-			const Seg &S = T.seg[i];
-			if (S.flags & (F_LOOP | F_TWIST | F_TUNNEL | F_GAP) || S.tube > 0 || S.c.y - T.groundY > 6) continue;
-			float side = (k & 1) ? 1.0f : -1.0f;
-			V3 p = S.c + S.r * (side * (S.w * 0.5f + 2.2f)) - S.u * 0.4f;
-			float yaw = atan2f (-S.r.x * side, -S.r.z * side);
-			place (lib.get ("street_lamp", 0xFF000000u, 0xFF000000u, 0), at (p, yaw, 1, 1, 1), i / CHUNK);
-		}
-		// the far city: a ring of towers beyond, and highways (a real city only)
-		if (T.city < 0.5f) return;
-		float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
-		float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 140;
-		for (int k = 0; k < 40; k++)
-		{
-			float a = 2 * PI * (float) k / 40 + rng.range (-0.05f, 0.05f), rr = R + rng.range (0, 120);
-			V3 p (cx + cosf (a) * rr, T.groundY, cz + sinf (a) * rr);
-			const Mesh *m = lib.get (TOWERS[rng.n (6)], rgbScale (wall, rng.range (0.8f, 1.05f)), trim, 0);
-			float hs = rng.range (1.2f, 2.6f);
-			place (m, at (p, rng.range (0, 6.28f), 1.4f, hs, 1.4f), -1);
-		}
-		for (int k = 0; k < 18; k++)
-		{
-			float a = 2 * PI * (float) k / 18;
-			V3 p (cx + cosf (a) * (R - 40), T.groundY, cz + sinf (a) * (R - 40));
-			place (lib.get ("highway_straight", rgbScale (wall, 0.9f), trim, 0), at (p, -a, 1, 1, 1.05f * (2 * PI * (R - 40) / 18) / 40), -1);
-		}
+		islands (T, lib, rng);
 		// the traffic: ships flying round
-		for (int k = 0; k < 10 && ntraffic < 16; k++)
+		float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
+		float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 100;
+		for (int k = 0; k < 8 && ntraffic < 16; k++)
 		{
 			Traffic &F = traffic[ntraffic++];
-			F.c = V3 (cx + rng.range (-60, 60), 0, cz + rng.range (-60, 60)); F.r = R * rng.range (0.3f, 0.9f); F.h = T.groundY + rng.range (35, 110);
-			F.speed = rng.range (0.05f, 0.14f) * (rng.f () < 0.5f ? -1 : 1); F.ph = rng.range (0, 6.28f); F.col = T.neon[k % 3];
+			F.c = V3 (cx + rng.range (-60, 60), 0, cz + rng.range (-60, 60)); F.r = R * rng.range (0.3f, 0.9f); F.h = T.lo.y + rng.range (25, 90);
+			F.speed = rng.range (0.05f, 0.12f) * (rng.f () < 0.5f ? -1 : 1); F.ph = rng.range (0, 6.28f); F.col = T.neon[k % 3];
+		}
+	}
+	// floating islands (grass, rocks, round trees) and cloud puffs around the track, at all heights
+	void islands (const Track &T, ModelLib &lib, Rng &rng)
+	{
+		if (T.timeOfDay == Track::T_SPACE && !strcmp (T.groundKind, "none")) { /* (asteroids instead: the track's own props) */ }
+		static const char *ISL[] = { "island_small", "island_big", "island_long" };
+		static const char *TREES[] = { "tree_round", "tree_round2", "bush_round", "rock_round", "rock_round2" };
+		float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
+		float rx = (T.hi.x - T.lo.x) * 0.5f + 120, rz = (T.hi.z - T.lo.z) * 0.5f + 120;
+		bool space = T.timeOfDay == Track::T_SPACE;
+		int nIsl = space ? 0 : 40, nCloud = space ? 0 : 36;
+		for (int k = 0, tries = 0; k < nIsl && tries < nIsl * 10; tries++)
+		{
+			V3 p (cx + rng.range (-rx, rx), 0, cz + rng.range (-rz, rz));
+			int ni = 0; float dist = 0;
+			clearOfRoad (T, p, 0, &ni, &dist);
+			float roadY = T.seg[ni].c.y;
+			// near the road: well below it or well above the ships; farther: anywhere
+			if (dist < T.seg[ni].w * 0.5f + 25) continue;
+			p.y = dist < 60 ? roadY - rng.range (10, 30) : roadY + rng.range (-35, 30);
+			const char *nm = ISL[rng.n (3)];
+			const Mesh *m = lib.get (nm, 0xFF000000u, 0xFF000000u, 0);
+			if (!m) break;
+			float sc = rng.range (0.8f, 1.6f), yaw = rng.range (0, 6.28f);
+			int ch = dist < 110 ? ni / CHUNK : -1;
+			place (m, at (p, yaw, sc, sc, sc), ch);
+			// trees and rocks on the grass
+			float r = (m->hi.x - m->lo.x) * 0.3f * sc;
+			int nt = 1 + rng.n (4);
+			for (int t = 0; t < nt; t++)
+			{
+				float a = rng.range (0, 6.28f), d = rng.range (0, r);
+				const Mesh *tm = lib.get (TREES[rng.n (5)], 0xFF000000u, 0xFF000000u, 0);
+				if (tm) place (tm, at (p + V3 (cosf (a) * d, 0, sinf (a) * d), rng.range (0, 6.28f), sc * 0.9f, sc * rng.range (0.8f, 1.2f), sc * 0.9f), ch);
+			}
+			k++;
+		}
+		for (int k = 0; k < nCloud; k++)
+		{
+			V3 p (cx + rng.range (-rx * 1.4f, rx * 1.4f), T.lo.y + rng.range (-40, 70), cz + rng.range (-rz * 1.4f, rz * 1.4f));
+			int ni = 0; float dist = 0;
+			clearOfRoad (T, p, 0, &ni, &dist);
+			if (dist < T.seg[ni].w * 0.5f + 30 && fabsf (p.y - T.seg[ni].c.y) < 20) continue;
+			const Mesh *m = lib.get ("cloud_puff", 0xFF000000u, 0xFF000000u, 0);
+			if (!m) break;
+			float sc = rng.range (0.7f, 1.8f);
+			place (m, at (p, rng.range (0, 6.28f), sc, sc * 0.8f, sc), dist < 110 ? ni / CHUNK : -1);
 		}
 	}
 
@@ -486,52 +465,49 @@ struct World
 		}
 	}
 
-	// ---- the ground ----------------------------------------------------------------------------------------------------
+	// ---- the ground: a sea of clouds below (the default: the track floats), the sea, a plaza, sand, snow... -------------
 	void ground (const Track &T, ModelLib &lib, Rng &rng)
 	{
-		(void) lib;
 		const char *kind = T.groundKind;
 		if (!strcmp (kind, "none")) return;
 		float cx = (T.lo.x + T.hi.x) * 0.5f, cz = (T.lo.z + T.hi.z) * 0.5f;
-		float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 420;
-		bool water = !strcmp (kind, "water"), cityG = !strcmp (kind, "city"), clouds = !strcmp (kind, "clouds");
-		const float CELL = cityG ? 40 : 60;
+		float R = fmaxf (T.hi.x - T.lo.x, T.hi.z - T.lo.z) * 0.5f + 520;
+		bool clouds = !strcmp (kind, "clouds") || !strcmp (kind, "islands");
+		bool water = !strcmp (kind, "water") || !strcmp (kind, "sea");
+		const float CELL = 60;
 		int N = (int) (2 * R / CELL) + 1;
 		float y = T.groundY;
+		unsigned c0 = clouds ? rgbMix (T.sky[1], T.sky[0], 0.35f) : T.ground[0], c1 = clouds ? rgbMix (T.sky[1], 0xFFFFFF, 0.35f) : T.ground[1];
 		for (int a = 0; a < N; a++)
 			for (int b = 0; b < N; b++)
 			{
 				float x0 = cx - R + (float) a * CELL, z0 = cz - R + (float) b * CELL;
 				float dx = x0 + CELL / 2 - cx, dz = z0 + CELL / 2 - cz;
 				if (dx * dx + dz * dz > R * R * 1.1f) continue;
-				unsigned c = T.ground[(a + b) & 1];
-				if (water) c = rgbScale (T.ground[0], 1.0f + rng.range (-0.05f, 0.05f));
-				else c = rgbScale (c, 1.0f + rng.range (-0.04f, 0.04f));
-				float in = cityG ? 1.5f : 0;		// (the streets between the city's blocks)
-				far.face (V3 (x0 + in, y, z0 + CELL - in), V3 (x0 + CELL - in, y, z0 + CELL - in), V3 (x0 + CELL - in, y, z0 + in), V3 (x0 + in, y, z0 + in), shade (c, V3 (0, 1, 0)), V3 (0, 1, 0));
-				if (cityG)
-				{
-					unsigned st = rgbScale (T.ground[0], 0.6f);
-					far.face (V3 (x0, y - 0.05f, z0 + CELL), V3 (x0 + CELL, y - 0.05f, z0 + CELL), V3 (x0 + CELL, y - 0.05f, z0), V3 (x0, y - 0.05f, z0), st, V3 (0, 1, 0));
-					// the streets' lights (at night: lines of glow)
-					if (glowK > 0.6f && ((a + 2 * b) % 3) == 0)
-						farGlow.face (V3 (x0, y + 0.05f, z0 + 0.3f), V3 (x0 + CELL, y + 0.05f, z0 + 0.3f), V3 (x0 + CELL, y + 0.05f, z0 - 0.3f), V3 (x0, y + 0.05f, z0 - 0.3f), rgbScale (T.neon[(a + b) % 3], 0.5f), V3 (0, 1, 0));
-				}
-				if (water && rng.f () < 0.25f)
-				{
-					// sparkles on the water
-					float sx = x0 + rng.range (0, CELL), sz = z0 + rng.range (0, CELL), l = rng.range (2, 6);
-					farGlow.face (V3 (sx - l, y + 0.05f, sz + 0.25f), V3 (sx + l, y + 0.05f, sz + 0.25f), V3 (sx + l, y + 0.05f, sz - 0.25f), V3 (sx - l, y + 0.05f, sz - 0.25f), rgbScale (T.neon[1], 0.35f * glowK + 0.15f), V3 (0, 1, 0));
-				}
+				// gentle swells (clouds, sea), a soft checker on land
+				auto H = [&] (float x, float z) { return (clouds || water) ? sinf (x * 0.021f + z * 0.013f) * (clouds ? 5.0f : 0.6f) + cosf (z * 0.017f - x * 0.008f) * (clouds ? 4.0f : 0.5f) : 0.0f; };
+				V3 p00 (x0, y + H (x0, z0), z0), p10 (x0 + CELL, y + H (x0 + CELL, z0), z0), p11 (x0 + CELL, y + H (x0 + CELL, z0 + CELL), z0 + CELL), p01 (x0, y + H (x0, z0 + CELL), z0 + CELL);
+				unsigned c = (clouds || water) ? rgbMix (c0, c1, 0.5f + 0.5f * sinf ((float) (a * 7 + b * 13))) : T.ground[(a + b) & 1];
+				V3 n = cross (p11 - p00, p10 - p00); if (n.y < 0) n = -n;
+				far.face (p01, p11, p10, p00, shade (c, n), V3 (0, 1, 0));
 			}
-		// the edge of the world: hills / dunes / ice / cloud banks in the horizon's colour
-		if (!cityG && !water)
+		// a sea of clouds: round cloud banks on it (it reads as clouds far below, not as a floor)
+		if (clouds)
+			for (int k = 0; k < 70; k++)
+			{
+				const Mesh *m = lib.get ("cloud_puff", 0xFF000000u, 0xFF000000u, 0);
+				if (!m) break;
+				V3 p (cx + rng.range (-R, R) * 0.8f, y + rng.range (2, 8), cz + rng.range (-R, R) * 0.8f);
+				float sc = rng.range (1.5f, 3.5f);
+				place (m, at (p, rng.range (0, 6.28f), sc, sc * 0.6f, sc), -1);
+			}
+		// land: soft hills round the edge in the horizon's colour
+		if (!clouds && !water)
 			for (int k = 0; k < 30; k++)
 			{
-				float a = 2 * PI * (float) k / 30 + rng.range (-0.05f, 0.05f), rr = R * rng.range (0.8f, 0.97f);
+				float a = 2 * PI * (float) k / 30 + rng.range (-0.05f, 0.05f), rr = R * rng.range (0.75f, 0.95f);
 				V3 c (cx + cosf (a) * rr, y, cz + sinf (a) * rr);
-				float hh = rng.range (30, 90) * (clouds ? 0.4f : 1), ww = rng.range (50, 110);
-				mound (far, c, ww, hh, rgbMix (T.ground[0], T.sky[1], rng.range (0.2f, 0.5f)));
+				mound (far, c, rng.range (50, 110), rng.range (30, 90), rgbMix (T.ground[0], T.sky[1], rng.range (0.2f, 0.5f)));
 			}
 	}
 	void mound (VList &L, const V3 &c, float r, float h, unsigned col)

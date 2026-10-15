@@ -67,12 +67,11 @@ static unsigned paintOf (const Tri &T, const Build &b, const Mesh &m)
 static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 {
 	S.mesh.tris.clear (); S.mesh.ngroups = 0; S.mesh.npt = 0; S.nflame = 0; S.hasArc = false;
-	bool keep = lib.outline; lib.outline = false;		// (the parts raw: lit and outlined together below)
-	const Mesh *hull = lib.get (HULLS[clampi (b.hull, 0, NHULL - 1)].model);
-	const Mesh *wing = lib.get (WINGS[clampi (b.wing, 0, NWING - 1)].model);
-	const Mesh *eng = lib.get (ENGINES[clampi (b.engine, 0, NENGINE - 1)].model);
-	const Mesh *pil = lib.get (PILOTS[clampi (pilot, 0, NPILOT - 1)].model);
-	lib.outline = keep;
+	// (the parts raw: painted and lit together below)
+	const Mesh *hull = lib.rawMesh (HULLS[clampi (b.hull, 0, NHULL - 1)].model);
+	const Mesh *wing = lib.rawMesh (WINGS[clampi (b.wing, 0, NWING - 1)].model);
+	const Mesh *eng = lib.rawMesh (ENGINES[clampi (b.engine, 0, NENGINE - 1)].model);
+	const Mesh *pil = lib.rawMesh (PILOTS[clampi (pilot, 0, NPILOT - 1)].model);
 	Mesh raw;
 	if (hull) appendMesh (raw, *hull, M4::identity ());
 	else
@@ -121,7 +120,7 @@ static void buildShip (ShipModel &S, ModelLib &lib, const Build &b, int pilot)
 		if (T.paint) { T.base = c; for (int k = 0; k < 3; k++) T.col[k] = c; }
 	}
 	lightMesh (raw);
-	addOutline (raw, 0.045f);
+	if (lib.outline) addOutline (raw, 0.045f);
 	appendMesh (S.mesh, raw, M4::identity ());
 	S.length = raw.hi.z - raw.lo.z;
 }
@@ -397,7 +396,7 @@ struct Scene
 			M4 M = shipMatrix (R, i);
 			F.begin (VP * M, 0, B_ADD | B_NOZWRITE); F.mesh (ship[i].mesh, M4::identity (), 255, 0, 2); F.end ();
 		}
-		F.begin (VP, TX_SIGNS, B_ADD | B_NOZWRITE | B_LINEAR | B_CLAMP);
+		F.begin (VP, TX_SIGNS, B_LINEAR | B_CLAMP);
 		for (int i = 0; i < world.nch; i++) if (visible (world.signs[i])) F.add (world.signs[i]);
 		F.end ();
 		F.begin (VP, 0, B_ADD | B_NOZWRITE);

@@ -11,7 +11,9 @@ customised, gadgets, several circuits and cups -- "first ask a designer, then a 
 team: a designer agent (`docs/cosmozoom/DESIGN.md` + mock-ups by `tools/cosmozoom/mockups.py`), a 3D modeller agent (66
 models by Python, `tools/cosmozoom/models/`, `docs/cosmozoom/MODELS.md`), a level designer agent (the 13 circuits), the
 engine and the app here. **The art direction moved a lot during the session -- the user's last word is the reference**:
-not cute, not karts: a cel-shaded **neon city racer** (the user's generated pictures: night, and "the same by day"),
+not cute, not karts; after a neon-city and a cartoon look, **the final one is the user's picture
+`docs/cosmozoom/refs/art-direction.png`: soft rounded low-poly, pastel, no outlines** (floating teal tracks with
+candy-striped rails, capsule towers, floating islands, cloud puffs),
 ships from **the user's concept sheet** (six: Nova Streak, Comet Chaser, Star Drifter, Plasma Runner, Ringmaster, Manta
 Ray -- wipEout-like, sharp edges, vivid, side / detached podracer engines), the HUD of the user's reference picture,
 tube sections ridden **on the outside**, Moebius-like **twists**, a **deep-space** circuit, "everything polished like a

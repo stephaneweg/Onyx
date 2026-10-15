@@ -152,13 +152,13 @@ static void gpuInit ()
 	}
 }
 // The frame drawn into the picture's rectangle (x, y, w, h); clear: the background
-static void render3d (Frame &F, int x, int y, int w, int h, unsigned clear)
+static void render3d (Frame &F, int x, int y, int w, int h, unsigned clear, bool keep = false)
 {
 	if (w <= 0 || h <= 0) return;
 	if (g_gpu && F.b.n <= KAPI_GPU_MAX_BATCHES)
 	{
 		for (int i = 0; i < F.b.n; i++) { g_bat[i] = F.b.p[i]; g_bat[i].texture = F.b.p[i].texture > 0 ? g_hTex[F.b.p[i].texture] : -1; }
-		struct kapi_gpu_frame f = { g_px + (long) y * g_stride + x, w, h, g_stride, clear, 0 };
+		struct kapi_gpu_frame f = { g_px + (long) y * g_stride + x, w, h, g_stride, clear, keep ? KAPI_GPU_F_KEEP : 0u };
 		int r = kapi_gpu_render (&f, (const struct kapi_gpu_vertex3 *) F.v.p, (unsigned) F.v.n, (const struct kapi_gpu_batch *) g_bat, (unsigned) F.b.n);
 		if (r == 0) return;
 		if (r == -1 || r == -3) g_gpu = false;		// (no GPU / it stopped: the software from now on)
@@ -179,7 +179,10 @@ static void render3d (Frame &F, int x, int y, int w, int h, unsigned clear)
 		g_soft = (unsigned *) malloc (sizeof (unsigned) * (size_t) g_softCap); g_zb = (float *) malloc (sizeof (float) * (size_t) g_softCap);
 		if (!g_soft || !g_zb) { g_softCap = 0; return; }
 	}
-	softRender (F, g_tx.store, g_soft, sw, sh, sw, g_zb, clear, false);
+	if (keep)
+		for (int j = 0; j < sh; j++)
+			for (int i2 = 0; i2 < sw; i2++) g_soft[j * sw + i2] = g_px[(long) (y + j * div) * g_stride + x + i2 * div];
+	softRender (F, g_tx.store, g_soft, sw, sh, sw, g_zb, clear, keep);
 	for (int j = 0; j < h; j++)
 	{
 		unsigned *d = g_px + (long) (y + j) * g_stride + x; const unsigned *s = g_soft + (j / div) * sw;
@@ -782,7 +785,7 @@ static const char *MENU[] = { TRN ("Grand Prix"), TRN ("Single Race"), TRN ("Tim
 static void drawTitle ()
 {
 	Surf S = screenSurf ();
-	S.vgrad (0, 0, g_W, g_H / 3, 0x050820, 0x050820, 70);
+	S.vgrad (0, 0, g_W, g_H / 3, 0x1A2A5A, 0x1A2A5A, 40);
 	logo (S, 150, 1.0f);
 	if (((int) (g_stateT * 2)) & 1 || g_stateT < 0.5f) titleText (S, TR ("PRESS START"), 480, 36, C_YELLOW);
 	g_text.draw (S, g_U.X (640), g_U.Y (684), g_U.L (15), TR ("An anti-gravity racer for Onyx"), C_WHITE, 1, g_U.L (2));
@@ -790,7 +793,7 @@ static void drawTitle ()
 static void drawMenu ()
 {
 	Surf S = screenSurf ();
-	S.shade (100, 0x050820);
+	S.shade (70, 0x1A2A5A);
 	logo (S, 30, 0.55f);
 	static const unsigned COL[5] = { C_PINK, C_SKY, C_MINT, C_GRAPE, C_ORANGE };
 	for (int k = 0; k < 5; k++) button (S, 440, 200 + (float) k * 78, 400, 62, TR (MENU[k]), g_menuSel == k, COL[k]);
@@ -803,7 +806,7 @@ static const char *AUTOACC[] = { TRN ("Off"), TRN ("On"), TRN ("Orbit only") };
 static void drawOptions ()
 {
 	Surf S = screenSurf ();
-	S.shade (140, 0x050820);
+	S.shade (90, 0x1A2A5A);
 	titleText (S, TR ("OPTIONS"), 50, 56);
 	const char *lab[5] = { TR ("Music"), TR ("Sounds"), TR ("Steering help"), TR ("Auto-accelerate"), TR ("Back") };
 	const char *val[5] = { g_musicOn ? TR ("On") : TR ("Off"), g_sfxOn ? TR ("On") : TR ("Off"), TR (ASSIST[g_assist]), TR (AUTOACC[g_autoAcc]), "" };
@@ -833,16 +836,17 @@ static void hangarModel ()
 static void drawHangar ()
 {
 	Surf S = screenSurf ();
-	S.vgrad (0, 0, g_W, g_H, 0x0A1240, 0x2A1450);
+	S.vgrad (0, 0, g_W, g_H, 0x6FB8F2, 0xD8EEFF);
 	// the ship on its lit platform, drawn by the 3D in the left part
 	hangarModel ();
-	int vx = 0, vy = g_U.Y (80), vw = g_U.X (660), vh = g_U.L (570);
+	int vx = 0, vy = 0, vw = g_W, vh = g_H;		// (the whole screen, the ship drawn left of centre, over the sky)
 	{
 		Frame &F = g_frame; F.clear ();
 		float a = g_hangarSpin;
 		float L = len (g_hangarShip.mesh.hi - g_hangarShip.mesh.lo);
-		V3 eye (sinf (a) * L * 1.0f, L * 0.42f, cosf (a) * L * 1.0f);
-		M4 VP = M4::perspective (0.7f, (float) vw / (float) vh, 0.3f, 200) * M4::lookAt (eye, V3 (0, 0.5f, 0), V3 (0, 1, 0));
+		V3 eye (sinf (a) * L * 1.55f, L * 0.62f, cosf (a) * L * 1.55f);
+		M4 shift = M4::identity (); shift.m[3] = -0.45f;	// (clip x - 0.47 w: the picture moved left)
+		M4 VP = shift * M4::perspective (0.62f, (float) vw / (float) vh, 0.3f, 200) * M4::lookAt (eye, V3 (0, 0.5f, 0), V3 (0, 1, 0));
 		// the platform: a hexagonal pad with a glowing rim, a floor grid
 		F.begin (VP, 0, B_CULL);
 		const int K = 6;
@@ -851,8 +855,8 @@ static void drawHangar ()
 		{
 			float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
 			V3 c0 (0, -0.05f, 0), p0 (cosf (a0) * R, -0.05f, sinf (a0) * R), p1 (cosf (a1) * R, -0.05f, sinf (a1) * R);
-			F.tri (c0, p1, p0, (k & 1) ? 0x26306A : 0x2E3A7A);
-			F.quad (p0, p1, p1 - V3 (0, 0.5f, 0), p0 - V3 (0, 0.5f, 0), 0x1A2050);
+			F.tri (c0, p1, p0, (k & 1) ? 0x47B9AE : 0x3FA9A0);
+			F.quad (p0, p1, p1 - V3 (0, 0.5f, 0), p0 - V3 (0, 0.5f, 0), 0x2E8A82);
 		}
 		F.end ();
 		M4 M = M4::translate (V3 (0, 0.55f + sinf (g_stateT * 2) * 0.06f, 0));
@@ -864,17 +868,17 @@ static void drawHangar ()
 		{
 			float a0 = 2 * PI * (float) k / K, a1 = 2 * PI * (float) (k + 1) / K;
 			V3 p0 (cosf (a0) * R, 0, sinf (a0) * R), p1 (cosf (a1) * R, 0, sinf (a1) * R);
-			F.quad (p0, p1, p1 * 1.04f, p0 * 1.04f, C_SKY);
-			F.quad (p0, p1, p1 + V3 (0, 0.06f, 0), p0 + V3 (0, 0.06f, 0), C_SKY);
+			F.quad (p0, p1, p1 * 1.04f, p0 * 1.04f, 0x406080);
+			F.quad (p0, p1, p1 + V3 (0, 0.06f, 0), p0 + V3 (0, 0.06f, 0), 0x406080);
 		}
 		for (int k = -8; k <= 8; k++)
 		{
 			float x = (float) k * 2.5f;
-			F.quad (V3 (x - 0.03f, -0.6f, -20), V3 (x + 0.03f, -0.6f, -20), V3 (x + 0.03f, -0.6f, 20), V3 (x - 0.03f, -0.6f, 20), 0x203070);
-			F.quad (V3 (-20, -0.6f, x - 0.03f), V3 (-20, -0.6f, x + 0.03f), V3 (20, -0.6f, x + 0.03f), V3 (20, -0.6f, x - 0.03f), 0x203070);
+			F.quad (V3 (x - 0.03f, -0.6f, -20), V3 (x + 0.03f, -0.6f, -20), V3 (x + 0.03f, -0.6f, 20), V3 (x - 0.03f, -0.6f, 20), 0x203858);
+			F.quad (V3 (-20, -0.6f, x - 0.03f), V3 (-20, -0.6f, x + 0.03f), V3 (20, -0.6f, x + 0.03f), V3 (20, -0.6f, x - 0.03f), 0x203858);
 		}
 		F.end ();
-		render3d (F, vx, vy, vw, vh, 0x101850);
+		render3d (F, vx, vy, vw, vh, 0x9FD3F7, true);
 	}
 	char b[96];
 	snprintf (b, sizeof b, g_players > 1 ? TR ("HANGAR -- PLAYER %d") : TR ("HANGAR"), g_hangarP + 1);
@@ -923,7 +927,7 @@ static void drawHangar ()
 static void drawSelect ()
 {
 	Surf S = screenSurf ();
-	S.shade (150, 0x050820);
+	S.shade (95, 0x1A2A5A);
 	char b[96];
 	titleText (S, g_mode == MODE_GP ? TR ("CHOOSE A CUP") : TR ("CHOOSE A CIRCUIT"), 20, 46);
 	for (int k = 0; k < NCLASS; k++)
@@ -983,7 +987,7 @@ static void drawSelect ()
 static void drawResults ()
 {
 	Surf S = screenSurf ();
-	S.shade (160, 0x050820);
+	S.shade (110, 0x1A2A5A);
 	char b[96], c2[48];
 	if (g_mode == MODE_GP) { snprintf (b, sizeof b, TR ("RACE %d OF 4 -- %s"), g_raceNo + 1, trackName (g_curTrack, c2, sizeof c2)); titleText (S, b, 20, 36); }
 	else titleText (S, trackName (g_curTrack, c2, sizeof c2), 20, 36);
@@ -1023,7 +1027,7 @@ static Particles g_confetti;
 static void drawPodium ()
 {
 	Surf S = screenSurf ();
-	S.vgrad (0, 0, g_W, g_H, 0x0A1240, 0x3A1460);
+	S.vgrad (0, 0, g_W, g_H, 0x6FB8F2, 0xFFE3F0);
 	// light beams
 	for (int k = 0; k < 6; k++)
 	{
@@ -1296,7 +1300,7 @@ static void update (float dt)
 static void drawPause ()
 {
 	Surf S = screenSurf ();
-	S.shade (150, 0x050820);
+	S.shade (95, 0x1A2A5A);
 	titleText (S, TR ("PAUSED"), 160, 64);
 	const char *it[3] = { TR ("Resume"), TR ("Restart"), TR ("Quit the race") };
 	for (int k = 0; k < 3; k++) button (S, 470, 290 + (float) k * 80, 340, 60, it[k], g_pauseSel == k, k == 2 ? C_ORANGE : C_SKY);

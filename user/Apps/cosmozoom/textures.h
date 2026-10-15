@@ -48,7 +48,7 @@ struct Textures
 	void put (int x, int y, unsigned v) { if (x >= 0 && y >= 0 && x < SW && y < SH) { unsigned o = signs[y * SW + x] & 255; if (v > o) signs[y * SW + x] = 0xFF000000u | v << 16 | v << 8 | v; } }
 	void makeSigns ()
 	{
-		for (int i = 0; i < SW * SH; i++) signs[i] = 0xFF000000u;
+		for (int i = 0; i < SW * SH; i++) signs[i] = 0xFF8C8C8Cu;		// (a mid-grey panel: tinted by the sign's colour)
 		for (int cell = 0; cell < 8; cell++)
 		{
 			int x0, y0; cellRect (cell, &x0, &y0);

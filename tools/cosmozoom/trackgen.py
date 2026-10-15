@@ -321,12 +321,10 @@ def gate(c, at, d, sc=1.25):
 
 @circuit
 def harbour():
-    # 1. Neon Harbour: the league's home, the tutorial -- wide and gentle, the harbour bridge, the jump between two
+    # 1. Sky Harbour: the league's home, the tutorial -- wide and gentle, the harbour bridge, the jump between two
     # piers, two speed pads; the docked ships, the towers, the "VELOCITY GRID" signs.
     c = Course("harbour")
-    header(c, name="Neon Harbour", name_fr="Port Néon", time="night", sky="0B1A4A 2A3FA0", ground="101B4A 13205A",
-           groundkind="water", road="1A2A6C 1F3278", rails="FF2BD6 22E6FF", walls="16245E 22E6FF", neon="FF2BD6 22E6FF B8FF2E",
-           city="0.9", width="18", laps="3", edge="FFFFFF")
+    header(c, name="Sky Harbour", name_fr="Port du Ciel", time="day", sky="4FA8F0 D4ECFF", ground="6ED6D2 78DCD8", groundkind="sea", road="7DB8EC 86C0F0", rails="FF9E9E FFFFFF", walls="FFFFFF FF9E9E", neon="FF9E9E 8FD8FF FFE08A", city="1", width="18", laps="3", edge="FFFFFF")
     c.S(170, m="s1")
     c.R(110, 95)                                # the first long sweeper
     c.S(50, y=5, m="bridge")                    # the harbour bridge
@@ -355,13 +353,10 @@ def harbour():
     c.line(lambda c: "prop = kk_cargo_stack left 16 1.6 %.3f %.3f" % (c.t("pier", 10), c.t("pier2", 70)))
     c.line("scatter = kk_landingpad 7 1.2")
     c.line("scatter = traffic_ship 6 7")
-    c.decor("neon_arch", "pier", 20, 0, 0, 0, 1.1)
-    c.decor("neon_arch", "pier2", 60, 0, 0, 0, 1.1)
     c.decor("traffic_ship", "pier", 40, -45, 0, 10, 9, ground=True)
     c.decor("traffic_ship", "pier2", 20, -50, 0, -5, 11, ground=True)
     c.decor("traffic_ship", "pier", 100, 42, 0, 180, 8, ground=True)
     gate(c, "crest", 0, 1.4)
-    c.decor("antenna_mast", "back", 40, -30, 0, 0, 1.2, ground=True)
     return c
 
 
@@ -370,9 +365,7 @@ def domebay():
     # 2. Dome Bay: an ocean city of glass domes by day -- the cliff road, a tube flown above the sea on a long curve,
     # the rolling waves (a jump off a crest), the sandbar's S-bend, the long sea front.
     c = Course("domebay")
-    header(c, name="Dome Bay", name_fr="Baie des Dômes", time="day", sky="2F86F0 BFE6FF", ground="1FA6C9 1C9CBE",
-           groundkind="water", road="6F86A8 788FB0", rails="FF2BD6 22E6FF", walls="F2E8D8 FF8A1F", neon="FF2BD6 22E6FF FF8A1F",
-           city="0.45", width="16", laps="3", edge="FFFFFF")
+    header(c, name="Dome Bay", name_fr="Baie des Dômes", time="day", sky="5AB4F5 DDF2FF", ground="7FE0DC 8AE6E0", groundkind="sea", road="3FAFA8 48B8B0", rails="FFB3C7 BDF2D5", walls="F2E8D8 FFB3C7", neon="FFB3C7 7FE0DC FFE08A", city="0.6", width="16", laps="3", edge="FFFFFF")
     c.S(140, m="s1")
     c.R(75, 70)
     c.S(60, y=6, m="cliff")
@@ -409,10 +402,8 @@ def domebay():
     c.line("scatter = kk_landingpad 6 1.4")
     c.decor("kk_dome", "tubeA", 100, -60, 0, 0, 3.5, ground=True)
     c.decor("kk_dome", "tubeA", 200, 70, 0, 0, 4.0, ground=True)
-    c.decor("antenna_mast", "sandbar", 0, -40, 0, 0, 1.4, ground=True)
     ringOverTube(c, "tubeA", 70)
     ringOverTube(c, "tubeA", 160)
-    c.decor("neon_arch", "waves", 10, 0, 0, 0, 1.0)
     return c
 
 
@@ -421,9 +412,7 @@ def foundry():
     # 3. Mech Foundry: a factory district at dusk -- right-angle corners like a robot's steps, the climb to the upper
     # deck, the dive into the assembly hall's tunnel, the crate jump.
     c = Course("foundry")
-    header(c, name="Mech Foundry", name_fr="Fonderie Méca", time="dusk", sky="3A2A7A FF8A5A", ground="3A2A4A 433052",
-           groundkind="city", road="4A5A8A 52628F", rails="FF8A1F 22E6FF", walls="C9B8A0 FFE14D", neon="FFE14D FF8A1F 22E6FF",
-           city="0.8", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Mech Foundry", name_fr="Fonderie Méca", time="dusk", sky="7A8CE0 FFC59A", ground="F0D8C8 E8D0C0", groundkind="clouds", road="9A9AD8 A2A2DE", rails="FFD27A FFFFFF", walls="FFC8A0 FFD27A", neon="FFD27A FF9E7A 8FD8FF", city="1", width="15", laps="3", edge="FFFFFF")
     c.S(140, m="s1")
     c.R(28, 90)                                 # the steps: right angles
     c.S(90, m="step1")
@@ -452,19 +441,15 @@ def foundry():
     c.line(lambda c: "prop = kk_water_storage left 45 1.3 %.3f %.3f" % (c.t("conveyor"), c.t("conveyor", 200)))
     c.line("scatter = kk_structure_tall 14 1.6")
     c.line("scatter = kk_cargo_stack 30 2")
-    c.line("scatter = antenna_mast 8 1")
-    c.decor("neon_arch", "dive", 40, 0, 0, 0, 1.0)
     return c
 
 
 @circuit
 def jungle():
-    # 4. Glow Jungle: a figure of eight in a glowing jungle at night -- the high bridge over the low road, the vine
+    # 4. Jungle Isles: a figure of eight in a glowing jungle at night -- the high bridge over the low road, the vine
     # tunnel, the waterfall jump down into the lower lobe.
     c = Course("jungle", heading=45)
-    header(c, name="Glow Jungle", name_fr="Jungle Lumineuse", time="night", sky="0B2A4A 1F6A6A", ground="0F3A2A 12442F",
-           groundkind="jungle", road="1A2A6C 1F3278", rails="B8FF2E 22E6FF", walls="16245E B8FF2E", neon="B8FF2E 22E6FF FF2BD6",
-           city="0.25", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Jungle Isles", name_fr="Îles de la Jungle", time="day", sky="4FB0E8 D8F4EC", ground="FFFFFF F4FAFF", groundkind="islands", road="6CCB8E 75D296", rails="FFF2A0 FFFFFF", walls="BDF2D5 FFF2A0", neon="FFF2A0 6CCB8E FFB3C7", city="0.4", width="15", laps="3", edge="FFFFFF")
     c.S(260, free=True, m="under")              # the low road, under the bridge
     c.R(100, 90)
     c.S(86, m="lower")
@@ -497,9 +482,7 @@ def crystal():
     # 5. Crystal Moon: ice under the aurora -- the high ridge, the ski jump off the cliff, the valley's hairpins (the
     # ice cave through the middle peak), the long climb back.
     c = Course("crystal", heading=-90, y=18)
-    header(c, name="Crystal Moon", name_fr="Lune de Cristal", time="aurora", sky="0B1A4A 3FD9A0", ground="DCEBFF D0E2FA",
-           groundkind="snow", road="2A4A9A 31529F", rails="8A5CFF 22E6FF", walls="E8F2FF 8A5CFF", neon="8A5CFF 22E6FF 3FD9A0",
-           city="0.2", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Crystal Moon", name_fr="Lune de Cristal", time="night", sky="232A72 6A70C8", ground="E8F0FF DCE6FA", groundkind="snow", road="B8A8F0 C0B2F4", rails="FFFFFF A8E0FF", walls="E8F0FF B8A8F0", neon="B8A8F0 A8E0FF FFFFFF", city="0.3", width="15", laps="3", edge="FFFFFF")
     c.S(260, free=True, m="ridge")
     c.L(55, 90, y=17)
     c.S(70, y=15, m="cliff")                    # the ski jump
@@ -524,9 +507,7 @@ def crystal():
     c.line("scatter = kn_tree_pine 70 2.4")
     c.line("scatter = kk_rocks_a 24 2.5")
     c.line("scatter = kk_dome 5 2.0")
-    c.line("scatter = antenna_mast 4 1")
     c.decor("kk_dome", "ridge", 120, 45, 0, 0, 2.6, ground=True)
-    c.decor("neon_arch", "cliff", 0, 0, 0, 0, 1.0)
     return c
 
 
@@ -535,9 +516,7 @@ def asteroids():
     # 6. Asteroid Rings: a mining colony in a planet's rings, in deep space -- the hollow asteroid, the low-gravity
     # jumps down a long dive, the twisting ribbon, the tube between two rocks; climbs and dives in the void.
     c = Course("asteroids", scale=0.9)
-    header(c, name="Asteroid Rings", name_fr="Anneaux d'Astéroïdes", time="space", sky="05092A 3A2A6A", ground="5A4A6A 4F4060",
-           groundkind="none", road="1A2A6C 1F3278", rails="FF2BD6 FFE14D", walls="2A2A4A FFE14D", neon="FF2BD6 FFE14D 22E6FF",
-           city="0", width="16", laps="3", edge="FFFFFF")
+    header(c, name="Asteroid Rings", name_fr="Anneaux d'Astéroïdes", time="space", sky="16164E 4A3A9A", ground="5A4A6A 4F4060", groundkind="none", road="A8A0F0 B0A8F4", rails="FFB3C7 FFE8A0", walls="C8B8FF FFE8A0", neon="FFB3C7 FFE8A0 A8E0FF", city="0", width="16", laps="3", edge="FFFFFF")
     c.S(200, free=True, m="s1")
     c.R(90, 70, y=10)
     c.S(80, y=22)
@@ -575,7 +554,6 @@ def asteroids():
     c.decor("kk_solarpanel", "jumps", 60, -95, -28, 90, 4)
     c.decor("kk_basemodule_c", "tubeA", 60, 70, -35, 30, 2.5)
     c.decor("kk_landingpad", "tubeA", 60, 70, -38, 30, 2.5)
-    c.decor("antenna_mast", "s1", 40, 40, -30, 0, 1.2)
     c.decor("kk_dome", "twist", 80, -60, -40, 0, 3)
     ringOverTube(c, "tubeA", 50)
     ringOverTube(c, "tubeA", 140)
@@ -590,9 +568,7 @@ def skyline():
     # 7. Skyline City: the tallest neon city by day -- the loop, the spiral round a tower (flown over its own way in),
     # the tube across the central gap, the twist on the long north avenue.
     c = Course("skyline")
-    header(c, name="Skyline City", name_fr="Cité Skyline", time="day", sky="2F86F0 CFEAFF", ground="E8E0D0 DED6C4",
-           groundkind="city", road="7A8CB0 8395B8", rails="FF2BD6 22E6FF", walls="F4EEE2 22E6FF", neon="FF2BD6 22E6FF B8FF2E",
-           city="1", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Skyline City", name_fr="Cité Skyline", time="day", sky="4FA8F0 D4ECFF", ground="FFFFFF F4FAFF", groundkind="clouds", road="2FA59A 38AFA4", rails="FFB3C7 BDF2D5", walls="0 FFFFFF", neon="FFB3C7 8FE8FF FFE08A", city="1", width="15", laps="3", edge="FFFFFF")
     c.S(150, m="s1")
     c.R(80, 90)
     c.S(178, m="loopRoad")                      # the loop
@@ -627,9 +603,7 @@ def dunes():
     # 8. Twin Sun Dunes: a desert planet at sunset -- big dune crests and their jumps, long sweeping curves, the
     # canyon tunnel, the outpost's wind turbines.
     c = Course("dunes", scale=0.92)
-    header(c, name="Twin Sun Dunes", name_fr="Dunes des Deux Soleils", time="dusk", sky="3A3A9A FF9A5A", ground="F2B878 E8AE70",
-           groundkind="sand", road="8A7A9A 92829F", rails="FF4FA0 FFE14D", walls="F2D8B0 FF8A1F", neon="FF8A1F FF4FA0 FFE14D",
-           city="0.2", width="16", laps="3", edge="FFFFFF")
+    header(c, name="Twin Sun Dunes", name_fr="Dunes des Deux Soleils", time="dusk", sky="6A7AD8 FFC48A", ground="F2D2A0 EBC896", groundkind="sand", road="F0A890 F4B098", rails="FFFFFF FFD27A", walls="FFD8B0 FFFFFF", neon="FFD27A FF9E7A FFFFFF", city="0.35", width="16", laps="3", edge="FFFFFF")
     c.S(110, m="s1")
     c.S(80, y=9); c.mark("dune1")
     c.R(110, 60, y=4)
@@ -675,9 +649,7 @@ def lava():
     # 9. Lava Moon: a volcano moon at night -- the corkscrew tube up round the cone, the long dive through the black
     # rock's tunnel, the lava-rock jumps, the glowing plain.
     c = Course("lava")
-    header(c, name="Lava Moon", name_fr="Lune de Lave", time="night", sky="1A1440 A0402A", ground="2A1A2A 3A1A22",
-           groundkind="rock", road="1A2A6C 1F3278", rails="FF8A1F 22E6FF", walls="2A2440 FF8A1F", neon="FF8A1F 22E6FF FF2BD6",
-           city="0.15", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Lava Moon", name_fr="Lune de Lave", time="dusk", sky="5A4AA8 FF9A7A", ground="B8806E AE7866", groundkind="rock", road="9A8AD8 A292DC", rails="FFB07A FFF0C0", walls="FFB8A0 FFF0C0", neon="FFB07A FFF0C0 C8B8FF", city="0.3", width="15", laps="3", edge="FFFFFF")
     c.S(150, m="s1")
     c.R(90, 70)
     c.S(110, m="plain")
@@ -713,9 +685,7 @@ def cylinder():
     # 10. Hyper Cylinder: a tube course above the clouds by day -- three long tubes on wide curves, the short flat
     # links, the jump between two tubes, the spirals of speed pads.
     c = Course("cylinder", scale=0.93)
-    header(c, name="Hyper Cylinder", name_fr="Hyper Cylindre", time="day", sky="1F6FEB BFE6FF", ground="FFFFFF F2F6FF",
-           groundkind="clouds", road="6F86A8 788FB0", rails="FF2BD6 22E6FF", walls="F2F6FF FF2BD6", neon="FF2BD6 22E6FF B8FF2E",
-           city="0.7", width="16", laps="3", edge="FFFFFF")
+    header(c, name="Hyper Cylinder", name_fr="Hyper Cylindre", time="day", sky="3F9CF0 CFEAFF", ground="FFFFFF F4FAFF", groundkind="clouds", road="8FD0F0 98D6F2", rails="FFFFFF FF9AC0", walls="FFFFFF FF9AC0", neon="FF9AC0 8FD0F0 FFE08A", city="1", width="16", laps="3", edge="FFFFFF")
     c.S(90, fix=True, m="s1")
     c.S(120, y=8, m="tube1a")
     c.R(220, 100, y=14)
@@ -755,9 +725,7 @@ def carnival():
     # 11. Star Carnival: a neon fair at dusk -- the loop through the giant ring, the tube through the big wheel's hub,
     # the twist, the bumper zone (rows of capsules).
     c = Course("carnival")
-    header(c, name="Star Carnival", name_fr="Fête Spatiale", time="dusk", sky="2A1A6A FF6FB0", ground="3A2A5A 43325F",
-           groundkind="city", road="2A3A7A 32427F", rails="FFE14D FF2BD6", walls="F2E8D8 FFE14D", neon="FFE14D FF2BD6 B8FF2E",
-           city="0.4", width="16", laps="3", edge="FFFFFF")
+    header(c, name="Star Carnival", name_fr="Fête Spatiale", time="dusk", sky="6A5AC8 FFB0C8", ground="FFFFFF FFF0F4", groundkind="islands", road="F0A0C8 F4A8CE", rails="FFE88A A8F0FF", walls="FFE0F0 FFE88A", neon="FFE88A F0A0C8 A8F0FF", city="0.6", width="16", laps="3", edge="FFFFFF")
     c.S(150, m="s1")
     c.R(70, 60)
     c.S(90, m="jumpRd")
@@ -787,7 +755,6 @@ def carnival():
     gate(c, "loopRd", 50, 1.4)
     ringOverTube(c, "tubeA", 100, 5.0)          # the big wheel
     ringOverTube(c, "tubeA", 104, 4.6)
-    c.line("prop = neon_arch both 90 0.5")
     c.line("scatter = holo_ring 10 1.5")
     return c
 
@@ -797,9 +764,7 @@ def aurora():
     # 12. Aurora Forest: giant crystal trees under the aurora -- the root tunnel, the root jump, the tube up a giant
     # trunk and the long dive down, the walkways.
     c = Course("aurora")
-    header(c, name="Aurora Forest", name_fr="Forêt Aurore", time="aurora", sky="1A2F6A B85CFF", ground="1F3A3A 234240",
-           groundkind="jungle", road="2A4A9A 31529F", rails="B8FF2E 8A5CFF", walls="E8F2FF B8FF2E", neon="B8FF2E 8A5CFF 22E6FF",
-           city="0.15", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Aurora Forest", name_fr="Forêt Aurore", time="aurora", sky="2A3A8A 8FD8C8", ground="FFFFFF EEF4FF", groundkind="islands", road="7FD0B8 88D6BE", rails="D8B8FF FFFFFF", walls="E8F2FF D8B8FF", neon="D8B8FF 7FD0B8 FFFFFF", city="0.4", width="15", laps="3", edge="FFFFFF")
     c.S(140, m="s1")
     c.R(80, 80)
     c.S(90, m="roots")                          # under the roots
@@ -835,9 +800,7 @@ def ribbon():
     # 13. Starlight Ribbon: the final -- a road of light through deep space: two loops, the long corkscrew tube, the
     # most jumps, a chain of speed pads, two twists, the ring gates.
     c = Course("ribbon")
-    header(c, name="Starlight Ribbon", name_fr="Ruban d'Étoiles", time="space", sky="05092A 2A3FA0", ground="16245E 1A2A6C",
-           groundkind="none", road="22378A 2A3F92", rails="FF2BD6 22E6FF", walls="16245E 22E6FF", neon="FF2BD6 22E6FF B8FF2E",
-           city="0", width="15", laps="3", edge="FFFFFF")
+    header(c, name="Starlight Ribbon", name_fr="Ruban d'Étoiles", time="space", sky="0E1450 3A3AA0", ground="16245E 1A2A6C", groundkind="none", road="9FE0F0 A8E6F4", rails="FFB3C7 FFFFFF", walls="C8D8FF FFB3C7", neon="FFB3C7 9FE0F0 FFE08A", city="0", width="15", laps="3", edge="FFFFFF")
     c.S(200, fix=True, m="s1")
     c.R(90, 70, y=12)
     c.S(160, m="loop1")

@@ -97,11 +97,14 @@ struct UiPage
 };
 
 // ---- the HUD's panels: dark, see-through, a neon frame ------------------------------------------------------------------
-static void neonPanel (Surf &S, int x, int y, int w, int h, int r, unsigned neon = C_SKY, int alpha = 170)
+static void neonPanel (Surf &S, int x, int y, int w, int h, int r, unsigned accent = C_SKY, int alpha = 170)
 {
-	S.rrect (x - 3, y - 3, w + 6, h + 6, r + 3, neon, 70);
-	S.rrect (x - 1, y - 1, w + 2, h + 2, r + 1, neon, 255);
-	S.rrect (x + 1, y + 1, w - 2, h - 2, r - 1 > 0 ? r - 1 : 0, 0x0A1030, alpha);
+	// the soft look: a rounded see-through deep-blue panel, a soft drop shadow, a light rim (the accent when chosen)
+	int rr = r + h / 6;
+	S.rrect (x + 2, y + 4, w, h, rr, 0x101830, alpha / 3);
+	S.rrect (x - 2, y - 2, w + 4, h + 4, rr + 2, accent == C_SKY || accent == 0x3A4A8A ? 0xFFFFFF : accent, accent == C_SKY || accent == 0x3A4A8A ? 150 : 255);
+	S.rrect (x, y, w, h, rr, 0x22305A, alpha + 20 > 255 ? 255 : alpha + 20);
+	if (h < 80) S.rrect (x + rr / 2, y + 2, w - rr, h / 3 > 3 ? h / 3 : 3, rr / 2, 0xFFFFFF, 24);
 }
 
 // ---- a pilot's helmet (the racers' list, the menus) ------------------------------------------------------------------
