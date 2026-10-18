@@ -603,8 +603,19 @@ public:
 	}
 	bool load_cached_quiet () { if (!index.ini.load (PKG_VAR "/index.txt")) return false; index.build (); haveIndex = true; return true; }
 
-	// Is one of the package's apps running? (its name -> out)
-	bool running (const Ini &files, const char *section, char *out, int cap)
+	// A service: a windowless program that runs all the time (clockd, clipd, notifyd, printd...): its app.txt says
+	// `service = 1`, or it is in the Shell category and its name ends with a d. An update stops it, puts the new
+	// files, starts it again -- instead of refusing (the user, 2026-10-15: the Clock could not be updated)
+	static bool is_service (const char *app)
+	{
+		char path[96]; snprintf (path, sizeof path, "SD:/apps/%s.app/app.txt", app);
+		Ini a; if (!a.load (path)) return false;
+		if (eq (a.get ("", "service", "0"), "1")) return true;
+		size_t n = strlen (app);
+		return n > 1 && app[n - 1] == 'd' && eq (a.get ("", "category", ""), "Shell");
+	}
+	// Is one of the package's apps running? (its name -> out). services: those are left out, listed in svc[]
+	bool running (const Ini &files, const char *section, char *out, int cap, char (*svc)[40] = 0, int *nsvc = 0, int maxsvc = 0)
 	{
 		static char tasks[4096];
 		kapi_list_tasks (tasks, sizeof tasks);
@@ -617,7 +628,11 @@ public:
 			for (char *t = tasks; *t; )
 			{
 				char *e = t; while (*e && *e != '\n') e++;
-				if (e - t > 3 && t[1] == 'a' && (size_t) (e - t - 3) == strlen (app) && !strncmp (t + 3, app, strlen (app))) { cpy (out, app, cap); return true; }
+				if (e - t > 3 && t[1] == 'a' && (size_t) (e - t - 3) == strlen (app) && !strncmp (t + 3, app, strlen (app)))
+				{
+					if (svc && is_service (app)) { if (*nsvc < maxsvc) cpy (svc[(*nsvc)++], app, 40); break; }
+					cpy (out, app, cap); return true;
+				}
 				t = *e ? e + 1 : e;
 			}
 		}
@@ -660,10 +675,11 @@ public:
 		Inst *old = db.find (p.name);
 		// (the package manager updating itself: its programs are loaded whole into memory -- pkgman, pkgd
 		//  running go on with the old ones, the new ones start the next time)
+		char svc[8][40]; int nsvc = 0;
 		if (!p.restart && old && !force && !eq (p.name, "pkgman"))
 		{
 			char app[40];
-			if (running (old->ini, "files", app, sizeof app))
+			if (running (old->ini, "files", app, sizeof app, svc, &nsvc, 8))
 			{ r.sayf ("%s is running: close it, then try again", app); return E_RUNNING; }
 		}
 		// the archive, its size and SHA-256 those of the signed index
@@ -677,8 +693,25 @@ public:
 		bool w = write_file (opk, b, n);
 		free (b);
 		if (!w) { r.sayf ("%s: cannot write %s", p.name, opk); return E_IO; }
+		// its services stopped while the files change, started again after
+		for (int k = 0; k < nsvc; k++)
+		{
+			kapi_kill (svc[k]);
+			for (int t = 0; t < 40; t++)
+			{
+				static char tasks[4096]; kapi_list_tasks (tasks, sizeof tasks);
+				char line[48]; snprintf (line, sizeof line, " %s\n", svc[k]);
+				if (!strstr (tasks, line)) break;
+				kapi_msleep (50);
+			}
+		}
 		int rc = install_file (opk, &p, old, r);
 		kapi_remove (opk);
+		for (int k = 0; k < nsvc; k++)
+		{
+			char path[96]; snprintf (path, sizeof path, "SD:/apps/%s.app/main", svc[k]);
+			if (kapi_exec (path, "")) r.sayf ("%s restarted", svc[k]); else r.sayf ("%s: could not be started again", svc[k]);
+		}
 		if (rc == OK && p.replaces && *p.replaces) drop_replaced (p, r);
 		return rc;
 	}

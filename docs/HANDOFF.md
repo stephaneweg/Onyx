@@ -4,20 +4,71 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## wipEout, a native port (2026-10-13): built, published (wipeout 1.0.0, Pi 4 and Pi 5), NOT run on a Pi yet
+## Cosmo Zoom!, a native 3D anti-gravity racer on the GPU (2026-10-15): built, NOT run on a Pi yet
 
-The user asked for wipeout-rewrite (github.com/phoboslab/wipeout-rewrite) as a native Onyx game. **Done**:
-`third_party/wipeout-rewrite` (the game, its **software** renderer; `ONYX.md`: three `#ifdef ONYX` changes) +
-`user/Ports/wipeout/` (`wipeout_onyx.c`: the game's `platform.h` on UIKit's window / full screen, `kapi_key_held`,
-`gamepad.h`, AudioKit's `ak_out_*`; `wipeout_uikit.cpp`: the menu, the language) -> `user/wipeout.elf`,
-`SD:/apps/wipeout.app` (English / French). docs/04's catalogue, docs/03 (after Doom), docs/LICENSING.md.
-- **The game's data is the player's** (Sony's; never shipped): `SD:/wipeout/README.txt`. Without it the app says so.
-- **Licence**: wipeout-rewrite has **none** ("no commercial release"): docs/LICENSING.md says it; the user was told.
-- **Checked** under `onyxrun` (no data here): the window, `game_init`, the missing-file error in a notification.
-  **Not checked**: a race (no data in the cloud), the speed on the Pi (240 lines by default; 480P / NATIVE slower).
-- **Next, the user asked "does it use the GPU?" -- no**: a `render_v3d.c` behind `render.h` (textured triangles,
-  depth, two blend modes) on `kapi_gpu_texture` / `kapi_gpu_render2/3`, as n64emu / gcemu / 3dforge use them, the
-  software renderer kept as the fallback. Also possible: the game on an app core (as Doom).
+The user asked for "a native 3D game: a wipEout like Antigrav, but cartoon, mixed with Mario Kart" -- ships chosen and
+customised, gadgets, several circuits and cups -- "first ask a designer, then a 3D expert for the .obj models". Done as a
+team: a designer agent (`docs/cosmozoom/DESIGN.md` + mock-ups by `tools/cosmozoom/mockups.py`), a 3D modeller agent (66
+models by Python, `tools/cosmozoom/models/`, `docs/cosmozoom/MODELS.md`), a level designer agent (the 13 circuits), the
+engine and the app here. **The art direction moved a lot during the session -- the user's last word is the reference**:
+not cute, not karts; after a neon-city and a cartoon look, **the final one is the user's picture
+`docs/cosmozoom/refs/art-direction.png`: soft rounded low-poly, pastel, no outlines** (floating teal tracks with
+candy-striped rails, capsule towers, floating islands, cloud puffs),
+ships from **the user's concept sheet** (six: Nova Streak, Comet Chaser, Star Drifter, Plasma Runner, Ringmaster, Manta
+Ray -- wipEout-like, sharp edges, vivid, side / detached podracer engines), the HUD of the user's reference picture,
+tube sections ridden **on the outside**, Moebius-like **twists**, a **deep-space** circuit, "everything polished like a
+AAA game".
+- **The app**: `user/Apps/cosmozoom/` (docs/03 "Cosmo Zoom!, a 3D game on the GPU" says the layers), `sdcard/apps/
+  cosmozoom.app/` (tracks/, models/, cups.ini, lang/fr.txt, icon). `user/Makefile`: an FT app (`FT_EXTRA_cosmozoom`).
+  docs/04 "Cosmo Zoom!" is the user's guide.
+- **Tested on the PC only**: `tools/tests/cosmozoom/` (racesim, racepic, objview, trackmap, sim.sh -- the real app on the
+  desktop simulator). **Not known**: the speed on the Pi's GPU (a view sends 50-120 k vertices a frame; `cosmozoom fps`
+  shows it; if too slow: fewer towers -- `city =` in the .trk --, the outlines off for the props, a lower draw
+  distance in `Scene::view`'s `visible`), the gamepads in game, the music's sound (the General MIDI SoundFont).
+- **Next ideas** (DESIGN.md has more): the ghost in Time Trial, the pilot animations, the start's fly-over, LOD for the
+  ships, the conveyor / geyser hazards of DESIGN.md 7.3, more sign textures (words) on the billboards.
+
+## Antigrav, an anti-gravity racer in BASIC (2026-10-14): built, published, NOT run on a Pi yet
+
+The user first asked for wipeout-rewrite as a native game; ported (2026-10-13), then **removed at the user's request**
+(its data is Sony's, its code has no licence) and **replaced by Antigrav**: our own, MIT, everything procedural.
+- **The game**: `sdcard/basic/examples/antigrav.bas` (one file, ~1500 lines): circuits generated from a number (a star-shaped
+  loop -- never crossing itself -- climbing, banking, tunnels, arches, pads), the city, six craft, AI, weapons, music on the
+  General MIDI synthesizer, sounds on the voices, English / French from `SD:/etc/system.ini`. **1 to 4 players** (as many
+  as `PADS`), the screen shared with `VIEW3D`, AI to make six craft. Starts full screen. Test options in `COMMAND$`:
+  `demo` (all AI), `auto` (the players fly themselves, their HUD shown), `players=n`, `laps1`, `fps`, `window`.
+- **The app**: `SD:/apps/antigrav.app/main` is a **standalone** BASIC app (the runtime + the program): `kernel/Makefile`'s
+  `BASIC_STANDALONE`, `tools/basc/basc --standalone <runtime> <prog.bas> <main>`. Package `antigrav` (`replaces = wipeout`).
+- **The BASIC gained** (all three: user/Libs/basic, `/bin/basic` rebuilt): `VIEW3D x, y, w, h` (3D into a part of the page:
+  `kapi_gpu_frame` with the page's stride; the software renderer too; tested in `run_basic3d_test.sh`), `PADS` /
+  `PADS(n)` (the pads plugged in), and AudioKit's refusals (no SoundFont...) are error 73, which ON ERROR catches (it was
+  51, fatal: a MIDINOTE without the SoundFont stopped the program).
+- **Tested** on the PC: a host on a virtual clock (the session's scratch `simhost.cpp`: PAUSE = a frame) ran whole races
+  for 1-4 players; under `onyxrun`, the standalone app starts full screen and draws through the GPU path. **Not known**:
+  the speed on the Pi (each view draws ~5 000 vertices; `antigrav fps`), the pads in game.
+- **Asked next by the user**: (1) the console mode -- how to put the focus on Jet's address bar with a gamepad, and is there
+  an on-screen keyboard: **done the same day** (below); (2) Antigrav in **CodeIsFun** (github.com/stephaneweg/CodeIsFun, the web Turtle Quest, whose BASIC
+  runs Arkanoid): its BASIC would need the 3D statements on **WebGL** (and VIEW3D, PADS). **Done (2026-10-14/15)**:
+  CodeIsFun's `turtle/three3d.js` (WebGL, software fallback), gamepads, MIDI, files in the browser's storage, pages + PCOPY.
+- **2026-10-15, the user on the Pi: "it runs well, but the picture and the game's HUD flicker"**: the frame was drawn on
+  the page shown, and the runtime shows it ~50 times a second whenever it can (between the 3D and the HUD drawn over it).
+  Fixed: `SCREEN 12` and `13` have **two pages** now (basscreen.h's MODES; QBasic's had one), Antigrav draws on page 1
+  (`SCREEN , , 1, 0` each frame: a FULLSCREEN toggle cannot undo it) and shows it whole with `PCOPY 1, 0` before `PAUSE 1`
+  (onyx 2026.10.169, antigrav 1.0.2). Checked on the PC (a host checking every present); **not seen on the Pi yet**.
+- **2026-10-15, the user: vary the circuits and the settings**: each circuit has its character (`camp` twisty, `chgt`
+  hilly, `ctun` tunnels, in the Circuits DATA) and its setting (`SetTheme`: the sky, the sun / moon / planet, the
+  mountains, the haze, the neon, the ground texture `texg(c)`, the scenery `bkind`: towers, spires with lights,
+  islands with palms on the sea, mesas, pines in the snow (`Pine`, drawn by hand), rocks floating in space with stars).
+  The best laps file starts with `v2` (the old records are dropped: the circuits changed). `antigrav circuit=N`.
+  The same `.bas` runs in CodeIsFun (synced with `tools/sync-levels.py`). Screenshot: `screenshots/antigrav-circuits.png`.
+
+## The console's on-screen keyboard, Jet's address bar with the pad (2026-10-14): built, published, NOT run on a Pi
+
+`consolehome/appkeys.h`: a keyboard that types into the app in front (`kapi_inject_key`), up by itself when a text field
+takes the focus (PocketUI's text hint, now sent in console mode too: `wm.cpp`) while a pad is plugged in, or by a tap on
+Select; a band (the app above it). Jet: `app.txt` `pad_y = f6` -- the pad's Y goes to the address bar (Jet itself
+unchanged: it is not rebuilt here). Tested in `server_sim` (`run.sh`'s *console-keys*: shown, typed "e", hidden, Select).
+To check on the Pi: Jet, Y, type an address, Start; a web form's field with Select.
 
 ## The Nintendo 3DS emulator: phase T0 done -- Dynarmic runs on Onyx (2026-10-09, the local session)
 
@@ -156,6 +207,24 @@ session tests and debugs it on the Pi. Done: D0 to D5.
   |---|---|---|---|---|---|---|
   | Pokemon Mystery Dungeon: Explorers of Sky (EU) | C2SP | yes: logos, intro, title on the Pi (JIT) and the PC; a new game reaches the quiz on the PC | not tried | not tried: the chip is read with 3 address bytes (128 KB), its type is set at the first write (then Flash, 512 KB) | not measured (F12) | a thin diagonal line on the black top screen during two of the intro's fades (PC, interpreter): to look at |
 
+- **The user's second report (2026-10-14: Explorers of Sky "a little slower than the emulator on Linux", the sound
+  crackling a little, a slight lag at times; diagonal dots of pixels not erased in the transitions)** -- `ndsemu` 1.0.3:
+  - **The sound**: the mixer's gain was 8 times the console's (`L >>= 1` after the master volume): a mix of a few
+    loud channels clipped. Now twice the console's (`>> 3`: its 10-bit output holds 16 channels at full volume, a
+    channel alone 1/16) -- quieter, no clipping. The check's level lowered.
+  - **The speed**: the 2D compositing was half the core's time on a 2D scene (gprof, `ndstest` on the PC): the
+    pixel's two layers found in one pass over the BGs shown (the OBJ merged at its priority), the second layer only
+    when something is a second blend target, the window masks a line at a time, the master brightness's mode out of
+    the pixel loop -- 2.6 times faster, **the same pixels** (126 pictures of 7 ROMs compared before / after).
+  - **The fades**: a polygon clipped by the view volume had its cut vertex interpolated from whichever end came first
+    (an edge two triangles share cut at two slightly different points) and truncated inside the plane (a fade larger
+    than the screen left its last column). Now cut from the inside vertex, the cut coordinate on the plane.
+    New test program `tools/tests/nds/src/seams.9.c` (full-screen fades as triangles, quads, fans, clipped, in
+    perspective, w-buffered; `check.sh`: no pixel left uncovered). **Not proven to be the user's diagonal**: none of
+    these variants drew one before the fix either. If it is still there: `NDS_SHOTS` + `NDS_REGS=1` on the frames of
+    the transition, then `NDS_HIDE` layer by layer (docs/LOCAL-AGENT-NDS.md) to name the layer (3D, a BG, the OBJ, a
+    window) that leaves it.
+  - Still to measure on the Pi: F12's `emu` and `draw` times in Explorers of Sky (the JIT's share is unknown).
 - **Seen once on the Pi, not understood (the kernel, not the emulator)**: `run ndsemu <rom on SD1:>` from telnet while
   rdpd served Onyx Remote and a VNC capture was asked 8 s later -- core 0 stopped in the 128 MB ROM's loading (after
   ~60 of its 1 MB reads), the hang watchdog restarted the Pi. `lastcrash.txt`: ndsemu's task in the kernel, in the SD

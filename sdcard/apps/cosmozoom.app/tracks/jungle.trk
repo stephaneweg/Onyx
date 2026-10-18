@@ -1,0 +1,78 @@
+# Cosmo Zoom! -- Jungle Isles: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Jungle Isles
+name_fr    = Îles de la Jungle
+time       = day
+sky        = 4FB0E8 D8F4EC
+ground     = FFFFFF F4FAFF
+groundkind = islands
+road       = 6CCB8E 75D296
+rails      = FFF2A0 FFFFFF
+walls      = BDF2D5 FFF2A0
+neon       = FFF2A0 6CCB8E FFB3C7
+city       = 0.4
+width      = 15
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 1961 m, 45 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 35.6 35.6 0.0
+p = 71.3 71.3 0.0
+p = 106.9 106.9 0.0
+p = 142.5 142.5 0.0
+p = 178.1 178.1 0.0
+p = 199.8 210.6 0.0
+p = 207.4 248.9 0.0
+p = 199.8 287.1 0.0
+p = 178.1 319.6 0.0
+p = 149.7 348.0 0.0
+p = 121.3 376.5 0.0
+p = 85.4 397.2 0.0
+p = 44.0 397.2 0.0
+p = 8.1 376.5 0.0
+p = -23.9 344.4 0.0
+p = -56.0 312.4 0.0
+p = -77.7 279.9 1.8
+p = -85.3 241.6 5.8
+p = -77.7 203.4 9.9
+p = -56.0 170.9 12.0
+p = -19.7 134.6 12.5
+p = 16.6 98.3 12.9
+p = 52.9 62.0 13.3
+p = 89.2 25.7 13.6
+p = 125.5 -10.6 13.8
+p = 161.8 -46.9 14.0
+p = 198.1 -83.2 14.0
+p = 219.8 -115.6 13.4
+p = 227.4 -153.9 12.0
+p = 219.8 -192.1 10.6
+p = 198.1 -224.6 10.0
+p = 166.1 -256.6 10.0
+p = 134.0 -288.7 10.0
+p = 98.2 -309.4 9.5
+p = 56.8 -309.4 8.5
+p = 20.9 -288.7 8.0
+p = -1.9 -265.9 8.0
+p = -24.7 -243.1 8.0
+p = -63.2 -204.6 1.0
+p = -84.9 -172.2 0.6
+p = -92.5 -133.9 0.3
+p = -84.9 -95.6 0.1
+p = -63.2 -63.2 0.0
+p = -31.6 -31.6 0.0
+
+# the features (t: 0..1 of the lap)
+items = 0.031
+boost = 0.224 0.00
+boost = 0.460 0.00
+tunnel = 0.698 0.754
+items = 0.765
+jump = 0.845
+
+# the props
+scatter = kn_tree 60 2.2
+scatter = kn_tree_pine 40 2.8
+prop = kn_tree both 16 1.6
+scatter = kk_structure_tall 5 1.4

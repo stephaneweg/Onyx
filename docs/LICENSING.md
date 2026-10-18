@@ -16,7 +16,6 @@
 | **The kernel image** (`kernel8-rpi4.img`) | **GPL-3.0-or-later** | Circle (our fork, statically linked) is GPL-3.0-or-later. |
 | **Jet Browser** (`jet.app`) | **LGPL-2.1-or-later** | It is the WebKit port: WebCore and JavaScriptCore are LGPL-2.1+ (the rest of WebKit BSD-2-Clause); statically linked, so its complete corresponding source is published — WebKit's pinned revision, `tools/webkit/patches/`, the ports in `tools/ports/`, `user/Apps/jet/` (MIT, ours) — and it can be relinked (`build-webkit.sh`, `build-web.sh`). mbedTLS taken under Apache-2.0, FreeType under the FTL. |
 | **Doom** (`doom.app`) | GPL-2.0-or-later (→ GPLv3 fine) | doomgeneric: "version 2 … or any later version". |
-| **wipEout** (`wipeout.app`) | **No licence** (its Onyx files MIT) | wipeout-rewrite has none: its author says it "may or may not be based on" the leaked PC source and allows no **commercial** release (that includes a site with advertising). Shipped as a free download only, by the user's request (2026-10-13); the game's data (Sony's) is never shipped. Remove the package if its status is ever challenged. |
 | **Media Player** (`media.app`) | **GPL-2.0-or-later** | It links **FFmpeg** built with `--enable-gpl` (GPL-2.0-or-later): H.264, H.265, AAC, AVI, MPEG-TS... Decided with the user (2026-10-02: "on passera le Media Player en GPL-2"). Its own files stay MIT; its source is the repository's. |
 | **PDF Viewer** (`pdf.app`) | **AGPL-3.0** | MuPDF (and its jbig2dec) is AGPL-3.0 (or Artifex's paid licence). AGPL-3.0 and GPL-3.0 combine (GPLv3 §13): the app is AGPL, the rest of Onyx unchanged; its source is the repository's. Decided with the user (2026-10-01). |
 | **Photos** (`photos.app`) | **MIT** (ours) | Its EXIF reader, library, editing and slideshow are ours; it links FreeType (FTL), stb_image and simplewebp (public domain, BSD-3), our PNG / JPEG / PDF writers (MIT): all permissive. |
@@ -83,7 +82,6 @@ Two weaknesses, worth fixing:
 |---|---|---|---|
 | Circle (fork, branch `onyx`) | `circle/` (submodule), the kernel | GPL-3.0-or-later | The kernel's source (ours + the fork) available; the GPL's text |
 | doomgeneric | `third_party/doomgeneric` | GPL-2.0-or-later | Source available |
-| wipeout-rewrite | `third_party/wipeout-rewrite` (its `pl_mpeg.h`, `qoa.h`: MIT; `stb_image_write.h`: MIT / public domain) | **None** (see `README.upstream.md`, "License") | No commercial use; the game's data not shipped |
 | FFmpeg 7.1.2 (libavcodec, libavformat, libavutil, libswscale, libswresample; `--enable-gpl`, no external library) | `third_party/ffmpeg-7.1.2`, the Media Player (`user/Libs/av/av_ffmpeg.c`, `av_lavf.c`) | **GPL-2.0-or-later** | The Media Player under GPL-2.0-or-later, its source available (the repository: `onyx/build.sh` makes the libraries); keep `COPYING.GPLv2`, `LICENSE.md`. Some formats it decodes are patented in some countries (H.264, H.265, AAC...): FFmpeg's own note in `LICENSE.md` |
 | mbedTLS 3.6.3 | `third_party/mbedtls-3.6.3` | Apache-2.0 **or** GPL-2.0-or-later | Taken under Apache-2.0 |
 | FreeType 2.14.3 | `third_party/freetype-2.14.3` | FTL **or** GPL-2.0-or-later | FTL: a credit in the docs ("Portions of this software are copyright © The FreeType Project") |
@@ -141,6 +139,7 @@ Two weaknesses, worth fixing:
 | Liberation, Gelasio, Selawik | `sdcard/res/fonts`, `third_party/fonts` | SIL OFL 1.1 | Keep the licences (they are there) |
 | GeneralUser GS 2.0.3 | `sdcard/res/soundfonts` (the package `generaluser-gs`) | Its own, free (also commercial) | Keep the licence (it is there) |
 | Freedoom | `sdcard/doom` | BSD-3 | Keep `FREEDOOM-COPYING.txt` (it is there) |
+| Cosmo Zoom!'s imported models: KayKit *Space Base Bits* (Kay Lousberg) and Kenney's *Toy Car Kit* (only props: modules, domes, rocks, trees, a cone) | `sdcard/apps/cosmozoom.app/models/kk_*.obj`, `kn_*.obj` (converted by `tools/cosmozoom/models/import_cc0.py`: the palette's colours baked into the vertices) | CC0 1.0 (public domain) | Nothing required; credited all the same (the files' headers, `docs/cosmozoom/MODELS.md`) |
 | Raspberry Pi firmware (`start4.elf`, `fixup4.dat`, the `.dtb`) | `sdcard/` | Broadcom's redistributable binary licence; the `.dtb` from Linux's device trees (GPL-2.0, most also MIT) | **Add `LICENCE.broadcom`** to the card |
 | `armstub8-rpi4.bin` | `sdcard/` | BSD-3 (raspberrypi/tools) | Add its notice |
 | Wi-Fi firmware (`brcmfmac4345*`) | `sdcard/firmware` | Cypress / Synaptics binary licence | **Add its licence file** (`LICENCE.cypress`) |

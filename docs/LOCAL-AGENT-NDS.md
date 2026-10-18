@@ -68,6 +68,8 @@ sh tools/tests/nds/check.sh /tmp/jitrun.sh
 | `NDS_TOUCH=300-305:128,96` (`;` between ranges) | the touch screen pressed at x,y over frames |
 | `NDS_SAV=file.sav` | a save loaded (the save type then known) |
 | `NDS_SHOTS=dir` `NDS_SHOTEVERY=60` | a picture every N frames (watch where a game stops) |
+| `NDS_REGS=1` (with `NDS_SHOTS`) | beside each picture a `.txt`: both 2D engines' DISPCNT and registers 0x00-0x6F (windows, blending, master brightness) |
+| `NDS_HIDE=hex` | layers hidden: engine A bits 0-3 BG0-3 (BG0 is the 3D when DISPCNT bit 3), bit 4 OBJ; engine B the same << 8 — **find which layer leaves a glitch**: hide them one by one |
 | `NDS_TRACE=1` (`NDS_NHIST=64`) | on a stop, the last instructions of each CPU |
 | `NDS_WATCH9=addr,len` / `NDS_WATCH7` | log the writes to a memory range |
 | `NDS_DUMP=addr,words` | main memory dumped at the end |

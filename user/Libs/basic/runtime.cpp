@@ -175,10 +175,10 @@ public:
 		if (!gpuReady ()) return -1;
 		return kapi_gpu_texture (-1, px, w, h, w);
 	}
-	int gpuRender (unsigned *dst, int w, int h, const bas::G3Vertex *v, int nv, const bas::G3Batch *b, int nb, unsigned clear, bool keep) override
+	int gpuRender (unsigned *dst, int w, int h, int stride, const bas::G3Vertex *v, int nv, const bas::G3Batch *b, int nb, unsigned clear, bool keep) override
 	{
 		if (!gpuReady ()) return -1;
-		struct kapi_gpu_frame f = { dst, w, h, w, clear, keep ? KAPI_GPU_F_KEEP : 0u };
+		struct kapi_gpu_frame f = { dst, w, h, stride, clear, keep ? KAPI_GPU_F_KEEP : 0u };
 		int r = kapi_gpu_render (&f, (const struct kapi_gpu_vertex3 *) v, (unsigned) nv, (const struct kapi_gpu_batch *) b, (unsigned) nb);
 		if (r == -1 || r == -3) gpuState = 0;		// (no GPU / it stopped: software from now on)
 		return r;
@@ -201,6 +201,11 @@ public:
 	void sleepRaw (int ms) override { kapi_msleep ((unsigned) (ms > 0 ? ms : 1)); }
 	bool keyHeld (int key) override { return kapi_key_held (key) != 0; }
 	unsigned padButtons (int pad) override { return pad_buttons (pad); }
+	bool padConnected (int pad) override
+	{
+		struct pad_input in;
+		return pad >= 0 && pad < PAD_MAX && pad_read (pad, &in) && in.connected;
+	}
 	int padAxis (int pad, int axis) override
 	{
 		struct pad_input in;

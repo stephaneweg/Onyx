@@ -1,0 +1,84 @@
+# Cosmo Zoom! -- Crystal Moon: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Crystal Moon
+name_fr    = Lune de Cristal
+time       = night
+sky        = 232A72 6A70C8
+ground     = E8F0FF DCE6FA
+groundkind = snow
+road       = B8A8F0 C0B2F4
+rails      = FFFFFF A8E0FF
+walls      = E8F0FF B8A8F0
+neon       = B8A8F0 A8E0FF FFFFFF
+city       = 0.3
+width      = 15
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 2029 m, 50 control points (x z height [width [bank]])
+p = 0.0 0.0 18.0
+p = -50.8 0.0 18.0
+p = -101.6 0.0 18.0
+p = -152.4 0.0 18.0
+p = -203.2 0.0 18.0
+p = -254.0 0.0 18.0
+p = -304.8 0.0 18.0
+p = -355.7 0.0 18.0
+p = -406.5 0.0 18.0
+p = -434.0 7.4 17.8
+p = -454.1 27.5 17.5
+p = -461.5 55.0 17.0
+p = -461.5 91.8 16.2
+p = -461.5 128.5 15.0
+p = -461.5 185.3 10.1
+p = -461.5 242.0 5.0
+p = -461.5 289.9 2.6
+p = -461.5 337.8 0.8
+p = -461.5 385.8 0.0
+p = -453.4 415.8 0.0
+p = -431.5 437.7 0.0
+p = -401.5 445.8 0.0
+p = -371.5 437.7 0.0
+p = -349.5 415.8 0.0
+p = -325.6 374.4 0.6
+p = -301.7 333.0 2.1
+p = -277.8 291.6 4.1
+p = -253.9 250.3 6.0
+p = -242.4 240.6 6.8
+p = -227.4 240.6 7.6
+p = -215.8 250.3 8.0
+p = -191.2 292.9 6.8
+p = -166.5 335.6 4.0
+p = -141.9 378.3 1.2
+p = -117.3 421.0 0.0
+p = -105.7 430.7 0.0
+p = -90.7 430.7 0.0
+p = -79.1 421.0 0.0
+p = -55.3 379.6 1.0
+p = -31.4 338.3 3.4
+p = -7.5 296.9 6.3
+p = 16.4 255.5 9.0
+p = 40.3 214.1 11.7
+p = 64.2 172.8 14.6
+p = 88.1 131.4 17.0
+p = 112.0 90.0 18.0
+p = 120.0 60.0 18.0
+p = 112.0 30.0 18.0
+p = 90.0 8.0 18.0
+p = 60.0 0.0 18.0
+
+# the features (t: 0..1 of the lap)
+items = 0.059
+jump = 0.258
+boost = 0.503 0.00
+tunnel = 0.563 0.620
+items = 0.659
+boost = 0.750 -0.30
+boost = 0.750 0.30
+
+# the props
+scatter = kn_tree_pine 70 2.4
+scatter = kk_rocks_a 24 2.5
+scatter = kk_dome 5 2.0
+decor = kk_dome -120.0 -45.0 -3.0 -90 2.60

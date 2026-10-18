@@ -24,6 +24,9 @@ T2=${TMPDIR:-/tmp}/onyx_nds_check
 "$T" "$R/gfx2d.nds" 10 "$T2.2d.ppm" > /dev/null
 "$T" "$R/gfx3d.nds" 12 "$T2.3d.ppm" > /dev/null
 NDS_WAV="$T2.wav" "$T" "$R/sound.nds" 120 > /dev/null
+# seams: full-screen fades as 3D polygons, one variant each 8 frames -- every pixel covered (none left white)
+mkdir -p "$T2.seams"; rm -f "$T2.seams/"*
+NDS_SHOTS="$T2.seams/f" NDS_SHOTEVERY=8 "$T" "$R/seams.nds" 80 > /dev/null
 python3 - "$T2" <<'PY' || fail=1
 import sys, wave, struct
 p = sys.argv[1]
@@ -47,7 +50,12 @@ want('gfx3d lit quad', b(50, 140), (182, 182, 182), 30)
 want('gfx3d capture', b(5, 192 + 5), (16, 16, 82), 12)
 w = wave.open(p + '.wav'); n = w.getnframes(); s = struct.unpack('<%dh' % (n * 2), w.readframes(n))
 pl = max(abs(v) for v in s[0::2]); pr = max(abs(v) for v in s[1::2])
-want('sound levels', (min(pl, 9000), min(pr, 9000)), (9000, 9000), 0)
+want('sound levels', (min(pl, 2000), min(pr, 2000)), (2000, 2000), 0)	# (the console's gain: a channel alone is quiet)
+for v in range(10):
+    if v == 6: continue                       # (two polygon IDs: their shared corner blended twice, as drawn)
+    s = ppm('%s.seams/f%05d.ppm' % (p, v * 8 + 8))
+    white = sum(1 for y in range(192) for x in range(256) if s(x, y) == (255, 255, 255))
+    want('seams %d: pixels left uncovered' % v, (white,), (0,), 0)
 sys.exit(0 if ok else 1)
 PY
 exit $fail

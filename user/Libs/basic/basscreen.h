@@ -20,12 +20,13 @@ enum { K_BACKSPACE = 8, K_TAB = 9, K_ENTER = 13, K_UP = 0x100, K_DOWN, K_LEFT, K
 	K_PGUP, K_PGDN, K_DEL, K_F1 = 0x110 };
 
 // QBasic's screen modes: size, text cell height, pages, colours, display scale.
+// (SCREEN 12 and 13 have a second page here, QBasic's had one: a game draws its frame out of sight, then PCOPY 1, 0.)
 struct ModeInfo { int mode, w, h, cellH, pages, colors, sx, sy; };
 static const ModeInfo MODES[] = {
 	{ 0, 640, 400, 16, 8, 256, 1, 1 }, { 1, 320, 200, 8, 1, 4, 2, 2 }, { 2, 640, 200, 8, 1, 2, 1, 2 },
 	{ 7, 320, 200, 8, 8, 16, 2, 2 }, { 8, 640, 200, 8, 4, 16, 1, 2 }, { 9, 640, 350, 14, 2, 16, 1, 1 },
-	{ 10, 640, 350, 14, 2, 4, 1, 1 }, { 11, 640, 480, 16, 1, 2, 1, 1 }, { 12, 640, 480, 16, 1, 16, 1, 1 },
-	{ 13, 320, 200, 8, 1, 256, 2, 2 }, { -1, 0, 0, 0, 0, 0, 0, 0 } };
+	{ 10, 640, 350, 14, 2, 4, 1, 1 }, { 11, 640, 480, 16, 1, 2, 1, 1 }, { 12, 640, 480, 16, 2, 16, 1, 1 },
+	{ 13, 320, 200, 8, 2, 256, 2, 2 }, { -1, 0, 0, 0, 0, 0, 0, 0 } };
 static inline const ModeInfo *modeInfo (int m) { for (int i = 0; MODES[i].mode >= 0; i++) if (MODES[i].mode == m) return &MODES[i]; return 0; }
 
 // The VGA default palette: the 16 EGA colours, 16 greys, 9 rings of 24 hues, black.
@@ -76,10 +77,13 @@ public:
 	virtual bool windowColours (unsigned *face, unsigned *text) { (void) face; (void) text; return false; }
 	// 3D on a GPU (the platform's; else the software renderer draws): a texture -> the
 	// platform's handle (< 0: none); a frame into w x h pixels (stride = w) whose batches name
-	// the platform's handles -> 0 ok, < 0 failed (then drawn in software).
+	// the platform's handles -> 0 ok, < 0 failed (then drawn in software). stride: the pixels of a row of dst
+	// (more than w: VIEW3D's part of the page).
 	virtual int gpuTexture (const unsigned *px, int w, int h) { (void) px; (void) w; (void) h; return -1; }
-	virtual int gpuRender (unsigned *dst, int w, int h, const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
-	{ (void) dst; (void) w; (void) h; (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	virtual int gpuRender (unsigned *dst, int w, int h, int stride, const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
+	{ (void) dst; (void) w; (void) h; (void) stride; (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	int v3x = 0, v3y = 0, v3w = 0, v3h = 0;		// VIEW3D (v3w 0: the whole page)
+	void view3d (int x, int y, int w, int h) override { v3x = x; v3y = y; v3w = w; v3h = h; }
 
 	// ---- the state -----------------------------------------------------------------------------------
 	bool win, windowCmd, textUsed;			// the window exists; WINDOW was used; text was shown
@@ -146,10 +150,19 @@ public:
 			}
 			else bt3[i].texture = -1;
 		}
-		if (!gpuOk || gpuRender (d, W, H, v, nv, bt3, nb, clear, keep) != 0)
+		// VIEW3D: a part of the page (clipped to it)
+		int x0 = 0, y0 = 0, w = W, h = H;
+		if (v3w > 0 && v3h > 0)
 		{
-			if (zb3n < W * H) { delete [] zb3; zb3 = new float[W * H]; zb3n = W * H; }
-			swRender (d, W, H, W, zb3, v, nv, b, nb, clear, keep, [this] (int t) -> const G3Texture *
+			x0 = v3x < 0 ? 0 : v3x; y0 = v3y < 0 ? 0 : v3y;
+			int x1 = v3x + v3w > W ? W : v3x + v3w, y1 = v3y + v3h > H ? H : v3y + v3h;
+			if (x1 <= x0 || y1 <= y0) return 0;
+			w = x1 - x0; h = y1 - y0; d += (long) y0 * W + x0;
+		}
+		if (!gpuOk || gpuRender (d, w, h, W, v, nv, bt3, nb, clear, keep) != 0)
+		{
+			if (zb3n < w * h) { delete [] zb3; zb3 = new float[w * h]; zb3n = w * h; }
+			swRender (d, w, h, W, zb3, v, nv, b, nb, clear, keep, [this] (int t) -> const G3Texture *
 			{
 				static G3Texture T;
 				if (t < 1 || t > ntex3) return 0;

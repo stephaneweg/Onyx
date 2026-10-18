@@ -1,0 +1,89 @@
+# Cosmo Zoom! -- Aurora Forest: made by tools/cosmozoom/trackgen.py (edit the circuit there, then run it).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md).
+
+name       = Aurora Forest
+name_fr    = Forêt Aurore
+time       = aurora
+sky        = 2A3A8A 8FD8C8
+ground     = FFFFFF EEF4FF
+groundkind = islands
+road       = 7FD0B8 88D6BE
+rails      = D8B8FF FFFFFF
+walls      = E8F2FF D8B8FF
+neon       = D8B8FF 7FD0B8 FFFFFF
+city       = 0.4
+width      = 15
+laps       = 3
+edge       = FFFFFF
+
+# the drive: 2317 m, 56 control points (x z height [width [bank]])
+p = 0.0 0.0 0.0
+p = 0.0 48.0 0.0
+p = 0.0 95.9 0.0
+p = 0.0 143.9 0.0
+p = -8.5 179.8 0.0
+p = -32.2 208.1 0.0
+p = -66.1 222.7 0.0
+p = -103.7 229.3 0.0
+p = -141.3 236.0 0.0
+p = -178.6 255.4 0.0
+p = -198.1 292.7 0.0
+p = -205.1 332.6 0.0
+p = -212.1 372.4 0.0
+p = -219.1 412.2 0.0
+p = -232.3 440.4 0.0
+p = -257.7 458.2 0.0
+p = -288.6 460.9 0.0
+p = -316.8 447.8 0.0
+p = -358.9 412.4 2.4
+p = -401.1 377.1 8.3
+p = -443.2 341.7 15.5
+p = -485.3 306.4 22.0
+p = -514.4 287.2 26.1
+p = -547.1 275.3 30.2
+p = -581.7 271.3 32.0
+p = -614.5 271.3 30.6
+p = -647.2 271.3 28.0
+p = -687.3 258.6 24.1
+p = -712.9 225.2 19.3
+p = -714.8 183.1 14.9
+p = -692.2 147.6 12.0
+p = -651.9 113.8 10.0
+p = -611.6 80.1 8.3
+p = -571.4 46.3 6.8
+p = -531.1 12.5 5.5
+p = -490.8 -21.3 4.4
+p = -450.5 -55.1 3.2
+p = -410.3 -88.9 2.0
+p = -392.5 -114.3 1.1
+p = -389.7 -145.3 0.4
+p = -402.9 -173.4 0.0
+p = -414.9 -199.2 0.0
+p = -412.4 -227.6 0.0
+p = -396.1 -250.9 0.0
+p = -370.3 -262.9 0.0
+p = -341.9 -260.5 0.0
+p = -293.7 -242.9 0.0
+p = -245.5 -225.4 0.0
+p = -197.3 -207.8 0.0
+p = -149.1 -190.3 0.0
+p = -100.9 -172.7 0.0
+p = -52.6 -155.2 0.0
+p = -25.1 -138.2 0.0
+p = -6.5 -111.7 0.0
+p = 0.0 -80.0 0.0
+p = 0.0 -40.0 0.0
+
+# the features (t: 0..1 of the lap)
+items = 0.039
+tunnel = 0.106 0.153
+jump = 0.206
+tube = 0.287 0.427
+boost = 0.546 0.00
+items = 0.808
+boost = 0.825 -0.40
+
+# the props
+scatter = kn_tree_pine 70 4
+scatter = kn_tree 50 3
+prop = kn_tree_pine both 22 2.5

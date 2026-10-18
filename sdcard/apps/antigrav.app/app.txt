@@ -1,0 +1,4 @@
+# Onyx application metadata -- an app written in BASIC, made a native program (main: the BASIC runtime with
+# the program compiled from SD:/basic/examples/antigrav.bas attached; kernel/Makefile's BASIC_STANDALONE).
+name = Antigrav
+category = Games

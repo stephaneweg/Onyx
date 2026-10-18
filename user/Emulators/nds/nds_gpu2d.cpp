@@ -387,11 +387,14 @@ static inline u32 darken (u32 a, u32 evy)
 	return r | (g << 6) | (b << 12);
 }
 
+unsigned g_hideLayers;					// (tests: the layers hidden, engine A bits 0-3 BG0-3, 4 OBJ; B the same << 8)
+
 void Gpu2D::compose (int y, u32 *out)
 {
 	u32 bgMode = dispcnt & 7;
 	bool en[4];
-	for (int i = 0; i < 4; i++) en[i] = (dispcnt & (0x100u << i)) != 0;
+	unsigned hide = g_hideLayers >> (num * 8);
+	for (int i = 0; i < 4; i++) en[i] = (dispcnt & (0x100u << i)) != 0 && !(hide & (1u << i));
 	// which BGs and how
 	int kind[4] = { 0, 0, 0, 0 };				// 1 text, 2 affine, 3 extended, 4 large, 5 3D
 	switch (bgMode)
@@ -419,6 +422,7 @@ void Gpu2D::compose (int y, u32 *out)
 		}
 	}
 	renderObjs (y);
+	if (hide & 16) for (int x = 0; x < W; x++) objLine[x] = TRANSP;
 	// the affine reference points move on
 	for (int k = 0; k < 2; k++) { affX[k] += (s16) r16 (0x22 + k * 0x10); affY[k] += (s16) r16 (0x26 + k * 0x10); }
 	// the BGs in priority order (then by number)
@@ -434,32 +438,34 @@ void Gpu2D::compose (int y, u32 *out)
 	if (evy > 16) evy = 16;
 	bool anyWin = dispcnt & 0xE000;
 	bool objOn = dispcnt & 0x1000;
+	// the BGs shown, in their order; how many layers a pixel needs (two only when something is a second target)
+	const u32 *lay[4]; int lid[4], lpr[4], nl = 0;
+	for (int k = 0; k < no; k++) { lay[nl] = bgLine[order[k]]; lid[nl] = order[k]; lpr[nl] = prio[order[k]]; nl++; }
+	int want = (bldcnt & 0x3F00) ? 2 : 1;
+	u8 wmLine[W];
+	if (anyWin) for (int x = 0; x < W; x++) wmLine[x] = (u8) windowMask (x, y);
 	for (int x = 0; x < W; x++)
 	{
-		u32 wm = anyWin ? windowMask (x, y) : 0x3F;
-		// the two layers on top: (colour, layer id: 0-3 BG, 4 OBJ, 5 backdrop)
+		u32 wm = anyWin ? wmLine[x] : 0x3F;
+		// the two layers on top: (colour, layer id: 0-3 BG, 4 OBJ, 5 backdrop); the OBJ before the BGs of its priority
 		u32 top = backdrop, second = backdrop; int topL = 5, secL = 5;
 		int found = 0;
 		u32 obj = objOn && (wm & 0x10) ? objLine[x] : TRANSP;
 		int objPrio = (obj & TRANSP) ? 99 : (int) ((obj >> 26) & 3);
-		int bi = 0;
-		for (int p = 0; p < 4 && found < 2; p++)
+		for (int k = 0; k <= nl; k++)
 		{
-			if (objPrio == p && found < 2)
+			if (objPrio != 99 && (k == nl || objPrio <= lpr[k]))
 			{
 				if (!found) { top = obj; topL = 4; } else { second = obj; secL = 4; }
-				found++;
+				objPrio = 99;
+				if (++found >= want) break;
 			}
-			while (bi < no && prio[order[bi]] == p && found < 2)
-			{
-				int b = order[bi++];
-				if (!(wm & (1u << b))) continue;
-				u32 c = bgLine[b][x];
-				if (c & TRANSP) continue;
-				if (!found) { top = c; topL = b; } else { second = c; secL = b; }
-				found++;
-			}
-			while (bi < no && prio[order[bi]] == p) bi++;
+			if (k == nl) break;
+			if (!(wm & (1u << lid[k]))) continue;
+			u32 c = lay[k][x];
+			if (c & TRANSP) continue;
+			if (!found) { top = c; topL = lid[k]; } else { second = c; secL = lid[k]; }
+			if (++found >= want) break;
 		}
 		u32 res = top & 0x3FFFF;
 		bool secTarget = (bldcnt >> 8) & (1u << secL);
@@ -498,13 +504,9 @@ void Gpu2D::renderLine (int y, u32 *out)
 static void applyBright (u16 mb, u32 *line, u32 *dst)
 {
 	int mode = mb >> 14; u32 f = mb & 31; if (f > 16) f = 16;
-	for (int x = 0; x < W; x++)
-	{
-		u32 c = line[x];
-		if (mode == 1 && f) c = brighten (c, f);
-		else if (mode == 2 && f) c = darken (c, f);
-		dst[x] = c18to24 (c);
-	}
+	if (!f || !mode || mode == 3) for (int x = 0; x < W; x++) dst[x] = c18to24 (line[x]);
+	else if (mode == 1) for (int x = 0; x < W; x++) dst[x] = c18to24 (brighten (line[x], f));
+	else for (int x = 0; x < W; x++) dst[x] = c18to24 (darken (line[x], f));
 }
 
 void Machine::captureLine (int y, const u32 *lineA)

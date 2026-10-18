@@ -125,7 +125,6 @@ Card contents:
 | `basic/examples/` | BASIC samples (§13) |
 | `docs/`, `music/`, `courier/`, `manuals/` | sample documents (Letters, the Spreadsheet, Cardfile, Ledger), FM songs, Courier's collections, the Koton and Ledger manuals |
 | `doom/` | Freedoom (`freedoom1.wad`, BSD-licensed) for Doom |
-| `wipeout/` | the place for wipEout's game files (yours: none shipped; its `README.txt` says which) and its `save.dat` |
 | `roms/` | the place for your own Game Boy / GBA ROMs (none shipped) |
 
 To regenerate the contents from sources: `cd kernel && make stage` (see the
@@ -763,7 +762,7 @@ Esc, Tab, **Ctrl** (for the next key: Ctrl then c is Ctrl+C) and the arrows. A f
 figures; an e-mail field has **@**, an address field **/** beside the space. Quick settings' **Keyboard** tile
 chooses when it comes: **on demand** (as shipped: a screen with a real keyboard) or **with the text fields** (a
 device without one: it comes when a text field takes the focus and goes with it) — kept in
-`SD:/etc/pocket/keyboard`. The console mode has none.
+`SD:/etc/pocket/keyboard`. The console mode has its own, for the pad (*The console mode* below).
 
 ![](compact-shell/real/pocketshell-keys-800.png)
 
@@ -872,7 +871,22 @@ reads nothing. When an app comes to the front, a small **Home · Menu** tip show
 (2026-10-09): the **left stick** moves the pointer (faster the further it is pushed), **A** is the left button (held: a
 drag), **X** the right one, **L1** / **R1** and the **right stick** up / down scroll (the wheel); the d-pad the arrows,
 **B** Esc, **Y** Tab, **Start** Enter, **L2** / **R2** Page Up / Down. The games and the emulators (the categories
-*Games* and *Emulators*) read the pad themselves.
+*Games* and *Emulators*) read the pad themselves. An app may give **Y** one of its keys instead of Tab (its `app.txt`:
+`pad_y = f6`): in **Jet**, **Y** goes to the **address bar** (F6) -- the keyboard below comes, **Start** opens the
+address, **B** (the keyboard hidden) goes back to the page. An app may also make the **d-pad a mouse** (`pad_dpad =
+pointer`): in **Jet** the d-pad moves the pointer too -- slowly at first, to aim at a link or a button, faster when held
+--, **A** clicks; the page scrolls with **L1** / **R1** or the right stick.
+
+**The on-screen keyboard** (2026-10-14): over an app that is not a game, it **comes by itself when a text field takes
+the focus** (a pad plugged in) and goes with it; a **tap on Select** (pressed and released alone) brings it up or hides
+it anywhere else -- a form in a web page. It types into the app as a keyboard would: the **d-pad** (or the left stick)
+chooses a key, **A** types it, **B** deletes, **X** a space, **Y** the next page (capitals for one letter, then **?123**
+the figures and the signs), **L1** / **R1** move the caret, **Start** is Enter, **Select** hides it. Its letters follow
+the keyboard's layout (QWERTY, AZERTY, QWERTZ: Settings › Keyboard). The app is laid out again above it.
+
+![](compact-shell/real/consolehome-keys-shown-720.png)
+
+*The console's on-screen keyboard over an app, 1280 × 720.*
 
 **A game's own resolution.** Each emulator says the screen size it plays best at (its `app.txt`: `resolution =
 800x600` for the Game Boy and the Game Boy Advance, `640x480` for the NES, the Super Nintendo, the Nintendo 64 and
@@ -2116,7 +2130,7 @@ pane they scroll.)
 | **Preload** (`preloadconf`) | The programs **loaded ahead at boot and kept in memory**: they start without reading the card (worth it for the large ones, as Jet: 100 MB, 5 s of card each start otherwise). At the left the list (each program, its size, *loading* / *in memory*), at the right what can be added — the apps, then the `/bin` tools: **< Add** (or a double click), **Remove**. A change is done **at once** (the program added is loaded now, the one removed is released: its memory is freed when its last window closes) and kept in `SD:/etc/preload.ini`, which the last line of `SD:/etc/autostart`, `preload /boot`, reads at every boot. The line under the lists gives the memory the list takes. |
 | **Printers** (`printconf`) | The printers Onyx prints on (the **PDF** printer, network printers added by their address), the default one, a test page, and the **print queue** (below: *Printing*). |
 | **Keyboard & Mouse** (`keyconf`) | The keyboard **layout** (the maps of `SD:/etc/keymaps`: a click takes one at once and keeps it in `SD:/etc/autostart`'s `keyb` line; a field to try it) and the **wheel**'s speed (lines a notch: at once, kept in `SD:/etc/theme.txt`). |
-| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
+| **Language & Region** (`langconf`) | The **language** of the programs' words — **English** or **Français**: a click takes it and keeps it in `SD:/etc/system.ini` (`language=`). A program takes the language when it **starts**: the ones already open keep theirs until they are started again (the menu bar and the dock: at the next boot). Translated so far: Setup, the Control Panel and all its applets, the Terminal, the menu bar, Ledger, Notes and Stickies, the Clock, Turtle Quest (its BASIC too), Circuits, Pinball, Critters, Cosmo Zoom!, the Graphing Calculator, the File Viewer, the Task Manager and the dialogs every app shares (open / save a file, the message boxes, the calendar); the other apps stay in English until they are. The **time zone**: click a city of yours — the clock follows at once, the summer time counted from the date; kept in `system.ini` (`zone=`, `timezone=`). **While `clockd` runs** (the Clock's alarm service, started at boot), **the summer time changes the clock by itself**: on the night it begins or ends, the system's clock moves within a minute of 02:00 / 03:00 and `timezone=` is written (a city chosen here, `zone=`, is needed: with only a `timezone=` nothing is guessed). |
 | **Gamepad** (`padconf`) | The USB gamepads (§12). |
 | **Wi-Fi** (`wpaconf`) | The known networks and their passwords (§12). |
 | **App Settings** (`config`) | An app's own settings, its `SD:/apps/<name>.app/config.ini`: the apps (those with settings first, marked `*`), then the chosen one's `key = value` lines — pick one, change its key or its value, **Set** (Enter; a new key adds a line), **Delete**; **Save** writes the file (the app reads it when it starts again), **Reload**. |
@@ -2220,7 +2234,7 @@ a page.
 - **Updates** — the packages with a newer version: a box each, ticked (untick those to keep),
   **Install N Updates**. Each shows its versions (installed → new), its size; the system's update
   is marked **restart**. While it works, each row says *Waiting*, its progress, *Installed*, or
-  *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*).
+  *Ready: at the restart*. An app that is **running** is not updated (*close it, then try again*) — but a **service** (a windowless program always running: `clockd`, `clipd`, `notifyd`, `printd`; its `app.txt` says `service = 1`, or it is in the Shell category and its name ends with a *d*) is stopped while its files change and started again after (*clockd restarted*). The Package Manager that updates **itself** starts its new version at once (and the update daemon `pkgd`): the one running was the old one.
   A package whose **program is missing** from the card (Jet Browser on a card copied from the git
   repository's `sdcard/`: its 100 MB program is too big for git and comes with its package only) is
   shown here too, from version 0: install it to get the program.
@@ -5730,6 +5744,96 @@ always give the same run, on the PC as on the Pi.
 186 builder 0      # at step 186 (9.3 s in), the first creature out builds
 ```
 
+### Cosmo Zoom!, the anti-gravity racer (`cosmozoom`)
+
+**Cosmo Zoom!** (category *Games*) is a 3D racing game of anti-gravity ships on floating tracks among pastel towers,
+islands and clouds -- soft rounded low-poly shapes --, by day, at sunset, at night and in deep space — drawn by the Raspberry Pi 4's **GPU** (the V3D; without one, by the processor, slower
+and blurrier). Eight racers, ships made of parts in the **hangar**, **gadgets** picked up from the item capsules,
+speed pads, jumps, loops, twisted sections of track and **tubes ridden on their outside** (steering takes the ship
+round the tube; the camera turns with it). It opens in a **window with the system's menu bar**, as the other games: **Game** (Pause, Quit), **View** (**Full Screen**, F11 or F; **Show Frame Rate**, F12), **Sound** (the music, the sounds on or off). It remembers full screen for the next time; `cosmozoom fullscreen` starts there.
+
+![Cosmo Zoom!: a race in Skyline City](../screenshots/cosmozoom.png)
+*A race in Skyline City: the shield's energy and the boost (top left), the times, the gadget's slot and the "BOOST ACTIVE"
+banner (top centre), the leaderboard (top right), the speed (bottom left), the map, the lap and the place (bottom
+right).*
+
+**Playing.** The title, then the menu: **Grand Prix** (a cup of four circuits, 3 laps each; the points 10, 8, 6, 5,
+4, 3, 2, 1 by place; a trophy for the top 3), **Single Race** (any circuit, 1 to 5 laps), **Time Trial** (alone,
+3 laps, a Triple Hyper to start with; the best times kept, the best race's **ghost** racing with you), **Options**, **Quit**. **One to four players** (left /
+right on the menu's first two lines): the screen shared — one above the other for two, the four corners for three or
+four (with three, the fourth corner shows the map). Then the **hangar** of each player, then the class and the cup or
+the circuit, and the race: 3, 2, 1, GO — **holding the throttle when "1" shows** gives a boost at the start.
+
+| | Keyboard (player 1) | Gamepad |
+|---|---|---|
+| Steer | **←** / **→** | the left stick or the d-pad |
+| Accelerate | **↑** or **X** | **A** |
+| Brake | **↓** | **B** |
+| Drift (charges a mini-boost: blue, orange, pink) | **Z** or **C**, held while turning | **L** / **R** (or **L2** / **R2**) |
+| Use the gadget (**↓** held: thrown backward) | **Space** | **X** or **Y** |
+| Look back | **V** | **Select** |
+| Pause (Resume, Restart, Quit the race) | **P** or **Esc** | **Start** |
+| Menus | arrows, **Enter**, **Esc**; **R** a random ship in the hangar | d-pad, **A**, **B**; **Y** random |
+
+**The hangar.** A ship is a **hull** (eight: *Comet Chaser*, *Nova Streak*, *Star Drifter*, *Manta Ray*,
+*Plasma Runner*, *Ringmaster*, *Nebula Sprinter*, *Sonic Wave*), **wings** (four, or none), an **engine** (five: a central jet, side pods, nacelles on truss
+arms, detached *Plasma Pods* joined by an energy arc, a ring drive) and a **paint** (a colour, a trim, a pattern).
+Each part moves the four stats — **Speed**, **Acceleration**, **Handling**, **Weight** (who pushes whom) — by a point
+at most; some have a perk (longer jumps, faster drift charges, longer boosts). The **pilot** (eight racers in
+closed helmets, one per team) is only a look. The ships of each player are kept for the next time.
+
+![Cosmo Zoom!: the hangar](../screenshots/cosmozoom-hangar.png)
+
+**On the track.** The **speed pads** (glowing arrows) throw the ship forward; the **star bits** add 1 % of top speed
+each (10 at most; a hit loses 3); the **item capsules** (holographic cubes in rows across the track) give a gadget
+after a roulette — the leaders get small ones, the last ones the big helps:
+
+| Gadget | What it does |
+|---|---|
+| **Hyper Boost** / **Triple Hyper** | a burst of speed (three of them) |
+| **Shield Dome** | blocks one hit (8 s) |
+| **Plasma Bubble** | shot ahead (or, **↓** held, behind): the ship it touches floats a moment in a bubble |
+| **Ion Goo** | a sticky puddle dropped behind |
+| **Gravity Well** | a small vortex thrown ahead (or dropped) that pulls the ships in |
+| **Tractor Beam** | pulls you along behind the ship ahead |
+| **EMP Burst** | the ships close behind see sparks and cannot use their gadget for a moment |
+| **Ion Storm** | a storm cloud flies to the leader and slows them down |
+| **Warp Star** | very fast, on autopilot, nothing can stop you (5 s) |
+
+A hit, a wall, a bump take some of the **shield's energy** (the bar at the top left; it comes back by itself, faster
+on the speed pads); with none left, the ship sputters a moment. Nothing is ever destroyed. The **classes**: *Orbit*
+(30 m/s, gentle computer pilots), *Hyper* (40 m/s), *Warp* (50 m/s), *Mirror* (the circuits turned over: won by a gold
+trophy in the last cup). **Options**: the music, the sounds, a **steering help** (off, some, lots: the ship follows the
+track's turns by itself in part) and **auto-accelerate** (off, on, or for the Orbit class only — the default: the
+youngest just steer).
+
+**Forks.** Some circuits split into **two branches, left and right**, that meet again: steer to the side you want
+before the split's sign (← →) -- the middle runs into its nose, a bump. On a **crossing** the left branch dives and
+passes **under** the right one, and the two come back on the other's side before they meet. The map shows both
+branches.
+
+**The circuits and the cups.** Fourteen circuits: thirteen in four cups (the last cup's first three are circuits
+driven the other way round, the *Remixes*); a cup opens with a trophy in the one before (the first two are open).
+The fourteenth, **Turbo Junction** (*Carrefour Turbo*), is for the single races and the time trials: the most speed
+pads -- rows of three, a slalom of pads, chains along the straights --, three forks (one of them a crossing over
+and under) and two jumps.
+
+![Cosmo Zoom!: choosing a cup](../screenshots/cosmozoom-cups.png)
+
+**In French.** With the system in French (Control Panel ▸ **Language & Region**), the game is in French — its
+menus, the HUD, the parts and gadgets, the circuits' and cups' names.
+
+**Files.** Reads `SD:/apps/cosmozoom.app/cups.ini` (the circuits and the cups), `tracks/*.trk` (the circuits: a
+text file of control points and features — docs/cosmozoom/DESIGN.md and the comment of
+`user/Apps/cosmozoom/track.h` say the format: a new circuit is a new file and a line in `cups.ini`),
+`models/*.obj` (the 3D models: Wavefront OBJ with `cosmo.mtl`), `lang/fr.txt`. Writes **`SD:/apps/cosmozoom.app/save.ini`**
+(never on the card: made the first time): the trophies (`[trophies]`), the best laps and races (`[times]`), each
+player's ship (`[p1]`..`[p4]`) and the options. The music needs the General MIDI SoundFont (the package
+`generaluser-gs`); without it the game is silent but for its sounds. For the tests: `cosmozoom window` (in a
+window), `fps` (the pictures a second), `players=N`, `race=<circuit>` (straight into a race), `screen=hangar` /
+`cups` / `menu` / `options`, `auto` (the players' ships drive themselves), `demo` (the title's race only),
+`seed=N`, `sharp` (without a GPU: the picture drawn at its whole size).
+
 ### Games
 
 **Any window size.** tetris, snake, pong, life, minesweeper, same, sokoban, 2048, Solitaire, FreeCell, Pipes and
@@ -5757,12 +5861,13 @@ Quest, Pinball and Critters lay themselves out again instead (their board grows,
 | **Pinball** (`pinball`) | A pinball table with real physics: **←/Z** and **→/M** the flippers, **Space** (held) the plunger, **↑/N** nudge (three in 5 s: TILT), **P** pause — three tables (Space Station, Haunted Manor, Volcano) and any table written in a text file (`.table`), each with its goal, its rules and its top 5; a gamepad too; in English or **French**. Scores in `SD:/apps/pinball.app/scores.ini`. See §12, *Pinball*. |
 | **Critters** (`critters`) | Lead the little creatures from the hatch to the exit by giving some of them a role — climber, floater, blocker, builder, digger, exploder: **1**…**8** or a click on a slot chooses the role, a **click** on a creature (or **Tab** then **Enter**) gives it; **P** pause, **F** fast forward, **N** all explode, **−/+** the release rate, **←/→** scroll — twelve levels (six Training, six Expedition, each opened by the one before) and any level written in a text file (`.level`); in English or **French**. Progress in `SD:/apps/critters.app/progress.ini`. See §12, *Critters*. |
 | **Arkanoid** | Written in BASIC (`main.bax`, from `SD:/basic/examples/arkanoid.bas`), in `SCREEN 13` shown full screen (**F**: a window, and back). Break the bricks. The paddle follows the **mouse** or the **←/→** arrows (held); **Space** or a click launches the ball (and fires, with the laser). Silver bricks take several hits, gold ones never break. Catch the falling capsules: **E** longer paddle, **S** slower ball, **C** catch the ball, **L** laser, **D** three balls, **P** extra life. 5 rounds (then again, faster), 3 lives. **P** pause, **Esc** title / quit. No file read or written. |
+| **Cosmo Zoom!** (`cosmozoom`) | The 3D anti-gravity racer drawn by the GPU: its own section above. |
+| **Antigrav** (`antigrav`) | An anti-gravity racer in the manner of the mid-90s ones, **written in BASIC** (`SD:/basic/examples/antigrav.bas`) and made a native program (the app's `main` is the BASIC runtime with the compiled program inside: machine code, no `SD:/bin/basic` needed). **Everything is made by the program** -- no file read: six circuits generated from a number (they climb, dive and bank in their turns, with tunnels, arches, speed pads and weapon pads), each with its own character -- twisty, hilly, flat and fast, tunnels or none -- and **its own setting**: a city at night (Nova Ring), glowing spires under the moon (Cobalt Spire), islands and palms in a bay at sunset (Helix Bay), mesas in a red canyon (Ember Canyon), pines and white peaks in the snow (Glacier Run), floating rocks over the void of space (Zenith Arc), the craft, the pictures, the music (the General MIDI synthesizer: silent without the SoundFont package `generaluser-gs`, the sounds stay) and the sounds. **One to four players**, as many as **gamepads** are plugged in (the menu's PLAYERS; the first player has the keyboard too), the screen shared -- one above the other for two, the four corners for three or four (three: the fourth corner has the map and the order) --; the computer's pilots make **six craft** in all. Two classes (**Venom**, **Rapier**), one, three or five laps. **←/→** steer, **↑** or **X** thrust, **Z / C** the air brakes, **Space** fires the weapon picked up, **P** / **Esc** pause, **F** full screen on / off (it starts full screen). **Gamepad**: d-pad or left stick, **A** thrust, **X** fire, **L / R** air brakes, **Start** pause. Blue chevrons throw the craft forward; red pads give a weapon -- three **rockets**, a **missile** that follows the craft ahead, three **mines** dropped behind, a **shield**, a **turbo**. The best lap of each circuit and class: `SD:/apps/antigrav.app/times.txt`. `antigrav window` starts in a window, `antigrav fps` shows the pictures a second, `antigrav circuit=4` starts on that circuit. The frame is drawn on a page out of sight and shown whole (`PCOPY`): no flicker between the 3D and the score. |
 | **Planets 3D** | Written in BASIC (`main.bax`, from `SD:/basic/examples/planets3d.bas`): a little solar system in 3D, drawn by the **GPU** — the sun, four planets turning on their orbits, a moon, a ringed gas giant, stars; the planets' textures are drawn by the program itself. **Arrows** turn the camera, **+ / −** nearer / farther, **Space** pause, **F** full screen, **Esc** quit. The top line says GPU or software and the frames a second. No file read or written. |
 | **Invaders** | Space Invaders. **←/→** (held) or the mouse move the cannon; **Space** or a click fires (one shot at a time). The fleet marches faster as it thins out (the four-note march on the synth); the shields crumble; the red saucer is worth 50–300. An invader reaching the ground ends the game. **P** pause. |
 | **Teapot (GPU)** (`teapot`) | The demo of the Raspberry Pi 4's **GPU** (V3D): the Utah teapot turning, lit (6400 triangles), drawn by the GPU with a depth buffer. The top line shows the renderer (`V3D 4.2 (1 core)`), the triangles, the frames a second and the time of one frame. **Space** pause, **G** GPU / software (the same picture drawn by the CPU, to compare), **Up / Down** tilt. Without a usable GPU it draws in software and the top line says why (the details are in `kmsg`). Reads and writes no file. |
 | **GPU demo** (`gpudemo`) | The GPU's full pipeline: six **textured cubes** turning (each moved by the GPU with its own matrix), a **glass pane** in front (transparency) and **glowing sparks** (additive light). Each cube's texture has a size that the GPU stores differently (its label: `4x4 LT`, `8x8 UB1`, `16x16 UB2`, `64x64 UIF`, `256 UIF/XOR`, `100x60 UIF`); every face should show a white border, a yellow dot in a corner and a dark arrow — a scrambled face means that layout is wrong. **F** nearest / linear filtering, **C** culling (back / none / front: with *back* only the outer faces show), **B** blending on / off, **T** textures on / off, **Space** pause. The top line: the GPU, the settings, frames a second, time of a frame (and the error, if the GPU refused a frame). Reads and writes no file. |
 | **Doom** (`doom`) | id Software's Doom (the GPL source, through doomgeneric). Onyx ships **Freedoom Phase 1** (`SD:/doom/freedoom1.wad`, free content); copy your own `doom.wad`, `doom2.wad`, `doom1.wad` (shareware), `plutonia.wad` or `tnt.wad` into **`SD:/doom`** to play the original — the first found is used. Opening a `.wad` in the File Viewer starts Doom with it (a mod — a PWAD — is loaded over the game). **Arrows** move, **Ctrl** fires, **Space** opens / uses, **Alt** + arrows or **,** / **.** strafe, **Shift** runs, **1–7** weapons, **Tab** the map, **Esc** the menu, **F1–F10** as in DOS Doom (F2 save, F3 load…). **USB gamepad**: d-pad, **A** fire, **B** use, **X** run, **L / R** strafe, **Start** menu, **Select** map. The picture is Doom's 320 × 200 doubled in a 640 × 400 window; **F11** / Game ▸ **Full Screen** stretches it to the display at 4:3. Sound effects and **music** (MUS or MIDI) on the Onyx synthesizer's FM voices with the WAD's own OPL instruments (GENMIDI), like the DOS version on an AdLib / Sound Blaster. Settings in `SD:/doom/default.cfg`, saved games in `SD:/doom/savegame/<iwad>/`. Loading a 28 MB WAD takes a couple of seconds. The game runs on an **app core** (core 2 or 3) when one is free: steadier, and the rest of Onyx stays fluid. |
-| **wipEout** (`wipeout`) | The 1995 anti-gravity racer, through **wipeout-rewrite** (Dominic Szablewski's rewrite of the game's code). **The game's files are not shipped** (they are Sony's): copy the PlayStation (NTSC) data, with a few menu models of the PC version, into **`SD:/wipeout`** (`SD:/wipeout/textures/`, `track01/`, `common/`, `sound/`...), optionally the music as QOA (`SD:/wipeout/music/track01.qoa`...) and the intro film as MPEG-1 (`SD:/wipeout/intro.mpeg`) -- `SD:/wipeout/README.txt` says it again; without them the app says so and stops. **Arrows** steer, **X** thrust, **Z** fire, **C / V** the air brakes, **A** the view, **Enter** start / pause, **Esc / Backspace** back (the game's options rebind them). **USB gamepad**: d-pad or left stick, **A** thrust, **X** fire, **L / R** the air brakes, **Y** the view, **Start** pause; the sticks can be bound as analog in the options. The picture is drawn by the **processor** (the game's software renderer, not the GPU): at **240 lines** by default (the options' SCREEN RESOLUTION: 240P; 480P and NATIVE cost more -- NATIVE is the window's size, at most 540 lines full screen), doubled into a 640 × 480 window; **F11**, **Alt+Enter** or Game ▸ **Full Screen** stretch it to the display at its shape. Sound effects and music mixed by the game. Settings and best times in `SD:/wipeout/save.dat`. |
 | **Game Library** (`gamelib`) | A "Netflix for ROMs", laid out as the File Viewer: every GameCube (`.iso` / `.gcm`), Nintendo DS (`.nds`), Nintendo 64 (`.z64` / `.n64` / `.v64`), Super Nintendo (`.sfc` / `.smc`), Game Boy Advance (`.gba`), Game Boy Color (`.gbc`), Game Boy (`.gb`) and NES (`.nes`) game of the **watched folders** (**`SD:/roms`** by default) and their sub-folders, one card each — a picture of its title screen and its name (a Nintendo 64 game: a label with the name from its header; a GameCube disc: its banner; a Nintendo DS game: its icon and its title). **On the left, the sidebar** (click a group's title to fold it): **Library ▸ All Games**, **Systems** — the emulators, each with its icon and its number of games: **click one to see its games only** — and **Folders** (the watched folders and their games; **Add Folder…**; right-click one: Show, Show in File Viewer, **Remove Folder**). Above, the path bar (*Game Library ▸ Super Nintendo*, the number of games; click *Game Library* for all of them); below, the status bar (the game chosen, the picture being made). The cards: one section per system; **click** one to select it, **double-click** it (or **Enter**) to play; right-click: **Play**, **Play Full Screen**, **Show in File Viewer**. Keys: arrows, Enter, Page Up / Down, **Tab** = the next system. With a **gamepad**: the d-pad moves, **Start** (or A) plays, **L / R** the previous / next system, **L2 / R2** turn a page. The pictures are made in the background the first time (each game runs a few seconds unseen; the games shown first) and cached in `SD:/apps/gamelib.app/thumbs/`. Library ▸ **Refresh** (^R) finds new ROMs. **Several folders** are watched, on any volume (e.g. `SD1:/roms` on an exFAT partition): the sidebar's Add Folder… / Folders ▸ **Add Folder...** (the folder dialog), Folders ▸ **Remove <folder>** — kept in `SD:/apps/gamelib.app/config.ini`, one `folder = <path>` line each (63 characters at most); View ▸ All Games / a system, **Play Full Screen On / Off**. The **emulators** are in no menu of the desktop (their `category` is `Emulators`): the Game Library starts the right one for a game (and an emulator started without a ROM opens the Game Library). **The systems are those of the installed emulators**: each says in its `app.txt` the systems it plays and their files' extensions (`games = Game Boy Color: gbc; Game Boy: gb`) and the place of their sections (`order = 50`) — install an emulator's package (Control Panel ▸ Packages) and its games show; remove it and they go. A game whose emulator has no picture maker here shows its emulator's icon. In the system's language (English or French). **In the pocket and console modes** the sidebar is a rail of the systems' icons in landscape (the names and the counts under the pointer or the focus; whole on a wide screen), a drawer in portrait (the tab at the left edge), the column of big rows in console (L1 / R1: the next place); a system with no game is greyed. |
 | **Super Nintendo** (`snesemu`) | The Super Nintendo / Super Famicom emulator. Opening a `.sfc` / `.smc` file starts it (its `app.txt`: `games = Super Nintendo: sfc smc`); without a ROM it opens the Game Library. the keyboard (the Gamepad applet's Keyboard tab: by default **Arrows** D-pad, **X** = A, **Z** = B, **S** = X, **A** = Y, **Q** = L, **W** = R, **Enter** = Start, **Backspace** = Select), **P** pause; or a **USB gamepad** (the buttons by place, as on a Super Nintendo pad: right = A, bottom = B, top = X, left = Y, the shoulders L / R). View ▸ **Full Screen** (**F11**; **Esc** back), **Zoom 1x/2x/3x**, **Region: NTSC (60 Hz) / PAL (50 Hz)** (read from the ROM's header: a European game runs at 50 Hz), **Show Speed** (**F12**); Sound ▸ On / Off; Game ▸ Reset. The cartridge's battery RAM (e.g. Zelda: A Link to the Past's three files) is **`<rom>.sav`** beside the ROM (written every 5 s after a change and on exit). Games with an **enhancement chip** in the cartridge (Super FX: Star Fox, Yoshi's Island; SA-1: Super Mario RPG; DSP-1: Super Mario Kart, Pilotwings…) are not supported: a message says so. Runs on an **app core** when one is free, like the other emulators. |
 | **GameCube** (`gcemu`) | The Nintendo GameCube emulator — **just started**: the console's CPU (checked instruction by instruction against a reference) and chips, the graphics by the GPU, the start of a disc through its own loader; the **sound** (the game's audio stream and the Zelda games' music; Sound ▸ **Sound On / Off** — AX games are still silent) and a **memory card** in slot A, kept as **`<game>.sav`** beside the disc image (the same file as NintendoEMU's on the PC: a save moves between them), and its CPU is **recompiled** to the Pi's own code as it runs (a JIT: the integer, floating point and paired-single code; the rarer instructions still go through the interpreter — the speed on real games is being worked on: The Wind Waker, a PAL disc, runs at ~46-49 fields a second of its 50 on Outset (~23-24 frames a second of its 25: smooth on a TV), 50 in the lighter scenes; a sound that stutters is the game running below real time; a Pi 4 without a fan slows down above ~80 °C). Opening a `.iso` / `.gcm` disc image or a `.dol` program starts it (the disc is read from the file as the game asks, not loaded); the Game Library shows the discs with their banner. the keyboard (the Gamepad applet's Keyboard tab: by default **Arrows** the stick and the D-pad, **Z** = A, **A** = B, **X** = X, **S** = Y, **Q / W** = Z, **E / R** = L / R, **Enter** = Start, **I J K L** the C stick — the buttons by place, as a pad's), **P** pause; or a **USB gamepad**. The pictures are drawn by the GPU with the console's **TEV** turned into GPU shaders (every stage of its colour combiner computed as the console does, the textures, the alpha test — the fog, the indirect textures and the render-to-texture effects not yet); View ▸ **TEV Shaders On / Off** goes back to the older, simpler drawing (one texture, the colours computed per vertex). View ▸ **Full Screen** (**F11**), **Size 640 × 480 / 960 × 720**, **Show FPS** (**F10**: the game's frames a second and its speed against real time, in a corner), **Show Speed** (**F12**: fields/s, JIT or interpreter, `TEV` and the number of shaders made, or `GPU`; with the TEV shaders a third line tells what the graphics card did with the frame — useful in a problem report — and a fourth where the time goes: the graphics commands, the textures, the vertices, the second core's share, and the frame's drawing), **Dump the Frame (TEV)** (**F9**: the frame shown saved into `SD:/gcdump/frame_<n>.gxf`, for the developers; `gcemu <disc> --diag` does it by itself: the speed lines every second into `SD:/gcdump/diag.txt`, a frame every 60 s, and it quits after 200 s). Game ▸ **Interpreter (no JIT)** (or `--interp`) runs the plain interpreter, to compare. Runs on an **app core** when one is free, its graphics commands on a **second** one when there is one (`netcore=0` in `SD:/cmdline.txt` leaves both cores to the apps; `--gxone` keeps them on one); `--pmu`, `--jitprof` (with `--diag`), `--statlog` (the speed lines every second into `SD:/gcdump/statlog.txt`, for as long as it runs) and `--nodraw` are measures for the developers. **When the Pi is slower than the console, the sound is stretched** (its pitch kept) rather than chopped: the game and its music slow down smoothly — F12's `sound` shows it (`x130%`). |
@@ -6184,7 +6289,8 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   program goes on (`MF` back to the foreground); `PLAY(0)` = notes still queued.
 - **USB gamepads**: `PAD(n)` = the buttons held on pad `n` (0–3; `PAD` alone: every pad) —
   1 up, 2 down, 4 left, 8 right, 16 A (bottom), 32 B (right), 64 X (left), 128 Y (top),
-  256 L, 512 R, 1024 L2, 2048 R2, 4096 Select, 8192 Start (`IF PAD AND 16 THEN …`); QBasic's
+  256 L, 512 R, 1024 L2, 2048 R2, 4096 Select, 8192 Start (`IF PAD AND 16 THEN …`); `PADS` = how
+  many pads are plugged in, `PADS(n)` = -1 when pad `n` is (a game for as many players as pads); QBasic's
   `STICK(n)` (0/1 = x/y of pad 0, 2/3 of pad 1, 1–199, 100 centred) and `STRIG(n)` (0–3
   button A of pad 0/1, 4–7 button B; even `n` = pressed since the last call, odd = held).
   Nothing is pressed while the program's window is in the background. Also in the Windows
@@ -6208,7 +6314,8 @@ And the rest of QBasic 1.1 (the editor's Help ▸ Keywords lists everything):
   three (counter-clockwise = the front; `s, t` = texture coordinates 0–1). **`t = GRAB3D (x, y,
   w, h)`** makes a texture of a rectangle of the screen (draw it with `LINE`, `CIRCLE`,
   `PSET`…; magenta `RGB (255, 0, 255)` = transparent); **`GPU3D`** is -1 when the GPU draws.
-  Example: `SD:/basic/examples/planets3d.bas` (the **Planets 3D** app).
+  **`VIEW3D x, y, w, h`** draws the frames that follow into that part of the screen (cleared and seen there alone, its own shape: a split screen); `VIEW3D` alone, the whole screen again. Examples: `SD:/basic/examples/planets3d.bas` (the **Planets 3D** app), `antigrav.bas` (the **Antigrav** app: a racer for one to four players).
+  **Pages, no flicker**: the screen is shown some fifty times a second, whenever the system can -- a frame drawn in several steps (the 3D, then the score over it) may be seen half done. A game draws on a page out of sight and shows the whole frame at once: `SCREEN , , 1, 0` (draw on page 1, show page 0), then `PCOPY 1, 0` at the end of each frame. `SCREEN 12` and `SCREEN 13` have two pages (one in QBasic); `SCREEN 0` and `7` eight.
 - **Events**: `ON TIMER (n) GOSUB`, `ON KEY (n) GOSUB` (F1–F12, arrows, user keys) with
   `TIMER` / `KEY (n)` `ON` / `OFF` / `STOP`. `INKEY$` returns F1–F10 as `CHR$(0) + CHR$(59…68)`.
 - **Programs**: `CHAIN` (with `COMMON` variables and the open files), `RUN`, `CLEAR`,
@@ -6316,9 +6423,21 @@ others. It keeps the runtime it was made with: after a system update, **`basic -
 gives every standalone app of the card the card's runtime, its program untouched (making the app
 again does the same); it still uses the card's shared libraries. QBStudio asks the same things in
 **Project ▸ Settings** (`project.ini`: `compiled`, `managed`, `standalone`), the Windows editor in
-its **Make App** (standalone when the SD folder has `bin/basic`). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Planets 3D** and **Arkanoid**
+its **Make App** (standalone when the SD folder has `bin/basic`). Examples: **BASIC Demo** (`basicdemo`, `main.bas`), **Antigrav** (`antigrav`: a standalone app, made at build time -- `basc --standalone`), **Planets 3D** and **Arkanoid**
 (`arkanoid`: `main.bax`, compiled at build time from `SD:/basic/examples/arkanoid.bas` — the
 game is written in BASIC).
+
+![Antigrav: the title](../screenshots/antigrav-title.png)
+*Antigrav, written in BASIC: its title, the race going on by itself behind the menu.*
+
+![Antigrav: a race](../screenshots/antigrav.png)
+*A race: the lap, the place, the time, the speed, the small map; a speed pad ahead.*
+
+![Antigrav: four players](../screenshots/antigrav-split.png)
+*Four players, the screen shared (`VIEW3D`); the map in the middle.*
+
+![Antigrav: the six circuits](../screenshots/antigrav-circuits.png)
+*The six circuits, each in its setting: Nova Ring (a city at night), Cobalt Spire (blue spires under the moon), Helix Bay (the sea at sunset), Ember Canyon (a red desert), Glacier Run (snow), Zenith Arc (space).*
 
 ### QBStudio, desktop apps in BASIC (`qbstudio`)
 

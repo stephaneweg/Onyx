@@ -54,3 +54,4 @@ Tick every package shown -- or none	Cocher tous les paquets affichés -- ou aucu
 Update	Mettre à jour
 Updates	Mises à jour
 Waiting	En attente
+The Package Manager updated itself: it starts again...	Le gestionnaire de paquets s'est mis à jour : il redémarre...

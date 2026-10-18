@@ -168,7 +168,8 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
   **`main`** (the "Onyx" layout; an app's other files — `app.txt`, icons, resources — are
   kept in `sdcard/apps/<name>.app/` itself, committed);
 - Koton's plugins (`user/Apps/kp_<name>/`) → `sdcard/koton/plugins/<name>/main` + `plugin.json`;
-- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`;
+- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`, and the standalone ones
+  (`antigrav`) → `apps/<name>.app/main` (`basc --standalone`: the BASIC runtime with the program inside);
 - copies each `../user/BinUtils/<tool>.elf` → `sdcard/bin/<tool>`.
 
 **Executables on the card have no extension**: `.elf` only exists in the build tree
@@ -203,7 +204,7 @@ The sources of user space are sorted by their use, in `user/`:
 | `Runtime/` | what every program is linked with: `crt0.S`, `user.ld`, the libraries' `lib.ld` / `lib.h` / `librt.cpp`, `umm.h`, `onyxpp.hpp`, and `libc/` (newlib's glue, the POSIX library) |
 | `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
 | `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
-| `Ports/` | third-party programs ported: `doom`, `wipeout`, `stk` |
+| `Ports/` | third-party programs ported: `doom`, `stk` |
 | `Include/` | the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `fileassoc.h`, `docguard.h`…) |
 | `Apps/games/` | what the games share (`game.h`, `cards.h`) |
 | `lib/` | the build's outputs for the libraries (not in git) |
@@ -1625,6 +1626,15 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   no app's size is on (`g_ours`): a change made meanwhile (the Display applet) is followed, only a size set by the
   shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
   The kernel's switch is not simulated by `server_sim` (its stand-in has no `screen_set`).
+- **The apps' on-screen keyboard** (`consolehome/appkeys.h`, 2026-10-14): PocketUI now gives the console's shell the
+  focused field's type too (`wm.cpp`: `UK_SHELL_EV_TEXT` in pocket AND console mode); `ak_hint` shows the keyboard
+  when a pad is plugged in (`g_padKeys`: not over a game) and hides it unless it was asked for (a Select tap:
+  `pad_poll`'s `selTap`, `ak_toggle`). Its window (`W_KEYS`, opaque, the screen's width, on its bottom edge) is a
+  band: the app laid out above it. The pad goes to `ak_pad` while it is up; the keys are `kapi_inject_key` -- no grab
+  (a grab would send the injected keys back to the shell). An app's `app.txt` `pad_y = f1..f12` gives the pad's Y
+  that key instead of Tab (`front_look`; Jet: `f6`, its address bar), `pad_dpad = pointer` makes the d-pad move the pointer
+  (`pad_app`: 2 px a turn, faster after 0.25 s held) instead of typing the arrows (Jet). `server_sim`: `pad BITS` (a known pad with
+  those `PAD_*` held), `hint T` (the latest other's field), `kapi_inject_key` routed (`run.sh`, *console-keys*).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
   call for it yet; the mock-ups' *Run / Favourites / Save states* level), the pointer held at the top edge,
   History and Favourites (Lakka's), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
@@ -2749,16 +2759,6 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
 > FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
 > `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).
-> **wipEout** (`user/Ports/wipeout/`): wipeout-rewrite (`third_party/wipeout-rewrite`, no licence of its own:
-> docs/LICENSING.md; `ONYX.md` lists the `#ifdef ONYX` changes) with its **software renderer** (`render_software.c`), built
-> against newlib like Doom by `user/Ports/wipeout/Makefile` into `user/wipeout.elf`. `wipeout_onyx.c` is the game's
-> `platform.h`: the window (640 × 480) or full screen, the picture drawn at the size `render_set_resolution` asks
-> (240 / 480 lines / the output's, the output's shape) and stretched into it, the keys (`kapi_key_held` + modifiers +
-> key events as taps; the typed text to `input_textinput`), `gamepad.h` (buttons and the sticks as analog), the game's
-> float mixer turned into `ak_out_write` after each frame (1.5 frames ahead, 2048 frames at least), the files under
-> `SD:/` (the game's names begin with `wipeout/`), `save.dat` in `SD:/wipeout`, newlib's `_stat` on `kapi_path_stat`,
-> the game's `die` said in a notification. One thread, at most 60 pictures a second. A GPU renderer (`render.h` on
-> `kapi_gpu_render*`) is not written.
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -3280,6 +3280,44 @@ cut into, the G-code's form and its extents, an operation on one face; then `pri
 layers (what is lit is its volume), the file written and read, supports that leave nothing in mid-air, an island
 found — `FORGE_PM_REF=<a file of the printer's slicer>` checks that it is written back the same to the byte; `FORGE_SAMPLE=sdcard/docs/3d/bracket.3df` writes the sample). Screenshots:
 `sh tools/tests/desktop_sim/shots.sh 3dforge` (the scenes: `forge_scene.py` — its clicks are the tools' places in the bar: move a tool, move them). Icon: `tools/icons/3dforge_icon.py`.
+
+### Cosmo Zoom!, a 3D game on the GPU (`user/Apps/cosmozoom`)
+
+The anti-gravity racer (docs/04 "Cosmo Zoom!"; its design: `docs/cosmozoom/DESIGN.md`, its models:
+`docs/cosmozoom/MODELS.md`) is the model of a **3D game on the V3D GPU** without shaders of its own: everything is
+coloured triangles (and a few textures) handed to **`kapi_gpu_render`** (kapi v53/v54: `struct kapi_gpu_vertex3`,
+`struct kapi_gpu_batch` — each batch its 4 × 4 matrix, texture, blending, depth test, culling). One translation unit
+(`main.cpp`) and headers, each a layer that the PC's tests use as they are:
+
+| Header | What it is |
+|---|---|
+| `math3d.h` | vectors, 4 × 4 matrices in the GPU's layout (row by row, clip = M · (x y z 1)), perspective, look-at; y up, a model faces +Z, its left is +X |
+| `mesh.h` | the Wavefront `.obj` / `.mtl` reader (materials `paint1` / `paint2` recoloured, `*_glow` unlit and added, `glass` / `d < 1` see-through, `#@ name x y z` sockets, `o` groups), the soft light (smoothed normals, the creases kept), the black outline (the inverted hull) |
+| `gfx.h` | a frame: vertices and batches in the kernel's layout; the software picture of the same frame (the BASIC's renderer, `user/Libs/basic/bas3d.h`) |
+| `track.h` | a circuit: its `.trk` file, the Catmull-Rom centre line cut into 2 m segments with their frames (banked turns, loops spliced in, twists, tubes rolled down, forks and crossings: two branches with their own place across and height), the surface `surf (s, l, h)` everything stands on (`surfB` on a fork's branch) |
+| `race.h`, `parts.h` | the race (physics in the track's coordinates — along, across, above —, the computer's pilots, the capsules and gadgets, the laps, the places; events for the sounds), the ships' parts and stats, the gadgets' table |
+| `world.h` | the scenery made once per circuit, cut into pieces of 12 segments with a sphere each (only the pieces in front are sent): the road, the rails and force fields, the city, the ground, the sky |
+| `scene.h` | one view's frame: the sky, the visible pieces, the ships (built from their parts, `buildShip`), shadows, trails, flames, sparkles, glow passes; the chase camera |
+| `textures.h`, `audio.h`, `ui.h`, `draw2d.h` | the procedural textures, the music sequencer and the effects (AudioKit), the HUD and the menus' drawing |
+
+Each picture: per player, `Scene::view` fills one `Frame` (≈ 50–120 k vertices, 30–60 batches), then `render3d`
+(`main.cpp`) maps the game's texture numbers to the GPU's handles and calls `kapi_gpu_render` on that player's
+rectangle of the full-screen buffer (`kapi_gpu_frame.pixels` = its first pixel, `stride` the screen's); without a GPU
+(or `kapi_gpu_render` answering -1 / -3) `softRender` draws the same frame at half size. The HUD is drawn after, by
+the processor, on the same buffer (`ui.h`: UIKit's FreeType faces through a `Canvas` adopted on the buffer), then
+`kapi_present_fb`. Files are read through AppKit (`g_fileReader` = `kapi_open` / `kapi_read`); the race runs at a
+fixed 60 Hz step whatever the frame rate.
+
+The tests on the PC, all on the same headers: `tools/tests/cosmozoom/racesim.cpp` (a whole race of the computer's
+pilots: results, events — `g++ -std=gnu++17 -O2 -Iuser -Iuser/Libs`), `racepic.cpp` (pictures of a race by the
+software renderer), `objview.cpp` (a model as the game draws it, four sides: the modeller's preview),
+`trackmap.cpp` (a circuit seen from above), and `tools/tests/cosmozoom/sim.sh OUT.png "SCRIPT" [ARGS]` (the real app
+on the desktop simulator's stand-in kernel: menus, HUD, everything; `SIM_SCREEN=1920x1080` for a 1280 × 720 window).
+The circuits are made by `python3 tools/cosmozoom/trackgen.py [id...]` (each circuit described as a drive -- straights,
+arcs, heights, features at marks -- written as `sdcard/apps/cosmozoom.app/tracks/<id>.trk`: change the generator, not
+the file; `trackmap.cpp` checks a layout, `tracksheet.py` makes `docs/cosmozoom/tracks.png`), the models by Python
+scripts (`python3 tools/cosmozoom/models/build_all.py --sheets`), the icon by
+`tools/icons/cosmozoom_icon.sh`.
 
 ### Screenshot, the capture tool (`user/Apps/screenshot`)
 
@@ -4078,7 +4116,10 @@ Library's systems** come from the same keys (`load_systems`: every app with `gam
 sorted by `order =`); a system whose emulator is not one of the cores it carries (GB, GBA, NES, SNES;
 the N64's label, the GameCube's banner) shows its emulator's icon on the cards. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
-compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
+compiler) to `apps/<name>.app/main.bax` (Arkanoid); one in `BASIC_STANDALONE` becomes a native program,
+`apps/<name>.app/main` = `basc --standalone ../user/BinUtils/basic.elf prog.bas main` (the runtime of this build with
+the program attached, `bas::attachBax`: what the editor's *Make App > Standalone* makes on the Pi) -- Antigrav.
+See *Onyx BASIC* below.
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `/etc/autostart` and what `kapi_list_apps` returns.

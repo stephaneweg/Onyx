@@ -42,12 +42,12 @@ APPS = tinycalc tinypad cppdemo \
 
 # The apps whose text is FreeType's (DejaVu Sans through uikit's face, Kits/fontkit/uikitface.h): newlib apps as
 # the Calendar (the rule below). Every new app joins them (docs/03, "Fonts").
-FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu
+FT_APPS = disks control theme config wpaconf padconf dockconf soundconf displayconf keyconf langconf modeconf pocketshell consolehome preloadconf printconf gamelib setup menubar fileviewer ledger fmtracker taskman gpiolab notes stickies circuits pinball critters clock ndsemu cosmozoom
 FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom wipeout
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
 # (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
 # rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
@@ -449,12 +449,6 @@ lib/kits.bi.stamp: $(wildcard Kits/*/*.abi) $(wildcard Kits/*/*.h) ../tools/kitb
 .PHONY: doom
 doom: lib/uikit.imp.a lib/appkit_stubs.o
 	@$(MAKE) --no-print-directory -C Ports/doom
-
-# wipEout (Ports/wipeout/: wipeout-rewrite from third_party, its software renderer, + the Onyx layer, against
-# newlib) -> wipeout.elf. The game's files are the player's: SD:/wipeout/README.txt.
-.PHONY: wipeout
-wipeout: lib/uikit.imp.a lib/audiokit.imp.a lib/systemkit.imp.a lib/appkit_stubs.o
-	@$(MAKE) --no-print-directory -C Ports/wipeout
 
 rtfview.elf: Apps/rtfview/rtf.h
 
@@ -896,6 +890,11 @@ stickies.elf: Apps/notes/notesmodel.cpp Apps/notes/notesmodel.h Apps/notes/stick
 # gates.h, board.h, views.h, lessons.h are the window's own headers (one translation unit with main.cpp)
 FT_EXTRA_circuits = Apps/circuits/circuit.cpp
 circuits.elf: Apps/circuits/circuit.cpp $(wildcard Apps/circuits/*.h) Kits/filekit/kvtext.h Kits/filekit/kvtext.inc Kits/uikit/toolbar.h
+# Cosmo Zoom! (the anti-gravity racer, docs/cosmozoom/DESIGN.md): one translation unit, its pieces in Apps/cosmozoom/*.h;
+# its 3D drawn by the GPU (kapi_gpu_render), else by the BASIC's software renderer (Libs/basic/bas3d.h). AudioKit: the
+# music (the General MIDI synthesizer) and the sounds (the FM voices).
+FT_EXTRA_cosmozoom = lib/audiokit.imp.a
+cosmozoom.elf: $(wildcard Apps/cosmozoom/*.h) Libs/basic/bas3d.h Include/gamepad.h lib/audiokit.imp.a Kits/audiokit/audiokit.h Kits/filekit/kvtext.h
 # Pinball (AutoDev round 4): its core (the table loader, the physics, the rules, the scores) beside the window; draw.h,
 # panel.h, picker.h are the window's own headers. The same floating-point results as the host test
 # (tools/tests/run_pinball_test.sh): no fused multiply-add. Its sounds: game.h's sfx, AudioKit's voices.
@@ -944,4 +943,3 @@ clean:
 	@$(MAKE) --no-print-directory -C Servers/elegant clean
 	@$(MAKE) --no-print-directory -C Servers/pocketui clean
 	@$(MAKE) --no-print-directory -C Ports/doom clean
-	@$(MAKE) --no-print-directory -C Ports/wipeout clean
