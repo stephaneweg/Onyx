@@ -1,7 +1,6 @@
 # 3DForge for Windows: the words only the Windows version says, in French ("English<TAB>French", \t \n \ escaped).
 # The core's words are 3DForge's own catalogue (sdcard/apps/3dforge.app/lang/fr.txt), shipped beside this one:
 # pc/dist/3DForge/lang/fr.txt (the core's) and lang/fr-win.txt (this file). Formats: {0}, {1} (C#) or %s, %d (the core).
-Straight edges, circles and arcs can be rounded; the others show in grey.	Les arêtes droites, les cercles et les arcs peuvent être arrondis ; les autres sont en gris.
 Place	Position
 Play draws the layer as the printer would, then the next.	Lecture trace la couche comme l'imprimante, puis la suivante.
 The file for a printer comes later: the path is what is shown.	Le fichier pour une imprimante viendra plus tard : on voit le trajet.
@@ -59,3 +58,4 @@ Snap	Accroche
 {0} lines · {1} × {2} mm · {3}	{0} lignes · {1} × {2} mm · {3}
 {0} triangles · {1} · {2}	{0} triangles · {1} · {2}
 The largest closed outline of each sketch, joined by straight lines.	Le plus grand contour fermé de chaque esquisse, reliés par des droites.
+Any edge can be rounded: straight ones, circles and arcs exactly, the others followed.	Toute arête peut être arrondie : les droites, cercles et arcs exactement, les autres suivies.

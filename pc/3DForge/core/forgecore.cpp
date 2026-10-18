@@ -468,7 +468,7 @@ static void featureFields (Feature &f, bool making)
 		snprintf (t, sizeof t, TR ("%d chosen"), (int) f.edges.size ()); kv (TR ("Edges"), t, "");
 		if (f.edges.empty ()) note (TR ("Click an edge of a body"));
 		else { snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); note (t); }
-		if (making) info ({ TR ("Straight edges, circles and arcs can be rounded; the others show in grey.") });
+		if (making) info ({ TR ("Any edge can be rounded: straight ones, circles and arcs exactly, the others followed.") });
 		break;
 	case F_MOVE:
 		section (TR ("Move"));

@@ -288,9 +288,6 @@ Edges	Arêtes
 %d chosen	%d choisie(s)
 Click an edge of a body	Cliquez une arête d'un corps
 on %s	sur %s
-Straight edges, circles and	Les arêtes droites, les cercles
-arcs can be rounded; the	et les arcs s'arrondissent ;
-others show in grey.	les autres sont en gris.
 Along Z	Selon Z
 Turn, about its centre	Tourner, autour du centre
 Around X	Autour de X
@@ -485,7 +482,6 @@ Layer %d of %d  ·  %s mm  ·  %.3g s	Couche %d sur %d  ·  %s mm  ·  %.3g s
 lit: %.1f cm²	éclairé : %.1f cm²
 Cutting the layers...  %d of %d	Découpe des couches...  %d sur %d
 Choose a flat face turned up.	Choisissez une face plane tournée vers le haut.
-This edge cannot be rounded: only straight edges, circles and arcs.	Cette arête ne peut pas être arrondie : seulement les arêtes droites, les cercles et les arcs.
 Sketches	Esquisses
 Edit	Modifier
 Canvases	Calques
@@ -638,3 +634,10 @@ An outline of the loft cannot be filled	Un contour du lissage ne peut pas être 
 The loft cannot be made: do the outlines or the sides cross?	Le lissage est impossible : les contours ou les côtés se croisent-ils ?
 A sketch of the loft is missing	Une esquisse du lissage manque
 A loft joins two different sketches	Un lissage relie deux esquisses différentes
+Any edge can be rounded:	Toute arête peut être arrondie :
+straight ones, circles and arcs	les droites, cercles et arcs
+exactly, the others followed.	exactement, les autres suivies.
+This edge cannot be rounded here	Cette arête ne peut pas être arrondie ici
+This edge turns from outer to inner: round it in two steps	Cette arête passe de saillante à rentrante : arrondissez-la en deux fois
+The faces are flat across this edge: nothing to round	Les faces sont planes de part et d'autre de cette arête : rien à arrondir
+This edge cannot be rounded here: is the size too large for its curve?	Cette arête ne peut pas être arrondie ici : la taille est-elle trop grande pour sa courbe ?

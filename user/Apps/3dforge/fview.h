@@ -1349,7 +1349,6 @@ public:
 			int b, c;
 			if (!edgeAt (mx, my, &b, &c)) break;
 			const Body &bd = A.doc.bodies[b]; const Chain &ch = bd.mesh.chains[c];
-			if (ch.kind == 0) { set_hint (TR ("This edge cannot be rounded: only straight edges, circles and arcs.")); ui (R_PANELS); break; }
 			V3 m = chain_mid (bd.mesh, ch); bool had = false;
 			for (size_t i = 0; i < f.edges.size (); i++) if (chain_near (bd.mesh, f.edges[i], 0.05) == c) { f.edges.erase (f.edges.begin () + i); had = true; break; }
 			if (!had) { f.edges.push_back (m); f.target = bd.id; }
@@ -1882,7 +1881,7 @@ void View::overlays ()
 		if (A.hovChain >= 0 && A.hovBody >= 0 && A.hovBody < (int) A.doc.bodies.size ())
 		{
 			const RMesh &m = A.doc.bodies[A.hovBody].mesh;
-			if (A.hovChain < (int) m.chains.size ()) chainDraw (m, m.chains[A.hovChain], 3, m.chains[A.hovChain].kind ? C_AMBER : 0x9A9AA2);
+			if (A.hovChain < (int) m.chains.size ()) chainDraw (m, m.chains[A.hovChain], 3, C_AMBER);
 		}
 		if (b && !f.edges.empty ())
 		{

@@ -883,7 +883,7 @@ public:
 			if (f.edges.empty ()) label (12, y, TR ("Click an edge of a body"), dim_col (), 0, true);
 			else { Body *b = A.doc.body (f.target); snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); label (12, y, t, dim_col (), 0, true); (void) b; }
 			y += 30;
-			if (making) { infoY = y; info[0] = TR ("Straight edges, circles and"); info[1] = TR ("arcs can be rounded; the"); info[2] = TR ("others show in grey."); info[3] = 0; y += 70; }
+			if (making) { infoY = y; info[0] = TR ("Any edge can be rounded:"); info[1] = TR ("straight ones, circles and arcs"); info[2] = TR ("exactly, the others followed."); info[3] = 0; y += 70; }
 			break;
 		}
 		case F_MOVE:

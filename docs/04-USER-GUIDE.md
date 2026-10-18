@@ -3168,7 +3168,9 @@ to a side: *Sketch*, a plane of the axes and its **offset**), and *Loft* propose
 at the right, then the operation (a new body, joined to, cut from, kept inside a body) and **OK**. Each sketch gives its
 largest closed outline (its holes are not followed); the two are joined by straight lines, the second turned so that
 the solid does not twist — a square to a circle, a rectangle to a smaller one turned, a profile on the ground to one
-upright. Like every step, its sketches can be edited afterwards: the loft follows.
+upright. When the two outlines have as many corners, they are joined **corner to corner** (the pairing that puts them
+the nearest): the same outline drawn again higher — from another corner, or the other way round — gives straight walls.
+Like every step, its sketches can be edited afterwards: the loft follows.
 
 ![A loft](../screenshots/3dforge-win-loft.png)
 *A loft from a rectangle on the ground to a circle 30 mm above (3DForge for Windows).*
@@ -3187,10 +3189,12 @@ it. The part's file keeps the picture's path, not the picture: keep the file whe
 
 ![A canvas](../screenshots/3dforge-canvas.png)
 
-**Fillet and Chamfer.** Click the edges (the one pointed turns orange; an edge that cannot be done, grey), then drag
+**Fillet and Chamfer.** Click the edges (the one pointed turns orange), then drag
 the arrow or type the size. An inner edge is filled, an outer one cut. 3DForge rounds **straight edges between
 two flat faces**, **edges on a circle** (the rim of a hole, the top of a cylinder) and **arcs** (the rim of a
-corner already rounded). **At a corner** the rounds meet properly, in one step or several: two edges rounded one
+corner already rounded) exactly, and **any other edge** along its facets — between a flat face and a curved one, along
+a loft's side or a spline's extrusion: the corner's profile set across the edge at each of its points (an edge that
+turns from outer to inner on its way is done in two steps; there the ends stop flush, without mitre). **At a corner** the rounds meet properly, in one step or several: two edges rounded one
 after the other are **mitred** (as skirting boards), and the third edge of the corner — the upright one of a box
 whose two top edges are rounded, or the top's edges and the arc of a box whose upright edge is — turns the rounds
 around it: a piece of a sphere when the radii are the same, of a torus otherwise. An edge that stops against a
