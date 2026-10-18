@@ -35,7 +35,7 @@ namespace forge {
 
 enum { T_SELECT, T_BOX, T_CYL, T_SKETCH, T_EXTRUDE, T_FILLET, T_CHAMFER, T_MOVE, T_UNION, T_SUB, T_INT, T_MEASURE,
        T_PYRAMID, T_PRISM, T_TAPER, T_TORUS, T_SPHERE,
-       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT };		// (from T_LINE on: the sketch's)
+       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT, T_MIDLINE };		// (from T_LINE on: the sketch's)
 static inline bool shape_tool (int t) { return t == T_BOX || t == T_CYL || (t >= T_PYRAMID && t <= T_SPHERE); }
 enum { R_FIELDS = 1, R_PANELS = 2, R_ALL = 3 };		// what the window must show again
 
@@ -173,7 +173,13 @@ static void caption_set ()
 	}
 	else snprintf (A.caption, sizeof A.caption, "%s", nm);
 }
-static void sk_eval () { sketch_eval (A.sk.els, A.doc.segs, A.ev); }
+// A line drawn from its middle (arcC, while it is placed): its start, half its length back from there.
+static void midline_place ()
+{
+	if (A.tool != T_MIDLINE || A.curStep != 1 || A.selEl >= 0 || A.cur.kind != SK_LINE) return;
+	double a = A.cur.a * PI / 180; A.cur.x = A.arcC.x - A.cur.len / 2 * cos (a); A.cur.y = A.arcC.y - A.cur.len / 2 * sin (a);
+}
+static void sk_eval () { midline_place (); sketch_eval (A.sk.els, A.doc.segs, A.ev); }
 
 static void tool_hint ()
 {
@@ -207,6 +213,7 @@ static void tool_hint ()
 	case T_ARC3: set_hint (A.curStep == 0 ? TR ("Arc: click where it starts.") : A.curStep == 1 ? TR ("Arc: click where it ends.") : TR ("Arc: move its middle and click \xE2\x80\x94 or type its radius.")); break;
 	case T_SPLINE: set_hint (A.curStep == 0 ? TR ("Spline: click where it starts.") : TR ("Spline: click its points. Enter, or the last point clicked again, ends it.")); break;
 	case T_POINT: set_hint (TR ("Point: click to place a mark to snap to. It is part of no outline.")); break;
+	case T_MIDLINE: set_hint (A.curStep == 0 ? TR ("Midpoint line: click its middle.") : TR ("Midpoint line: click where one end goes \xE2\x80\x94 the other goes as far the other way. Or type its length and angle.")); break;
 	}
 }
 // The element a sketch tool is about to place: chained to the run when there is one.
@@ -425,6 +432,17 @@ static void sk_point (V2 p, bool click)
 			e.r = r; e.x = C.x + r * cos (a); e.y = C.y + r * sin (a); e.ca = a * 180 / PI + 180;
 		}
 		if (click && e.r > 1e-6 && d > 1e-9) { A.curStep = 2; A.sweep0 = 0; e.sweep = 0; tool_hint (); ui (R_ALL); return; }
+		if (click) ui (R_FIELDS);
+		return;
+	}
+	if (e.kind == SK_LINE && A.tool == T_MIDLINE)		// from its middle: the pointer is one end, the other as far the other way
+	{
+		double mx = p.x - A.arcC.x, my = p.y - A.arcC.y, a = atan2 (my, mx) * 180 / PI, l = 2 * hypot (mx, my);
+		if (!snapped && A.snap) { a = snap_angle (a); l = snapv (l); }
+		if (!A.typed[0]) e.len = l;
+		if (!A.typed[1]) e.a = a;
+		midline_place ();
+		if (click && e.len > 1e-6) { sk_add (e); return; }
 		if (click) ui (R_FIELDS);
 		return;
 	}
@@ -1748,6 +1766,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		}
 	}
 	else if (A.curStep == 0 && A.tool >= T_LINE) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	if (A.tool == T_MIDLINE && A.curStep == 1 && A.selEl < 0) { double x, y; P (A.arcC, &x, &y); ov_dot (canvas, x, y, 3.6, C_AMBER, C_AMBER, 1.8); }	// (the middle)
 	if (A.snapOn && A.selEl < 0)			// held by a point: a green ring on it
 	{
 		double x, y; P (A.snapP, &x, &y); const double d = 6.5;

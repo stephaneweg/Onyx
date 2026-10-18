@@ -153,6 +153,7 @@ namespace Forge
 			if (st.Sketching)
 			{
 				Tile (I.LINE, Tr ("Line"), s => s.Tool == T.LINE, () => Core.fc_tool (T.LINE, 0));
+				Tile (I.MIDLINE, Tr ("Midpoint line"), s => s.Tool == T.MIDLINE, () => Core.fc_tool (T.MIDLINE, 0));
 				Tile (I.RECT, Tr ("Rectangle"), s => s.Tool == T.RECT, () => Core.fc_tool (T.RECT, 0));
 				Tile (I.CIRCLE, Tr ("Circle"), s => s.Tool == T.CIRCLE, () => Core.fc_tool (T.CIRCLE, 0));
 				Tile (I.ARC, Tr ("Arc"), s => s.Tool == T.ARC, () => Core.fc_tool (T.ARC, 0));

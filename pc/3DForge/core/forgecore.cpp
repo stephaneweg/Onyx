@@ -694,11 +694,15 @@ static void form_build ()
 		if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, TR ("3-point arc"), TR ("Ends"), TR ("Middle"), A.curStep < 2 ? 0 : 1);
 		else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("End"), A.curStep < 2 ? 0 : 1);
 		else if (e.kind == SK_ARC && !edit) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("Start \xC2\xB7 End"), A.curStep == 0 ? 0 : 1);
+		else if (A.tool == T_MIDLINE && !edit) head (I_MIDLINE, TR ("Midpoint line"));
 		else head (EI[e.kind], EN[e.kind], edit ? TR ("selected") : 0);
 		bool chained = e.chain, fresh = !edit && A.curStep > 0;
 		const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? TR ("Centre X")
 				 : e.kind == SK_RECT ? TR ("Corner X") : e.kind == SK_POINT ? TR ("At X") : TR ("Starts at X");
-		if (e.kind != SK_CLOSE && !chained) { field (xn, &e.x, TR ("mm"), -1); field ("Y", &e.y, TR ("mm"), -1); }
+		bool mid = A.tool == T_MIDLINE && !edit;		// (a line drawn from its middle: placed, its middle is what moves)
+		if (mid) xn = TR ("Middle X");
+		double *fx = mid && A.curStep == 1 ? &A.arcC.x : &e.x, *fy = mid && A.curStep == 1 ? &A.arcC.y : &e.y;
+		if (e.kind != SK_CLOSE && !chained) { field (xn, fx, TR ("mm"), -1); field ("Y", fy, TR ("mm"), -1); }
 		else if (e.kind != SK_CLOSE) kv (TR ("Starts at"), TR ("the end before"), "");
 		if (e.kind == SK_LINE)
 		{

@@ -131,7 +131,7 @@ namespace Forge
 	static class T
 	{
 		public const int SELECT = 0, BOX = 1, CYL = 2, SKETCH = 3, EXTRUDE = 4, FILLET = 5, CHAMFER = 6, MOVE = 7, UNION = 8, SUB = 9, INT = 10, MEASURE = 11,
-			PYRAMID = 12, PRISM = 13, TAPER = 14, TORUS = 15, SPHERE = 16, LINE = 17, RECT = 18, CIRCLE = 19, ARC = 20, ARC3 = 21, SPLINE = 22, POINT = 23;
+			PYRAMID = 12, PRISM = 13, TAPER = 14, TORUS = 15, SPHERE = 16, LINE = 17, RECT = 18, CIRCLE = 19, ARC = 20, ARC3 = 21, SPLINE = 22, POINT = 23, MIDLINE = 24;
 		public static bool Shape (int t) => t == BOX || t == CYL || (t >= PYRAMID && t <= SPHERE);
 	}
 	static class I
@@ -140,7 +140,7 @@ namespace Forge
 			LINE = 13, RECT = 14, CIRCLE = 15, ARC = 16, CLOSE = 17, HOME = 18, FIT = 19, SHADED = 20, CHECK = 21, INFO = 22, EYE = 23, WARN = 24, COMBINE = 25,
 			PYRAMID = 26, PRISM = 27, TAPER = 28, TORUS = 29, SPHERE = 30, SHAPES = 31,
 			CAM_SETUP = 32, CAM_TOOL = 33, CAM_CLEAR = 34, CAM_CONTOUR = 35, GCODE = 36, PLAY = 37, ARC3 = 38, SPLINE = 39, POINT = 40,
-			PR_PLATE = 41, PR_RESIN = 42, PR_SUP = 43, PR_LAYERS = 44, PR_FIL = 45;
+			PR_PLATE = 41, PR_RESIN = 42, PR_SUP = 43, PR_LAYERS = 44, PR_FIL = 45, MIDLINE = 46;
 	}
 	static class Cmd
 	{

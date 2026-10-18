@@ -18,7 +18,7 @@ enum { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_UNION, 
        I_LINE, I_RECT, I_CIRCLE, I_ARC, I_CLOSE, I_HOME, I_FIT, I_SHADED, I_CHECK, I_INFO, I_EYE, I_WARN, I_COMBINE,
        I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_SHAPES,
        I_CAM_SETUP, I_CAM_TOOL, I_CAM_CLEAR, I_CAM_CONTOUR, I_GCODE, I_PLAY, I_ARC3, I_SPLINE, I_POINT,
-       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS, I_PR_FIL,
+       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS, I_PR_FIL, I_MIDLINE,
        I_NEW, I_OPEN, I_SAVE, I_UNDO, I_REDO };
 
 // Icon `kind` in the s x s box at (x, y): ink the lines, acc the accent, bg what is behind it.
@@ -167,6 +167,7 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		break;
 	}
 	case I_LINE: seg (4, 20, 20, 4, ink); dot (4, 20, 2.4, acc); dot (20, 4, 2.4, acc); break;
+	case I_MIDLINE: seg (4, 20, 20, 4, ink); dot (4, 20, 1.9, dim); dot (20, 4, 1.9, dim); dot (12, 12, 3.2, acc); break;	// (a line drawn from its middle)
 	case I_RECT: { const double r[] = { 4, 6, 20, 6, 20, 18, 4, 18 }; poly (r, 4, soft, true, ink, true); dot (4, 6, 2.4, acc); dot (20, 18, 2.4, acc); break; }
 	case I_CIRCLE: dot (12, 12, 8.5 + 0.8, ink); dot (12, 12, 8.5 - 0.8, soft); dot (12, 12, 2.2, acc); break;
 	case I_ARC:

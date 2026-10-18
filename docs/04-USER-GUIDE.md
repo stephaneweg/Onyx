@@ -3138,7 +3138,7 @@ the axes**: *XY* (the ground, seen from above), *XZ* (upright, seen from the fro
 right), its **Offset** (how far along the third axis; the plane is shown in the view), then *Start the sketch*.
 The view turns to face the plane, the plane's **two axes through its origin** drawn in the colours of the
 model's (X red, Y green, Z blue), and the
-tools become **Line**, **Rectangle**, **Circle**, **Arc**, **3-pt arc**, **Spline**, **Point** and **Close**. There
+tools become **Line**, **Midpoint line**, **Rectangle**, **Circle**, **Arc**, **3-pt arc**, **Spline**, **Point** and **Close**. There
 are no constraints to solve: each
 element is a recipe — where it starts (the end of the one before, or a point), its angle and its length; an arc by
 its centre, its radius and its angle — and they are replayed in the order they were drawn.
@@ -3146,6 +3146,7 @@ its centre, its radius and its angle — and they are replayed in the order they
 | Tool | The gesture |
 |---|---|
 | **Line** | Click where it starts, click where it ends (or type its length and its angle); the next one starts there. |
+| **Midpoint line** | Click its middle, then where one end goes: the other end goes as far the other way (or type its length and its angle; its middle's X and Y move it). It is saved as a plain line. |
 | **Rectangle** | *From its corner*: click a corner, click the opposite one. *From its centre* (the choice at the right): click the centre, then a corner. Or type the width and the height. |
 | **Circle** | Click the centre, click to set the diameter. |
 | **Arc** | Click the **centre**, click where it **starts** (which sets the radius), click where it **ends**: the angle — **positive clockwise, negative anticlockwise**; it can be typed. After a line, the arc starts at the line's end: click the centre, then the end. |

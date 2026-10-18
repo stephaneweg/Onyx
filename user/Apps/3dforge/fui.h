@@ -107,7 +107,7 @@ static const ToolDef PRINTTOOLS[] = {
 static const ToolDef FDMTOOLS[] = {
 	{ -20, I_PR_PLATE, TRN ("Setup") }, { -21, I_PR_FIL, TRN ("Filament") }, { -1, 0, 0 }, { -23, I_PR_LAYERS, TRN ("Layers") }, { -2, 0, 0 } };
 static const ToolDef SKTOOLS[] = {
-	{ T_LINE, I_LINE, TRN ("Line") }, { T_RECT, I_RECT, TRN ("Rectangle") }, { T_CIRCLE, I_CIRCLE, TRN ("Circle") }, { T_ARC, I_ARC, TRN ("Arc") }, { T_ARC3, I_ARC3, TRN ("3-pt arc") },
+	{ T_LINE, I_LINE, TRN ("Line") }, { T_MIDLINE, I_MIDLINE, TRN ("Midpoint line") }, { T_RECT, I_RECT, TRN ("Rectangle") }, { T_CIRCLE, I_CIRCLE, TRN ("Circle") }, { T_ARC, I_ARC, TRN ("Arc") }, { T_ARC3, I_ARC3, TRN ("3-pt arc") },
 	{ T_SPLINE, I_SPLINE, TRN ("Spline") }, { T_POINT, I_POINT, TRN ("Point") }, { -3, I_CLOSE, TRN ("Close") }, { -2, 0, 0 } };
 
 class Ribbon : public Widget
@@ -902,11 +902,15 @@ public:
 			if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, TR ("3-point arc"), TR ("Ends"), TR ("Middle"), A.curStep < 2 ? 0 : 1);
 			else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("End"), A.curStep < 2 ? 0 : 1);
 			else if (e.kind == SK_ARC && !edit) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("Start \xC2\xB7 End"), A.curStep == 0 ? 0 : 1);
+			else if (A.tool == T_MIDLINE && !edit) head (I_MIDLINE, TR ("Midpoint line"));
 			else head (EI[e.kind], EN[e.kind], edit ? TR ("selected") : 0);
 			bool chained = e.chain;
 			const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? TR ("Centre X")
 					 : e.kind == SK_RECT ? TR ("Corner X") : e.kind == SK_POINT ? TR ("At X") : TR ("Starts at X");
-			if (e.kind != SK_CLOSE && !chained) { field (y, xn, &e.x, TR ("mm"), -1, false, 96); y += 32; field (y, "Y", &e.y, TR ("mm"), -1, false, 96); y += 32; }
+			bool mid = A.tool == T_MIDLINE && !edit;		// (a line drawn from its middle: placed, its middle is what moves)
+			if (mid) xn = TR ("Middle X");
+			double *fx = mid && A.curStep == 1 ? &A.arcC.x : &e.x, *fy = mid && A.curStep == 1 ? &A.arcC.y : &e.y;
+			if (e.kind != SK_CLOSE && !chained) { field (y, xn, fx, TR ("mm"), -1, false, 96); y += 32; field (y, "Y", fy, TR ("mm"), -1, false, 96); y += 32; }
 			else if (e.kind != SK_CLOSE) { label (12, y + 5, TR ("Starts at")); label (width - 12 - 118, y + 5, TR ("the end before"), 0x2862B0); y += 32; }
 			Textbox *first = 0;
 			if (e.kind == SK_LINE) { first = field (y, TR ("Length"), &e.len, TR ("mm"), 0); y += 32; field (y, TR ("Angle"), &e.a, "\xC2\xB0", 1); y += 34; if (chained) { check (y, TR ("From the line before"), e.rel, 7); y += 28; } }
