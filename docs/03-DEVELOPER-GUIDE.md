@@ -4714,6 +4714,16 @@ barwidth = 40
   plays the steps (`Shot.cs`), saves its picture and ends — `sh pc/3DForge/tools/shots.sh` makes
   `screenshots/3dforge-win*.png` so (never a capture of the screen). A change to `user/Apps/3dforge` comes to
   Windows by rebuilding; a new panel control kind needs its item in `forgecore.cpp` and its class in `FormPanel.cs`.
+  **MCP** (2026-10-18): the window listens on the named pipe `\\.\pipe\3DForge` (`Control.cs`: a JSON request a
+  line, `{"tool", "args"}`, done on the window's thread through the same `fc_*` calls as its controls — the panel's
+  fields found by their names in `fc_form`, never a dialog —, the answer the state after it, a PNG drawn off the screen
+  for `screenshot`); `3DForge.exe --mcp` (`Mcp.cs`, JSON-RPC over stdio, `Json.cs` a small codec) lists the tools
+  (`get_state`, `get_panel`, `screenshot`, `command`, `set_tool`, `set_field`, `set_option`, `press`, `pick`,
+  `view_mouse`, `look`, `key`, `timeline`, `make_shape`, `new_part`, `open_file`, `save_file`, `add_canvas`, `export`,
+  `write_gcode`, `write_print_file`, `close_window`) and relays each call, starting the window (its own handles,
+  `UseShellExecute`) when the pipe is not there. A size field typed with a `-` turns its way (a cylinder down: Depth).
+  Test: `python pc/3DForge/tools/mcp_test.py` (`FORGE_OFFSCREEN=1`: the window it starts is drawn off the screen;
+  it refuses to run while a 3DForge window is open — it would drive it).
   Its language: `Lang.cs` loads, when Windows speaks French, Onyx's own catalogue (`sdcard/apps/3dforge.app/lang/fr.txt`,
   shipped as `lang\fr.txt`) and the window's (`pc/3DForge/lang/fr.txt`, shipped as `lang\fr-win.txt`), and gives both
   to the core (`fc_lang`, before `fc_init`): the shim's `TR` / `uk_tr` read them (`forgeshim.h`), so 3DForge's headers

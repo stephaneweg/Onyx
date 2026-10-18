@@ -34,6 +34,14 @@ Manufacture
                    printer's file (Anycubic Photon .pm3n; more printers in printers.ini).
   Filament         the nozzle's path layer by layer (walls, solid layers, infill), played.
 
+An assistant at the controls (MCP)
+  3DForge.exe --mcp is a Model Context Protocol server (stdin / stdout): an assistant such
+  as Claude Code drives the 3DForge window open on the PC (it starts one if none is), as
+  you would -- tools, clicks in the view, the panel's fields, shapes made from their
+  values, open / save / export, G-code, print files, pictures of the window. Register it:
+      claude mcp add 3dforge -- "C:\path\to\3DForge.exe" --mcp
+  (the window listens on the named pipe \\.\pipe\3DForge; only programs of this PC reach it).
+
 Files
   .3df             the part (its history, as text), with its manufacturing setup.
   Export           STL, OBJ (meshes); DXF, SVG, PDF (a flat drawing seen from a side, at

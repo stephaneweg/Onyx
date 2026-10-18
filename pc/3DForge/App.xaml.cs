@@ -1,6 +1,7 @@
 // App.xaml.cs -- 3DForge for Windows: the program starts here. The presets (the router's tool and machine, the resin,
 // the filament) are kept in %APPDATA%\3DForge; the resin printers' list is printers.ini beside the program.
 //   3DForge.exe [part.3df]
+//   3DForge.exe --mcp                (an MCP server on stdin / stdout that drives the window: Mcp.cs, Control.cs)
 //   3DForge.exe [part.3df] --shot out.png [--size 1280x800] [--do "step;step..."]
 // --shot: the window drawn off the screen, a script of steps played (Shot.cs), its picture saved, the program ends --
 // the documentation's screenshots, the checks; the screen is never touched.
@@ -19,6 +20,11 @@ namespace Forge
 		{
 			base.OnStartup (e);
 			ExeDir = AppDomain.CurrentDomain.BaseDirectory;
+			if (Array.IndexOf (e.Args, "--mcp") >= 0)		// (the MCP server: no window; it drives the one open, Mcp.cs)
+			{
+				new System.Threading.Thread (() => { try { Mcp.Run (); } finally { Dispatcher.Invoke (() => Shutdown (0)); } }) { IsBackground = true }.Start ();
+				return;
+			}
 			string file = null, shot = null, script = "", size = null;
 			for (int i = 0; i < e.Args.Length; i++)
 			{
@@ -51,7 +57,10 @@ namespace Forge
 			var w = new MainWindow ();
 			MainWindow = w;
 			if (shot != null) { Shot.Run (w, file, shot, script, size); return; }
+			if (Environment.GetEnvironmentVariable ("FORGE_OFFSCREEN") == "1")	// (tests: the window drawn off the screen)
+			{ w.WindowStartupLocation = WindowStartupLocation.Manual; w.Left = -32000; w.Top = -32000; w.ShowActivated = false; w.ShowInTaskbar = false; w.NoGuard = true; }
 			w.Show ();
+			Control.Start (w);		// (the pipe another program drives it through: Control.cs, Mcp.cs)
 			if (file != null) w.OpenPath (file);
 		}
 	}

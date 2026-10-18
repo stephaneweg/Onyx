@@ -3375,6 +3375,10 @@ Windows window. Keep `3DForge.exe`, `3DForge.exe.config`, `forgecore.dll` and `p
 - The router's tool and machine, the resin, the filament are remembered in `%APPDATA%\3DForge` (`cam.ini`,
   `print.ini`, `filament.ini`); more resin printers: `printers.ini` beside the program, or a copy of it there.
 - The `.3df` files are the same on both: a part drawn on the PC opens on the Pi, and back.
+- **An assistant at the controls**: `3DForge.exe --mcp` is an MCP server (Model Context Protocol) through which an
+  assistant (Claude Code: `claude mcp add 3dforge -- "C:\...\3DForge.exe" --mcp`) drives the open window as you
+  would — tools, clicks in the view, the panel's values, shapes made from their values, open, save, export,
+  G-code, print files, pictures of the window. It starts the window when none is open; what it does shows there.
 - In French when Windows is (its display language; `FORGE_LANG=en` or `fr` chooses): the same words as on Onyx
   (`lang\fr.txt`, a copy of the app's catalogue) and the window's own (`lang\fr-win.txt`).
 

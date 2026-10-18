@@ -1035,7 +1035,7 @@ FC void fc_form_text (int id, const char *text)
 		ui (0); view_dirty (); return;
 	}
 	double v = parse_num (text);
-	if (q.mag) v = (*q.val < 0 ? -1 : 1) * fabs (v);
+	if (q.mag && !strchr (text, '-')) v = (*q.val < 0 ? -1 : 1) * fabs (v);	// (a size keeps its way -- up, down --; "-5" turns it: Control.cs)
 	*q.val = v; if (q.typed >= 0) A.typed[q.typed] = true;
 	applied ();
 }

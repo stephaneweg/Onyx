@@ -78,6 +78,8 @@ namespace Forge
 
 		// ---- what changed: shown again -------------------------------------------------------------------------------------
 		void Sync () => Sync (0);
+		public FrameworkElement View => view;
+		public Size ViewSize => new Size ((int) view.ActualWidth, (int) view.ActualHeight);
 		public bool NoGuard;		// (a shot: the part is never saved)
 		public void SyncNow () => Sync (Core.FL_UI | Core.FL_VIEW);
 		void Sync (int extra)
