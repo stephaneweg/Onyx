@@ -188,6 +188,7 @@ namespace Forge
 				ShapesTile ();
 				Tile (I.SKETCH, Tr ("Sketch"), s => s.Tool == T.SKETCH, () => Core.fc_tool (T.SKETCH, 1));
 				Tile (I.EXTRUDE, Tr ("Extrude"), s => s.Tool == T.EXTRUDE, () => Core.fc_tool (T.EXTRUDE, 1));
+				Tile (I.LOFT, Tr ("Loft"), s => s.Tool == T.LOFT, () => Core.fc_tool (T.LOFT, 1));
 				Sep ();
 				Tile (I.FILLET, Tr ("Fillet"), s => s.Tool == T.FILLET, () => Core.fc_tool (T.FILLET, 1));
 				Tile (I.CHAMFER, Tr ("Chamfer"), s => s.Tool == T.CHAMFER, () => Core.fc_tool (T.CHAMFER, 1));
@@ -285,7 +286,7 @@ namespace Forge
 			SepM (vw); Check (vw, TrMenu ("_Edges"), "edges", Cmd.EDGES); Check (vw, TrMenu ("_Grid"), "grid", Cmd.GRID); Check (vw, TrMenu ("_See Through"), "thru", Cmd.SEETHROUGH); Check (vw, TrMenu ("S_nap"), "snap", Cmd.SNAP);
 			var create = Top (TrMenu ("_Create"));
 			for (int i = 0; i < SHAPE_TOOLS.Length; i++) { int t = SHAPE_TOOLS[i]; Item (create, t == T.TAPER ? Tr ("Tapered Prism") : SHAPE_NAMES[i], () => Core.fc_tool (t, 0)); }
-			SepM (create); Item (create, TrMenu ("_Sketch"), () => Core.fc_tool (T.SKETCH, 0)); Item (create, TrMenu ("_Extrude"), () => Core.fc_tool (T.EXTRUDE, 0));
+			SepM (create); Item (create, TrMenu ("_Sketch"), () => Core.fc_tool (T.SKETCH, 0)); Item (create, TrMenu ("_Extrude"), () => Core.fc_tool (T.EXTRUDE, 0)); Item (create, TrMenu ("_Loft"), () => Core.fc_tool (T.LOFT, 0));
 			var mod = Top (TrMenu ("_Modify"));
 			Item (mod, TrMenu ("_Fillet"), () => Core.fc_tool (T.FILLET, 0)); Item (mod, TrMenu ("_Chamfer"), () => Core.fc_tool (T.CHAMFER, 0)); Item (mod, TrMenu ("_Move"), () => Core.fc_tool (T.MOVE, 0));
 			SepM (mod); Item (mod, TrMenu ("_Union"), () => Core.fc_tool (T.UNION, 0)); Item (mod, TrMenu ("_Subtract"), () => Core.fc_tool (T.SUB, 0)); Item (mod, TrMenu ("_Intersect"), () => Core.fc_tool (T.INT, 0));

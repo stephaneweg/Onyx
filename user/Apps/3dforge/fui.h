@@ -60,6 +60,7 @@ public:
 	bool onKey (long k) override { if (k == 27) close (-1); return true; }
 };
 static void cmd (int id);				// (main.cpp)
+static int g_loftIdx[48];				// (a loft's lists: their lines' steps)
 static View *g_view;
 
 static unsigned panel_col () { return uk_tone (C_BG, 121); }
@@ -96,7 +97,7 @@ public:
 // ---- the tools' bar ---------------------------------------------------------------------------------------------------
 struct ToolDef { int tool, ic; const char *name; };
 static const ToolDef TOOLS[] = {
-	{ -4, I_SHAPES, TRN ("Shapes") }, { T_SKETCH, I_SKETCH, TRN ("Sketch") }, { T_EXTRUDE, I_EXTRUDE, TRN ("Extrude") }, { -1, 0, 0 },
+	{ -4, I_SHAPES, TRN ("Shapes") }, { T_SKETCH, I_SKETCH, TRN ("Sketch") }, { T_EXTRUDE, I_EXTRUDE, TRN ("Extrude") }, { T_LOFT, I_LOFT, TRN ("Loft") }, { -1, 0, 0 },
 	{ T_FILLET, I_FILLET, TRN ("Fillet") }, { T_CHAMFER, I_CHAMFER, TRN ("Chamfer") }, { T_MOVE, I_MOVE, TRN ("Move") }, { -1, 0, 0 },
 	{ T_UNION, I_UNION, TRN ("Union") }, { T_SUB, I_SUB, TRN ("Subtract") }, { T_INT, I_INT, TRN ("Intersect") }, { -1, 0, 0 }, { T_MEASURE, I_MEASURE, TRN ("Measure") }, { -2, 0, 0 } };
 static const ToolDef CAMTOOLS[] = {
@@ -477,6 +478,15 @@ public:
 		if (g_view) g_view->invalidate (true);
 		ui (0);
 	}
+	// A loft's sketches: chosen in two lists (g_loftIdx: the list's lines -> the steps).
+	static void onLoft (Widget &w)
+	{
+		Props *p = self (w); Feature *f = A.hasPend ? &A.pend : p->feat; int k = ((Dropdown &) w).sel;
+		if (!f || k < 0 || k >= 48) return;
+		if (!A.hasPend) undo_push ();
+		if (w.tag == 50) f->sketch = g_loftIdx[k]; else f->tool = g_loftIdx[k];
+		p->applied (); ui (R_PANELS);
+	}
 	static void onPattern (Widget &w) { A.fdm.pattern = ((Dropdown &) w).sel; fdm_presets_save (); print_touch (); if (g_view) g_view->invalidate (true); ui (0); }
 	static void onEnter (Widget &) { if (filament ()) { print_refresh (); if (A.camPage == 3) fdm_start (); ui (0); return; } if (resin ()) { print_refresh (); if (A.camPage == 3) print_slice_start (); ui (0); return; } if (A.camMode) { cam_refresh (); ui (0); return; } cmd (A.tool == T_SKETCH && !A.sketching ? CMD_SK_START : CMD_OK); }
 	static void onDrop (Widget &w) { A.job.xdir = ((Dropdown &) w).sel; A.doc.changes++; cam_hint (); ui (R_ALL); }
@@ -837,6 +847,20 @@ public:
 			if (making) (A.step == 2 ? t : r)->setFocus ();
 			break;
 		}
+		case F_LOFT:
+		{
+			// (the sketches before this step: its two ends are chosen among them)
+			static char nm[48][24]; static const char *items[48]; int n = 0, s0 = 0, s1 = 0;
+			int before = making ? (int) A.doc.feats.size () : A.selFeat;
+			for (int i = 0; i < before && i < (int) A.doc.feats.size () && n < 48; i++)
+				if (A.doc.feats[i].kind == F_SKETCH) { snprintf (nm[n], 24, "%s", A.doc.feats[i].name); items[n] = nm[n]; g_loftIdx[n] = i; if (i == f.sketch) s0 = n; if (i == f.tool) s1 = n; n++; }
+			label (12, y + 5, TR ("From")); int ya = y; y += 34;
+			label (12, y + 5, TR ("To")); int yb = y; y += 36;
+			label (12, y, TR ("The largest closed outline of each"), dim_col (), 0, true); y += 15; label (12, y, TR ("sketch, joined by straight lines."), dim_col (), 0, true); y += 24;
+			Dropdown *b = new Dropdown (width - 12 - 140, yb, 140, 26, items, n, s1, onLoft); b->tag = 51; addChild (b);
+			Dropdown *a = new Dropdown (width - 12 - 140, ya, 140, 26, items, n, s0, onLoft); a->tag = 50; addChild (a);	// (last: its list opens over the other)
+			break;
+		}
 		case F_EXTRUDE:
 		{
 			Textbox *h = field (y, f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true); y += 34; if (making) h->setFocus ();
@@ -877,7 +901,7 @@ public:
 		case F_COMBINE: { char t[64]; snprintf (t, sizeof t, TR ("%s, with another body"), TR (OP_NAME[f.op])); label (12, y, t, dim_col ()); y += 30; break; }
 		case F_SKETCH: { char t[64]; describe (A.doc, f, t, sizeof t); label (12, y, t, dim_col ()); y += 30; break; }
 		}
-		if (makes_solid (f.kind) && f.kind != F_EXTRUDE)		// where it is, on its plane
+		if (makes_solid (f.kind) && f.kind != F_EXTRUDE && f.kind != F_LOFT)		// where it is, on its plane
 		{
 			y += 4; field (y, f.kind == F_BOX && !f.centred ? TR ("Corner X") : TR ("Centre X"), &f.x, TR ("mm"), -1); y += 28; field (y, "Y", &f.y, TR ("mm"), -1); y += 28;
 			// (off its plane: up from the ground, out of the face it was put on -- less than 0: sunk into it)

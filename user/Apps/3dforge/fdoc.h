@@ -27,6 +27,7 @@
 #include <unordered_map>
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
+#include "manifold/polygon.h"		// (Triangulate: a loft's ends)
 
 // The words shown, in the system's language (uikit/lang.h's TR, the app's catalogue); the document alone -- the tests
 // on the PC, the tools -- keeps them in English. A default name (a step's "Box 1", a body's "Body 1") is made in
@@ -87,15 +88,15 @@ static inline Plane plane_of (const V3 &p, const V3 &n_)
 }
 
 // ---- the steps -------------------------------------------------------------------------------------------------
-enum { F_BOX, F_CYL, F_SKETCH, F_EXTRUDE, F_FILLET, F_CHAMFER, F_MOVE, F_COMBINE, F_PYRAMID, F_PRISM, F_TAPER, F_TORUS, F_SPHERE, F_KINDS };
+enum { F_BOX, F_CYL, F_SKETCH, F_EXTRUDE, F_FILLET, F_CHAMFER, F_MOVE, F_COMBINE, F_PYRAMID, F_PRISM, F_TAPER, F_TORUS, F_SPHERE, F_LOFT, F_KINDS };
 // The steps that make a solid of their own, joined to a body or cut from it by their operation.
-static inline bool makes_solid (int k) { return k == F_BOX || k == F_CYL || k == F_EXTRUDE || k == F_PYRAMID || k == F_PRISM || k == F_TAPER || k == F_TORUS || k == F_SPHERE; }
+static inline bool makes_solid (int k) { return k == F_BOX || k == F_CYL || k == F_EXTRUDE || k == F_PYRAMID || k == F_PRISM || k == F_TAPER || k == F_TORUS || k == F_SPHERE || k == F_LOFT; }
 // ... those drawn from a centre: a base's radius, then a height (the torus: its ring, then its tube).
 static inline bool round_kind (int k) { return k == F_CYL || k == F_PYRAMID || k == F_PRISM || k == F_TAPER || k == F_TORUS || k == F_SPHERE; }
 enum { OP_NEW, OP_UNION, OP_SUB, OP_INT };
 enum { SK_LINE, SK_ARC, SK_CIRCLE, SK_RECT, SK_CLOSE, SK_SPLINE, SK_POINT };
-static const char *const KIND_NAME[F_KINDS] = { TRN ("Box"), TRN ("Cylinder"), TRN ("Sketch"), TRN ("Extrude"), TRN ("Fillet"), TRN ("Chamfer"), TRN ("Move"), TRN ("Combine"), TRN ("Pyramid"), TRN ("Prism"), TRN ("Taper"), TRN ("Torus"), TRN ("Sphere") };
-static const char *const KIND_KEY[F_KINDS] = { "box", "cyl", "sketch", "extrude", "fillet", "chamfer", "move", "combine", "pyramid", "prism", "taper", "torus", "sphere" };
+static const char *const KIND_NAME[F_KINDS] = { TRN ("Box"), TRN ("Cylinder"), TRN ("Sketch"), TRN ("Extrude"), TRN ("Fillet"), TRN ("Chamfer"), TRN ("Move"), TRN ("Combine"), TRN ("Pyramid"), TRN ("Prism"), TRN ("Taper"), TRN ("Torus"), TRN ("Sphere"), TRN ("Loft") };
+static const char *const KIND_KEY[F_KINDS] = { "box", "cyl", "sketch", "extrude", "fillet", "chamfer", "move", "combine", "pyramid", "prism", "taper", "torus", "sphere", "loft" };
 static const char *const OP_NAME[4] = { TRN ("New body"), TRN ("Union"), TRN ("Subtract"), TRN ("Intersect") };
 
 // A sketch's element. chain: it starts where the one before ended; else at (x, y).
@@ -164,6 +165,9 @@ struct RMesh
 static inline unsigned long long ekey (int a, int b) { if (a > b) { int c = a; a = b; b = c; } return ((unsigned long long) a << 32) | (unsigned) b; }
 
 static bool circle_of (const V3 &p0, const V3 &p1, const V3 &p2, V3 *ctr);
+// The meshes whose small facets make one curved face wherever they fold a little (a loft's sides: their facets
+// are of all widths): their Manifold original ids, which the triangles keep through the boolean operations.
+static std::vector<int> g_smoothOrig;
 static void build_mesh (const Manifold &m, RMesh &r)
 {
 	r.clear ();
@@ -241,7 +245,7 @@ static void build_mesh (const Manifold &m, RMesh &r)
 	}
 	std::vector<int> par (nt); for (int i = 0; i < nt; i++) par[i] = i;
 	auto find = [&] (int i) { while (par[i] != i) { par[i] = par[par[i]]; i = par[i]; } return i; };
-	const double c25 = cos (25 * PI / 180), c05 = cos (0.5 * PI / 180);
+	const double c25 = cos (25 * PI / 180), c05 = cos (0.5 * PI / 180), c80 = cos (80 * PI / 180);
 	for (const Pair &q : pairs) if (dot (r.n[q.t0], r.n[q.t1]) > c05) par[find (q.t0)] = find (q.t1);
 	std::vector<int> pid (nt, -1), patch (nt, -1); int np2 = 0;
 	for (int i = 0; i < nt; i++) if (!thin[i]) { int f = find (i); if (pid[f] < 0) pid[f] = np2++; patch[i] = pid[f]; }
@@ -258,9 +262,13 @@ static void build_mesh (const Manifold &m, RMesh &r)
 	for (const Pair &q : pairs)
 	{
 		int pa = patch[q.t0], pb = patch[q.t1];
-		if (pa == pb || dot (r.n[q.t0], r.n[q.t1]) <= c25 || find2 (pa) == find2 (pb)) continue;
+		// (a loft's sides twist where a straight side meets an arc: their facets fold up to some 60 degrees; its ends, wide
+		//  flat patches, stay faces of their own)
+		bool smooth = orig[q.t0] == orig[q.t1] && pverts[pa].size () <= 6 && pverts[pb].size () <= 6 && dot (r.n[q.t0], r.n[q.t1]) > c80 &&
+			      std::find (g_smoothOrig.begin (), g_smoothOrig.end (), orig[q.t0]) != g_smoothOrig.end ();
+		if (pa == pb || (!smooth && dot (r.n[q.t0], r.n[q.t1]) <= c25) || find2 (pa) == find2 (pb)) continue;
 		double wa = width (pa, r.v[q.a], r.v[q.b]), wb = width (pb, r.v[q.a], r.v[q.b]);
-		if (wa <= wb * 3 && wb <= wa * 3) par2[find2 (pa)] = find2 (pb);
+		if (smooth || (wa <= wb * 3 && wb <= wa * 3)) par2[find2 (pa)] = find2 (pb);
 	}
 	std::vector<int> id (np2, -1), npatch; r.ngrp = 0;
 	for (int i = 0; i < np2; i++) { int f = find2 (i); if (id[f] < 0) { id[f] = r.ngrp++; npatch.push_back (0); } npatch[id[f]]++; }
@@ -759,6 +767,98 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 	}
 }
 
+// ---- a loft: the solid from one sketch's outline to another's ---------------------------------------------------------
+// Each sketch gives its largest closed outline (its holes are not followed), laid in space on its plane. The two are
+// turned the same way round the line from one to the other, the second started where it is the nearest to the first's
+// start (no twist), then cut at the same places along their lengths -- every corner of either kept -- and joined point
+// to point by straight lines (a ruled surface); their insides close the ends. Manifold takes the mesh as a solid.
+static bool loft_solid (const Feature &ska, const Feature &skb, int segs, Manifold *out, const char **why)
+{
+	const Feature *sk[2] = { &ska, &skb }; std::vector<V3> ring[2]; V3 c[2];
+	for (int k = 0; k < 2; k++)
+	{
+		SkEval ev; sketch_eval (sk[k]->els, segs, ev);
+		if (ev.closed.empty ()) { *why = TR ("A sketch of the loft has no closed outline"); return false; }
+		size_t best = 0; double ba = 0;
+		for (size_t i = 0; i < ev.closed.size (); i++)
+		{
+			const SimplePolygon &p = ev.closed[i]; double a = 0;
+			for (size_t j = 0, l = p.size () - 1; j < p.size (); l = j++) a += p[l].x * p[j].y - p[j].x * p[l].y;
+			if (fabs (a) > ba) { ba = fabs (a); best = i; }
+		}
+		for (auto &q : ev.closed[best]) ring[k].push_back (sk[k]->pl.at (q.x, q.y));
+		if (ring[k].size () < 3 || ba < 1e-9) { *why = TR ("A sketch of the loft has no closed outline"); return false; }
+		V3 s; for (const V3 &p : ring[k]) s = s + p; c[k] = s * (1.0 / ring[k].size ());
+	}
+	// the same way round the axis from one to the other (or round the first's normal, when they are on one plane)
+	V3 axis = c[1] - c[0]; if (len (axis) < 1e-9) axis = ska.pl.n; axis = unit (axis);
+	auto turn = [&] (const std::vector<V3> &r, const V3 &ct) { double t = 0; for (size_t i = 0; i < r.size (); i++) t += dot (cross (r[i] - ct, r[(i + 1) % r.size ()] - ct), axis); return t; };
+	for (int k = 0; k < 2; k++) if (turn (ring[k], c[k]) < 0) std::reverse (ring[k].begin (), ring[k].end ());
+	// the second started where it is the nearest, round its centre, to the first's start
+	{
+		V3 d0 = ring[0][0] - c[0]; d0 = d0 - axis * dot (d0, axis); double bd = -2; size_t bi = 0;
+		for (size_t i = 0; i < ring[1].size (); i++)
+		{
+			V3 d = ring[1][i] - c[1]; d = d - axis * dot (d, axis); double l = len (d) * len (d0); if (l < 1e-12) continue;
+			double cs = dot (d, d0) / l; if (cs > bd) { bd = cs; bi = i; }
+		}
+		std::rotate (ring[1].begin (), ring[1].begin () + bi, ring[1].end ());
+	}
+	// cut at the same places along their lengths: each one's corners, and the other's
+	std::vector<double> at[2], tt;
+	for (int k = 0; k < 2; k++)
+	{
+		const std::vector<V3> &r = ring[k]; double L = 0; at[k].push_back (0);
+		for (size_t i = 0; i < r.size (); i++) { L += len (r[(i + 1) % r.size ()] - r[i]); at[k].push_back (L); }
+		for (double &t : at[k]) t /= L;
+		tt.insert (tt.end (), at[k].begin (), at[k].end () - 1);
+	}
+	std::sort (tt.begin (), tt.end ());
+	std::vector<double> ts; for (double t : tt) if (ts.empty () || t - ts.back () > 1e-9) ts.push_back (t);
+	if (ts.size () > 1 && 1 - ts.back () < 1e-9) ts.pop_back ();
+	auto sample = [&] (int k, double t)
+	{
+		const std::vector<V3> &r = ring[k]; const std::vector<double> &a = at[k];
+		size_t i = std::upper_bound (a.begin (), a.end (), t) - a.begin (); if (i < 1) i = 1; if (i > r.size ()) i = r.size ();
+		double t0 = a[i - 1], t1 = a[i], f = t1 - t0 > 1e-15 ? (t - t0) / (t1 - t0) : 0;
+		return r[i - 1] + (r[i % r.size ()] - r[i - 1]) * f;
+	};
+	int M = (int) ts.size ();
+	manifold::MeshGL64 mg; mg.numProp = 3;
+	for (int k = 0; k < 2; k++) for (double t : ts) { V3 p = sample (k, t); mg.vertProperties.push_back (p.x); mg.vertProperties.push_back (p.y); mg.vertProperties.push_back (p.z); }
+	auto tri = [&] (int a, int b, int d) { mg.triVerts.push_back (a); mg.triVerts.push_back (b); mg.triVerts.push_back (d); };
+	for (int i = 0; i < M; i++) { int a = i, a1 = (i + 1) % M, b = M + i, b1 = M + a1; tri (a, a1, b1); tri (a, b1, b); }
+	// the ends: each outline triangulated in its plane, turned so that its edges run against the sides'
+	for (int k = 0; k < 2; k++)
+	{
+		const Plane &pl = sk[k]->pl; SimplePolygon p2;
+		for (int i = 0; i < M; i++) { V3 q (mg.vertProperties[(k * M + i) * 3], mg.vertProperties[(k * M + i) * 3 + 1], mg.vertProperties[(k * M + i) * 3 + 2]); V2 u = pl.to (q); p2.push_back ({u.x, u.y}); }
+		double a = 0; for (int j = 0, l = M - 1; j < M; l = j++) a += p2[l].x * p2[j].y - p2[j].x * p2[l].y;
+		SimplePolygon cw = p2; if (a < 0) std::reverse (cw.begin (), cw.end ());
+		std::vector<manifold::ivec3> t = manifold::Triangulate (Polygons { cw });
+		if (t.empty ()) { *why = TR ("An outline of the loft cannot be filled"); return false; }
+		auto idx = [&] (int i) { return a < 0 ? M - 1 - i : i; };
+		// (the sides run the first ring forward (i -> i + 1), the second backward: an end runs the other way)
+		bool want = k == 1, fwd = false; bool found = false;
+		for (auto &v : t) for (int e = 0; e < 3 && !found; e++)
+		{
+			int p = idx (v[e]), q = idx (v[(e + 1) % 3]);
+			if ((p + 1) % M == q) { fwd = true; found = true; } else if ((q + 1) % M == p) { fwd = false; found = true; }
+		}
+		for (auto &v : t) { int i0 = idx (v[0]) + k * M, i1 = idx (v[1]) + k * M, i2 = idx (v[2]) + k * M; if (fwd == want) tri (i0, i1, i2); else tri (i0, i2, i1); }
+	}
+	Manifold m (mg);
+	if (m.Status () == Manifold::Error::NoError && m.Volume () < 0)		// (inside out: every face turned)
+	{
+		for (size_t i = 0; i + 2 < mg.triVerts.size (); i += 3) std::swap (mg.triVerts[i + 1], mg.triVerts[i + 2]);
+		m = Manifold (mg);
+	}
+	if (m.Status () != Manifold::Error::NoError || m.IsEmpty ()) { *why = TR ("The loft cannot be made: do the outlines or the sides cross?"); return false; }
+	*out = m.AsOriginal ();
+	g_smoothOrig.push_back ((int) out->OriginalID ()); if (g_smoothOrig.size () > 4096) g_smoothOrig.erase (g_smoothOrig.begin ());	// (its sides: one face)
+	return true;
+}
+
 // ---- the bodies, the document ---------------------------------------------------------------------------------------
 struct Body
 {
@@ -826,7 +926,7 @@ struct Doc
 	int count (int kind, int before) const { int n = 0; for (int i = 0; i < before && i < (int) feats.size (); i++) if (feats[i].kind == kind) n++; return n; }
 	void name_new (Feature &f) const { snprintf (f.name, sizeof f.name, "%s %d", TR (KIND_NAME[f.kind]), count (f.kind, (int) feats.size ()) + 1); }
 	int tris () const { int n = 0; for (const Body &b : bodies) n += b.mesh.tris (); return n; }
-	bool used (int sketch) const { for (int i = 0; i < upto && i < (int) feats.size (); i++) if (feats[i].kind == F_EXTRUDE && feats[i].sketch == sketch) return true; return false; }
+	bool used (int sketch) const { for (int i = 0; i < upto && i < (int) feats.size (); i++) if ((feats[i].kind == F_EXTRUDE || feats[i].kind == F_LOFT) && feats[i].sketch == sketch) return true; else if (feats[i].kind == F_LOFT && feats[i].tool == sketch) return true; return false; }
 
 	// The solid a step makes, before its operation (a box, a cylinder, an extrusion): what the tools preview.
 	// bodies: the ones the step meets (a cut "through" is as long as its target).
@@ -896,6 +996,13 @@ struct Doc
 			CrossSection cs (ev.closed, CrossSection::FillRule::EvenOdd);
 			*out = placed (Manifold::Extrude (cs.ToPolygons (), fabs (h) + over).Translate ({0, 0, h < 0 ? h : 0}), sk.pl.u, sk.pl.v, sk.pl.n, sk.pl.o).AsOriginal ();
 			return true;
+		}
+		if (f.kind == F_LOFT)				// from the sketch f.sketch to the sketch f.tool
+		{
+			auto isSketch = [&] (int i) { return i >= 0 && i < (int) feats.size () && feats[i].kind == F_SKETCH; };
+			if (!isSketch (f.sketch) || !isSketch (f.tool)) { *why = TR ("A sketch of the loft is missing"); return false; }
+			if (f.sketch == f.tool) { *why = TR ("A loft joins two different sketches"); return false; }
+			return loft_solid (feats[f.sketch], feats[f.tool], segs, out, why);
 		}
 		return false;
 	}
@@ -1177,6 +1284,7 @@ static void describe (const Doc &d, const Feature &f, char *out, int cap)
 	}
 	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? TR (" \xC2\xB7 turned") : "", f.scaled () ? TR (" \xC2\xB7 scaled") : ""); if (f.clone) { size_t k = strlen (out); snprintf (out + k, cap - k, TR (" \xC2\xB7 a copy")); } break;
 	case F_COMBINE: snprintf (out, cap, "%s", TR (OP_NAME[f.op])); break;
+	case F_LOFT: snprintf (out, cap, "%s \xE2\x86\x92 %s%s", f.sketch >= 0 && f.sketch < (int) d.feats.size () ? d.feats[f.sketch].name : "?", f.tool >= 0 && f.tool < (int) d.feats.size () ? d.feats[f.tool].name : "?", op); break;
 	default: out[0] = 0;
 	}
 	(void) d;

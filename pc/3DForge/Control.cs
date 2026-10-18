@@ -147,7 +147,7 @@ namespace Forge
 
 		// ---- the state ----
 		static readonly string[] TOOLS = { "select", "box", "cylinder", "sketch", "extrude", "fillet", "chamfer", "move", "union", "subtract", "intersect", "measure",
-			"pyramid", "prism", "taper", "torus", "sphere", "line", "rectangle", "circle", "arc", "arc3", "spline", "point", "midline" };
+			"pyramid", "prism", "taper", "torus", "sphere", "line", "rectangle", "circle", "arc", "arc3", "spline", "point", "midline", "loft" };
 		static Dictionary<string, object> StateObj (bool full)
 		{
 			var st = Core.State ();

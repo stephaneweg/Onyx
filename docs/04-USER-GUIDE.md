@@ -3163,6 +3163,16 @@ perpendicular, a diagonal, a quarter of a turn). The check box *Snap* at the rig
 values — and how many outlines are closed or still open. **Finish sketch** keeps it. **Extrude** then pulls the
 last sketch (or the one selected) up, or pushes it into the body; an outline inside another is a hole.
 
+**Loft** joins two sketches into a solid: draw one outline, then another on a plane further up (or in front, or
+to a side: *Sketch*, a plane of the axes and its **offset**), and *Loft* proposes the two last ones — *From* and *To*
+at the right, then the operation (a new body, joined to, cut from, kept inside a body) and **OK**. Each sketch gives its
+largest closed outline (its holes are not followed); the two are joined by straight lines, the second turned so that
+the solid does not twist — a square to a circle, a rectangle to a smaller one turned, a profile on the ground to one
+upright. Like every step, its sketches can be edited afterwards: the loft follows.
+
+![A loft](../screenshots/3dforge-win-loft.png)
+*A loft from a rectangle on the ground to a circle 30 mm above (3DForge for Windows).*
+
 ![A sketch](../screenshots/3dforge-sketch.png)
 
 **A canvas** is a picture — a drawing, a photograph, a scan — laid on a plane to **draw over it**: *File > Import
@@ -3216,7 +3226,7 @@ checked the original stays where it is and a copy of it, a new body, is what mov
 | **File** | New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As, Export (Ctrl+E), Import Canvas |
 | **Edit** | Undo (Ctrl+Z), Redo (Ctrl+Y), Delete Step (Del), Roll Back to the Step, Roll to the End |
 | **View** | Home, Fit, Top, Front, Right, Edges, Grid, See Through, Draw with the Processor |
-| **Create** | the seven shapes, Sketch, Extrude |
+| **Create** | the seven shapes, Sketch, Extrude, Loft |
 | **Modify** | Fillet, Chamfer, Move, Union, Subtract, Intersect, Measure |
 | **Manufacture** | Design, Manufacture, Setup, Tool and Machine, New Clearing, New Contour, Simulate, G-code / Print File (Ctrl+G), Process: Milling, Process: Resin Printing, Supports, Generate Supports, Layers, Process: Filament Printing, Filament |
 

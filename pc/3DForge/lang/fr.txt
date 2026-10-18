@@ -58,3 +58,4 @@ Snap	Accroche
 {0} KB	{0} Ko
 {0} lines · {1} × {2} mm · {3}	{0} lignes · {1} × {2} mm · {3}
 {0} triangles · {1} · {2}	{0} triangles · {1} · {2}
+The largest closed outline of each sketch, joined by straight lines.	Le plus grand contour fermé de chaque esquisse, reliés par des droites.

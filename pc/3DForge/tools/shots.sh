@@ -13,3 +13,4 @@ shot 3dforge-win-sketch "$PART" --do "tool:3;cmd:117;tool:18;click:300,300;click
 shot 3dforge-win-cam "$PART" --do "cmd:119;cmd:122;wait:1500"
 shot 3dforge-win-resin "$PART" --do "cmd:119;cmd:210;wait:300;cmd:134;cmd:137;wait:800"
 shot 3dforge-win-export "$PART" --do "dlg:export"
+shot 3dforge-win-loft --do "tool:3;cmd:117;tool:18;click:380,420;click:580,260;cmd:107;tool:3;form:0=30;cmd:117;tool:19;click:480,340;click:520,340;cmd:107;tool:25;cmd:109;look:-50,20;cmd:201;tl:2;wait:300"	# (a rectangle on the ground, a circle 30 above, the loft)

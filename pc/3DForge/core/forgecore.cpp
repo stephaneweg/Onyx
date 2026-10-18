@@ -407,6 +407,13 @@ static void drop (int tag, const char *name, int sel, std::initializer_list<cons
 	for (const char *o : opts) f.push_back (o);
 	item_v ('D', f);
 }
+static void drop_v (int tag, const char *name, int sel, const std::vector<std::string> &opts)
+{
+	std::vector<std::string> f = { std::to_string (tag), name, std::to_string (sel) };
+	f.insert (f.end (), opts.begin (), opts.end ());
+	item_v ('D', f);
+}
+static std::vector<int> g_loftIdx;		// (a loft's lists: their lines -> the steps)
 static void button (int cmd, const char *text, bool accent = false, bool bottom = false) { item ('B', { std::to_string (cmd), text, accent ? "1" : "0", bottom ? "1" : "0" }); }
 static void kv (const char *k, const char *v, const char *kc = CDIM) { item ('K', { k, v, kc }); }
 static void mark (bool ok, const char *text, const char *col) { item ('X', { ok ? "0" : "1", text, col }); }
@@ -439,6 +446,17 @@ static void featureFields (Feature &f, bool making)
 	}
 	case F_SPHERE: field (TR ("Radius"), &f.w, TR ("mm"), 0, false, making); break;
 	case F_TORUS: field (TR ("Ring radius"), &f.w, TR ("mm"), 0, false, making && A.step != 2); field (TR ("Tube radius"), &f.d, TR ("mm"), 1, false, making && A.step == 2); break;
+	case F_LOFT:
+	{
+		// (the sketches before this step: its two ends are chosen among them)
+		std::vector<std::string> nm; g_loftIdx.clear (); int s0 = 0, s1 = 0;
+		int before = making ? (int) A.doc.feats.size () : A.selFeat;
+		for (int i = 0; i < before && i < (int) A.doc.feats.size (); i++)
+			if (A.doc.feats[i].kind == F_SKETCH) { if (i == f.sketch) s0 = (int) nm.size (); if (i == f.tool) s1 = (int) nm.size (); nm.push_back (A.doc.feats[i].name); g_loftIdx.push_back (i); }
+		drop_v (3, TR ("From"), s0, nm); drop_v (4, TR ("To"), s1, nm);
+		note (TR ("The largest closed outline of each sketch, joined by straight lines."));
+		break;
+	}
 	case F_EXTRUDE:
 		field (f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true, making);
 		check (TR ("Through the whole body"), f.through, 2); break;
@@ -464,7 +482,7 @@ static void featureFields (Feature &f, bool making)
 	case F_COMBINE: snprintf (t, sizeof t, TR ("%s, with another body"), TR (OP_NAME[f.op])); label (t, CDIM); break;
 	case F_SKETCH: describe (A.doc, f, t, sizeof t); label (t, CDIM); break;
 	}
-	if (makes_solid (f.kind) && f.kind != F_EXTRUDE)		// where it is, on its plane
+	if (makes_solid (f.kind) && f.kind != F_EXTRUDE && f.kind != F_LOFT)		// where it is, on its plane
 	{
 		section (TR ("Place"));
 		field (f.kind == F_BOX && !f.centred ? TR ("Corner X") : TR ("Centre X"), &f.x, TR ("mm"), -1); field ("Y", &f.y, TR ("mm"), -1);
@@ -1114,6 +1132,13 @@ FC void fc_form_drop (int tag, int sel)
 {
 	if (tag == 1) { A.fdm.pattern = sel; fdm_presets_save (); print_touch (); view_dirty (); ui (0); }
 	if (tag == 2) { A.job.xdir = sel; A.doc.changes++; cam_hint (); view_dirty (); ui (R_ALL); }
+	if ((tag == 3 || tag == 4) && sel >= 0 && sel < (int) g_loftIdx.size ())		// a loft's sketches
+	{
+		Feature *f = A.hasPend ? &A.pend : g_feat; if (!f || f->kind != F_LOFT) return;
+		if (!A.hasPend) undo_push ();
+		if (tag == 3) f->sketch = g_loftIdx[sel]; else f->tool = g_loftIdx[sel];
+		applied (); ui (R_PANELS);
+	}
 }
 // The operation (0..3), the body's colour (0..4), the origin (0..26).
 FC void fc_form_op (int i)

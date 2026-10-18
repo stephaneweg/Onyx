@@ -718,6 +718,7 @@ int main (void)
 	menu.separator ();
 	menu.item (TR ("Sketch"), "", 0, [] { tool_set (T_SKETCH); });
 	menu.item (TR ("Extrude"), "", 0, [] { tool_set (T_EXTRUDE); });
+	menu.item (TR ("Loft"), "", 0, [] { tool_set (T_LOFT); });
 	menu.menu (TR ("Modify"));
 	menu.item (TR ("Fillet"), "", 0, [] { tool_set (T_FILLET); });
 	menu.item (TR ("Chamfer"), "", 0, [] { tool_set (T_CHAMFER); });

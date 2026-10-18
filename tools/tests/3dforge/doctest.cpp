@@ -125,6 +125,19 @@ int main (int argc, char **argv)
 			bool ld = back.load (dc.save ().c_str ());
 			check (ld && back.feats[0].els.size () == els.size () && back.feats[0].els[2].cons && back.feats[0].els[5].cons && !back.feats[0].els[0].cons, "construction: saved and loaded");
 		}
+		{	// a loft (the user, 2026-10-18): a square of 20 on the ground to a square of 10, 20 above -- a frustum, 4666.67 mm3;
+			// then a circle to a square, a sketch on an upright plane to one on the ground; saved, loaded
+			Doc dl; auto rect = [] (double w) { SkEl r; r.kind = SK_RECT; r.rel = true; r.w = r.h = w; return r; };
+			Feature a; a.kind = F_SKETCH; a.els.push_back (rect (20)); dl.name_new (a); dl.feats.push_back (a);
+			Feature b; b.kind = F_SKETCH; b.pl = plane_of (V3 (0, 0, 20), V3 (0, 0, 1)); b.els.push_back (rect (10)); dl.name_new (b); dl.feats.push_back (b);
+			Feature l; l.kind = F_LOFT; l.sketch = 0; l.tool = 1; dl.name_new (l); dl.feats.push_back (l); dl.upto = 3; dl.rebuild ();
+			check (!dl.feats[2].failed && dl.bodies.size () == 1 && fabs (dl.bodies[0].m.Volume () - 20.0 / 3 * (400 + 100 + 200)) < 1e-6, "a loft: two squares, a frustum");
+			dl.feats[0].els[0].kind = SK_CIRCLE; dl.feats[0].els[0].w = 20; dl.touch ();
+			double vc = dl.bodies.empty () ? 0 : dl.bodies[0].m.Volume ();
+			check (!dl.feats[2].failed && vc > 3000 && vc < 4000 && dl.bodies[0].m.Genus () == 0, "a loft: a circle to a square");
+			Doc dr; dr.load (dl.save ().c_str ()); dr.rebuild ();
+			check (dr.feats.size () == 3 && dr.feats[2].kind == F_LOFT && dr.feats[2].sketch == 0 && dr.feats[2].tool == 1 && !dr.bodies.empty () && fabs (dr.bodies[0].m.Volume () - vc) < 1e-6 && dr.used (0) && dr.used (1), "a loft: saved and loaded, its sketches used");
+		}
 	}
 	int sk = (int) d.feats.size () - 1;
 	f = &add (d, F_EXTRUDE); f->target = 0; f->op = OP_SUB; f->sketch = sk; f->through = true; f->h = -8;	// Extrude 1

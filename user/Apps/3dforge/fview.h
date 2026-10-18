@@ -35,7 +35,8 @@ namespace forge {
 
 enum { T_SELECT, T_BOX, T_CYL, T_SKETCH, T_EXTRUDE, T_FILLET, T_CHAMFER, T_MOVE, T_UNION, T_SUB, T_INT, T_MEASURE,
        T_PYRAMID, T_PRISM, T_TAPER, T_TORUS, T_SPHERE,
-       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT, T_MIDLINE };		// (from T_LINE on: the sketch's)
+       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT, T_MIDLINE, T_LOFT };		// (from T_LINE on: the sketch's)
+static inline bool sketch_tool (int t) { return t >= T_LINE && t != T_LOFT; }		// (the sketch's own tools)
 static inline bool shape_tool (int t) { return t == T_BOX || t == T_CYL || (t >= T_PYRAMID && t <= T_SPHERE); }
 enum { R_FIELDS = 1, R_PANELS = 2, R_ALL = 3 };		// what the window must show again
 
@@ -200,6 +201,7 @@ static void tool_hint ()
 				: TR ("Move off the ring to set the tube's radius and click \xE2\x80\x94 or type it and press Enter.")); break;
 	case T_SPHERE: set_hint (A.step == 0 ? TR ("Click the centre (a face, or the ground) \xE2\x80\x94 or set its radius at the right and press OK.") : TR ("Move away to set the radius and click \xE2\x80\x94 or type it and press Enter.")); break;
 	case T_SKETCH: set_hint (TR ("Click the flat face to draw on \xE2\x80\x94 or choose a plane at the right and start.")); break;
+	case T_LOFT: set_hint (TR ("Loft: the solid from one sketch's outline to another's. Choose the two sketches at the right, then OK.")); break;
 	case T_EXTRUDE: set_hint (TR ("Move to set the height and click \xE2\x80\x94 or type it and press Enter.")); break;
 	case T_FILLET: case T_CHAMFER: set_hint (TR ("Click the edges, then drag the arrow or type the size. Enter to finish.")); break;
 	case T_MOVE: set_hint (A.step == 0 ? TR ("Click the body to move, turn or scale.") : TR ("Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter.")); break;
@@ -237,9 +239,26 @@ static void extrude_begin ()
 	Feature &f = A.pend; f.kind = F_EXTRUDE; f.sketch = sk; f.target = A.doc.body (A.doc.feats[sk].target) ? A.doc.feats[sk].target : -1;
 	f.h = 10; A.hasPend = true; A.step = 2; auto_op (); preview_update ();
 }
+// A loft's two sketches: the two last ones with a closed outline not used yet (else the two last ones with one).
+static void loft_begin ()
+{
+	std::vector<int> free, all;
+	for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++)
+	{
+		if (A.doc.feats[i].kind != F_SKETCH) continue;
+		SkEval ev; sketch_eval (A.doc.feats[i].els, 24, ev); if (ev.closed.empty ()) continue;
+		all.push_back (i); if (!A.doc.used (i)) free.push_back (i);
+	}
+	std::vector<int> &l = free.size () >= 2 ? free : all;
+	if (l.size () < 2) { A.tool = T_SELECT; set_hint (TR ("A loft needs two sketches with a closed outline: draw them first (Sketch: a plane and its offset).")); return; }
+	Feature &f = A.pend; f.kind = F_LOFT; f.sketch = l[l.size () - 2]; f.tool = l.back ();
+	int ta = A.doc.feats[f.sketch].target, tb = A.doc.feats[f.tool].target;
+	f.target = A.doc.body (ta) ? ta : A.doc.body (tb) ? tb : -1; f.h = 0;
+	A.hasPend = true; A.step = 2; auto_op (); preview_update ();
+}
 static void tool_set (int t)
 {
-	if (A.sketching && t < T_LINE) return;
+	if (A.sketching && !sketch_tool (t)) return;
 	if (A.camMode && t != T_SELECT) return;			// (Manufacture has its own tools)
 	A.tool = t; A.step = 0; A.ghost = false; A.hasPend = false; A.hasPrev = false; A.prevErr = 0; A.pend = Feature (); A.opAuto = true; A.mN = 0;
 	A.hovChain = A.hovFace = A.hovBody = -1; memset (A.typed, 0, sizeof A.typed);
@@ -254,6 +273,7 @@ static void tool_set (int t)
 	if (t == T_SPHERE) { p.kind = F_SPHERE; p.w = 10; p.h = 1; }
 	if (shape_tool (t)) { A.hasPend = true; preview_update (); }
 	if (t == T_EXTRUDE) extrude_begin ();
+	if (t == T_LOFT) loft_begin ();
 	if (t == T_FILLET || t == T_CHAMFER) { A.pend.kind = t == T_FILLET ? F_FILLET : F_CHAMFER; A.pend.r = t == T_FILLET ? 3 : 2; A.hasPend = true; A.step = 1; }
 	if (t == T_MOVE) A.pend.kind = F_MOVE;
 	if (t == T_UNION || t == T_SUB || t == T_INT) { A.pend.kind = F_COMBINE; A.pend.op = t == T_UNION ? OP_UNION : t == T_SUB ? OP_SUB : OP_INT; }
@@ -1776,7 +1796,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 			}
 		}
 	}
-	else if (A.curStep == 0 && A.tool >= T_LINE) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	else if (A.curStep == 0 && sketch_tool (A.tool)) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
 	if (A.tool == T_MIDLINE && A.curStep == 1 && A.selEl < 0) { double x, y; P (A.arcC, &x, &y); ov_dot (canvas, x, y, 3.6, C_AMBER, C_AMBER, 1.8); }	// (the middle)
 	if (A.snapOn && A.selEl < 0)			// held by a point: a green ring on it
 	{
@@ -1796,7 +1816,7 @@ void View::overlays ()
 		for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++)
 		{
 			const Feature &sk = A.doc.feats[i];
-			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && f.kind == F_EXTRUDE && f.sketch == i))) continue;
+			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && (f.kind == F_EXTRUDE || f.kind == F_LOFT) && (f.sketch == i || (f.kind == F_LOFT && f.tool == i))))) continue;
 			SkEval ev; sketch_eval (sk.els, A.doc.segs, ev); sketchDraw (sk, ev, false);
 		}
 	// the Sketch tool, before its plane is chosen: the one the panel proposes, shown in the model
@@ -1843,7 +1863,7 @@ void View::overlays ()
 			}
 		}
 	}
-	if (A.hasPend && makes_solid (f.kind) && f.kind != F_TORUS && f.kind != F_SPHERE && A.step == height_step ())
+	if (A.hasPend && makes_solid (f.kind) && f.kind != F_TORUS && f.kind != F_SPHERE && f.kind != F_LOFT && A.step == height_step ())
 	{
 		V3 c = baseCentre (), n = pendNormal (); unsigned col = f.op == OP_SUB ? C_RED : C_AMBER;
 		double h = f.through ? -fabs (f.h ? f.h : 10) : f.h;
