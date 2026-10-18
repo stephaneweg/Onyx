@@ -15,6 +15,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
+using static Forge.Lang;
+
 namespace Forge
 {
 	class FormPanel : DockPanel
@@ -299,7 +301,7 @@ namespace Forge
 			var g = new Grid { Margin = new Thickness (14, 4, 14, 6) };
 			g.ColumnDefinitions.Add (new ColumnDefinition ()); g.ColumnDefinitions.Add (new ColumnDefinition { Width = new GridLength (8) }); g.ColumnDefinitions.Add (new ColumnDefinition ());
 			g.RowDefinitions.Add (new RowDefinition { Height = GridLength.Auto }); g.RowDefinitions.Add (new RowDefinition { Height = GridLength.Auto });
-			var l1 = Label ("Body", 12.5, null, true); var l2 = Label ("Process", 12.5, null, true); Grid.SetColumn (l2, 2);
+			var l1 = Label (Tr ("Body"), 12.5, null, true); var l2 = Label (Tr ("Process"), 12.5, null, true); Grid.SetColumn (l2, 2);
 			body = new Button { Style = (Style) Application.Current.FindResource ("Plain"), Margin = new Thickness (0, 4, 0, 0), HorizontalContentAlignment = HorizontalAlignment.Left };
 			proc = new Button { Style = (Style) Application.Current.FindResource ("Plain"), Margin = new Thickness (0, 4, 0, 0) };
 			Grid.SetRow (body, 1); Grid.SetRow (proc, 1); Grid.SetColumn (proc, 2);
@@ -319,7 +321,7 @@ namespace Forge
 	// The operation: one of four (a new body, or joined to, cut from, kept inside another).
 	class OpCtl : Ctl
 	{
-		static readonly string[] NAMES = { "New body", "Union", "Subtract", "Intersect" };
+		static readonly string[] NAMES = { Tr ("New body"), Tr ("Union"), Tr ("Subtract"), Tr ("Intersect") };
 		static readonly int[] ICONS = { I.NEWBODY, I.UNION, I.SUB, I.INT };
 		readonly Border[] rows = new Border[4]; readonly TextBlock[] texts = new TextBlock[4]; readonly ContentControl[] ics = new ContentControl[4];
 		public OpCtl (FormPanel p)
@@ -339,7 +341,7 @@ namespace Forge
 				st.Children.Add (rows[i]);
 			}
 			var outer = new StackPanel { Margin = new Thickness (14, 10, 14, 4) };
-			outer.Children.Add (Label ("Operation", 12.5, null, true)); outer.Children.Add (new Border { Height = 4 }); outer.Children.Add (box);
+			outer.Children.Add (Label (Tr ("Operation"), 12.5, null, true)); outer.Children.Add (new Border { Height = 4 }); outer.Children.Add (box);
 			El = outer;
 		}
 		public override void Update (string[] f)
@@ -372,7 +374,7 @@ namespace Forge
 				sw[i].MouseLeftButtonUp += (s, e) => { Core.fc_form_colour (k); P.Fire (); };
 				st.Children.Add (sw[i]);
 			}
-			g.Children.Add (Label ("Colour")); g.Children.Add (st);
+			g.Children.Add (Label (Tr ("Colour"))); g.Children.Add (st);
 			El = g;
 		}
 		public override void Update (string[] f)
@@ -459,7 +461,7 @@ namespace Forge
 		{
 			P = p;
 			var st = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness (14, 2, 14, 4) };
-			string[] LN = { "Top", "Middle", "Bottom" };
+			string[] LN = { Tr ("Top"), Tr ("Middle"), Tr ("Bottom") };
 			for (int li = 0; li < 3; li++)
 			{
 				var col = new StackPanel { Margin = new Thickness (0, 0, 10, 0) };

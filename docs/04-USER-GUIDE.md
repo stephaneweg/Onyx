@@ -3354,6 +3354,10 @@ Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); expo
 where you choose; `SD:/apps/3dforge.app/filament.ini` (a filament printer's values, remembered); `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered), `print.ini` (the resin and
 the printer, remembered), `printers.ini` (more printers, yours to write).
 
+*In French*: 3DForge speaks the system's language (Language & Region). A step, a body or an operation made in
+French is named in French ("Boîte 1", "Corps 1", "Évidement 1"): a name is yours once made, as one you typed, and
+stays so in the file; the parts made before keep theirs. Its words: `SD:/apps/3dforge.app/lang/fr.txt`.
+
 #### 3DForge on a Windows PC
 
 `pc/dist/3DForge/` holds **3DForge for Windows** (Windows 10 / 11, 64-bit; .NET Framework 4.8, already there): the
@@ -3371,6 +3375,8 @@ Windows window. Keep `3DForge.exe`, `3DForge.exe.config`, `forgecore.dll` and `p
 - The router's tool and machine, the resin, the filament are remembered in `%APPDATA%\3DForge` (`cam.ini`,
   `print.ini`, `filament.ini`); more resin printers: `printers.ini` beside the program, or a copy of it there.
 - The `.3df` files are the same on both: a part drawn on the PC opens on the Pi, and back.
+- In French when Windows is (its display language; `FORGE_LANG=en` or `fr` chooses): the same words as on Onyx
+  (`lang\fr.txt`, a copy of the app's catalogue) and the window's own (`lang\fr-win.txt`).
 
 ![3DForge for Windows](../screenshots/3dforge-win.png)
 *3DForge for Windows, the sample bracket.*

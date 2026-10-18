@@ -2877,7 +2877,7 @@ tabs, the viewport (Setup), the File Viewer. A selection is in `screenshots/pock
 > `--keys <app>` prints an app's words to start a catalogue. **Every new app is translated** (English + French)
 > **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
 > Panel and its applets, the Terminal, the menu bar (its own words; the categories of `app.txt` through `TR` where
-> drawn, listed in `// TR:` comments), the Clock, Ledger, Notes and Stickies (the dates' names in the catalogue, the
+> drawn, listed in `// TR:` comments), the Clock, 3DForge (its Windows version too), Ledger, Notes and Stickies (the dates' names in the catalogue, the
 > model's English short dates translated where drawn: `notelist.h`'s `date_tr`), Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
 > `.fr` texts; `locale_language ()` at its start), Circuits (`TR` + `lang/fr.txt`, its packs' `.fr` keys), Pinball (`TR`, the reader's reasons as `// TR:` formats, its tables' `.fr` keys), Critters (the same; its levels' `.fr` keys, a no-break space before the French `:` `?` `!`). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
 > tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
@@ -4714,6 +4714,12 @@ barwidth = 40
   plays the steps (`Shot.cs`), saves its picture and ends — `sh pc/3DForge/tools/shots.sh` makes
   `screenshots/3dforge-win*.png` so (never a capture of the screen). A change to `user/Apps/3dforge` comes to
   Windows by rebuilding; a new panel control kind needs its item in `forgecore.cpp` and its class in `FormPanel.cs`.
+  Its language: `Lang.cs` loads, when Windows speaks French, Onyx's own catalogue (`sdcard/apps/3dforge.app/lang/fr.txt`,
+  shipped as `lang\fr.txt`) and the window's (`pc/3DForge/lang/fr.txt`, shipped as `lang\fr-win.txt`), and gives both
+  to the core (`fc_lang`, before `fc_init`): the shim's `TR` / `uk_tr` read them (`forgeshim.h`), so 3DForge's headers
+  translate as on Onyx; the C# says `Tr ("...")` (`{0}` formats). `fdoc.h` defines `TR` / `TRN` as nothing when no
+  UIKit is there (the tests on the PC): its words stay English; the tables built before `main` (KIND_NAME, OP_NAME,
+  the bar's tools, the cube's faces) are `TRN` and translated where they are drawn.
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them); then

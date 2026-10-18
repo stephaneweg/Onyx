@@ -11,6 +11,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
+using static Forge.Lang;
+
 namespace Forge
 {
 	class Timeline : FrameworkElement
@@ -100,7 +102,7 @@ namespace Forge
 				dc.DrawText (Text ("", 12, scroll < most ? ink : (Brush) FindResource ("Line"), new Typeface ("Segoe MDL2 Assets")), new Point (x1 + 6, h / 2 - 8));
 			}
 			if (n == 0)
-				dc.DrawText (Text (st != null && st.Sketching ? "The sketch's elements come here, in the order they are drawn." : "The steps you make come here: click one to change its values.", 12, dim), new Point (14, h / 2 - 9));
+				dc.DrawText (Text (st != null && st.Sketching ? Tr ("The sketch's elements come here, in the order they are drawn.") : Tr ("The steps you make come here: click one to change its values."), 12, dim), new Point (14, h / 2 - 9));
 			// at the right: the step pointed or selected; a sketch: its outlines
 			double tx = (arrows ? x1 + ARROW : x1) + 10, tw = w - 10 - tx;
 			if (tw < 80) return;
@@ -117,14 +119,14 @@ namespace Forge
 			{
 				var o = Core.Outlines.Split ('\n'); int closed = int.Parse (o[0]), open = o.Length > 1 ? int.Parse (o[1]) : 0;
 				if (closed > 0) dc.DrawImage (Icons.Get (I.CHECK, 14, 0x3C9650, 0x3C9650), new Rect (tx, 9, 14, 14));
-				dc.DrawText (Text (closed + " closed outline" + (closed == 1 ? "" : "s"), 12, closed > 0 ? new SolidColorBrush (Color.FromRgb (0x28, 0x6E, 0x38)) : dim), new Point (tx + 18, 7));
+				dc.DrawText (Text (string.Format (closed == 1 ? Tr ("{0} closed outline") : Tr ("{0} closed outlines"), closed), 12, closed > 0 ? new SolidColorBrush (Color.FromRgb (0x28, 0x6E, 0x38)) : dim), new Point (tx + 18, 7));
 				if (open > 0) dc.DrawImage (Icons.Get (I.WARN, 14, 0x4A3A10), new Rect (tx, 27, 14, 14));
-				dc.DrawText (Text (open > 0 ? open + " still open" : "none open", 12, open > 0 ? new SolidColorBrush (Color.FromRgb (0x8A, 0x5A, 0x10)) : dim), new Point (tx + 18, 26));
+				dc.DrawText (Text (open > 0 ? string.Format (Tr ("{0} still open"), open) : Tr ("none open"), 12, open > 0 ? new SolidColorBrush (Color.FromRgb (0x8A, 0x5A, 0x10)) : dim), new Point (tx + 18, 26));
 			}
 			else if (n > 0)
 			{
-				dc.DrawText (Text ("History", 12.5, ink, bold), new Point (tx, 7));
-				dc.DrawText (Text (n + " step" + (n == 1 ? "" : "s"), 11.5, dim), new Point (tx, 26));
+				dc.DrawText (Text (Tr ("History"), 12.5, ink, bold), new Point (tx, 7));
+				dc.DrawText (Text (string.Format (n == 1 ? Tr ("{0} step") : Tr ("{0} steps"), n), 11.5, dim), new Point (tx, 26));
 			}
 		}
 

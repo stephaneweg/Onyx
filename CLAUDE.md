@@ -97,7 +97,7 @@ One **kit per domain** instead of many loose headers and libraries, and no tight
 The **language is the system's** (`SD:/etc/system.ini` `language=`: the Control Panel's **Language & Region**
 applet `langconf`, Setup's welcome page; SystemKit's `systemkit/locale.h`) — an app never has a language switch of
 its own. **Every new app is translated from its first version**; an older one is translated when it is worked on
-(done: Setup, the Control Panel and all its applets, the Terminal, Ledger, Turtle Quest and its BASIC).
+(done: Setup, the Control Panel and all its applets, the Terminal, 3DForge, Ledger, Turtle Quest and its BASIC).
 
 - The sources keep their English words wrapped in `TR ("...")` (`uikit/lang.h`; `TRC` with a context, `TRN` for a
   word kept in a table), `uk_lang_init ()` in `main` after the text face is installed; the French in

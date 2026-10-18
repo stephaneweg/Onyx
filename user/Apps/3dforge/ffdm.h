@@ -156,7 +156,7 @@ static void fdm_honeycomb (const CrossSection &region, double a, double deg, int
 template <class F> static bool fdm_paths (const Manifold &solid, const FdmSettings &s, FdmJob &job, F progress)
 {
 	job = FdmJob ();
-	if (solid.IsEmpty () || s.layer < 0.02 || s.width < 0.05) { snprintf (job.err, sizeof job.err, "There is nothing to print"); return false; }
+	if (solid.IsEmpty () || s.layer < 0.02 || s.width < 0.05) { snprintf (job.err, sizeof job.err, TR ("There is nothing to print")); return false; }
 	auto box = solid.BoundingBox (); double w = s.width, h = s.layer;
 	int n = (int) ceil ((box.max.z - box.min.z) / h - 1e-6), walls = (int) (s.walls + 0.5), top = (int) (s.top + 0.5), bottom = (int) (s.bottom + 0.5);
 	if (n < 1) n = 1; if (walls < 1) walls = 1;

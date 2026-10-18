@@ -11,6 +11,8 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Microsoft.Win32;
 
+using static Forge.Lang;
+
 namespace Forge
 {
 	class DialogBase : Window
@@ -69,77 +71,77 @@ namespace Forge
 		}
 		protected static string BaseName ()
 		{
-			string p = Core.Path; return p.Length > 0 ? Path.GetFileNameWithoutExtension (p) : "part";
+			string p = Core.Path; return p.Length > 0 ? Path.GetFileNameWithoutExtension (p) : Tr ("part");
 		}
 	}
 
 	class ExportDialog : DialogBase
 	{
 		static readonly string[] FMT = { "STL", "OBJ", "DXF", "SVG", "PDF", "PNG" }, EXT = { ".stl", ".obj", ".dxf", ".svg", ".pdf", ".png" };
-		static readonly string[] DESC = { "STL meshes", "OBJ meshes", "DXF drawings", "SVG drawings", "PDF drawings", "PNG pictures" };
+		static readonly string[] DESC = { Tr ("STL meshes"), Tr ("OBJ meshes"), Tr ("DXF drawings"), Tr ("SVG drawings"), Tr ("PDF drawings"), Tr ("PNG pictures") };
 		static int sFmt, sView, sCurve = -1; static bool sBin = true, sHid;
 		int fmt = sFmt, what, curve, view = sView; bool bin = sBin, hid = sHid;
 		readonly ComboBox viewD = new ComboBox { Width = 180, HorizontalAlignment = HorizontalAlignment.Left, Height = 26 };
 		readonly TextBlock curveNote = new TextBlock (), viewNote = new TextBlock (), sum = new TextBlock { VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap };
-		readonly CheckBox binC = new CheckBox { Content = "Binary file (smaller)" }, hidC = new CheckBox { Content = "Hidden edges too, dashed" };
+		readonly CheckBox binC = new CheckBox { Content = Tr ("Binary file (smaller)") }, hidC = new CheckBox { Content = Tr ("Hidden edges too, dashed") };
 		readonly ContentControl sumIcon = new ContentControl { Width = 18, Height = 18, Margin = new Thickness (0, 0, 10, 0), Focusable = false };
 		readonly FrameworkElement viewRow, checkRow;
 		double[] info = new double[8];
 
-		public ExportDialog (Window owner) : base (owner, "Export", 520)
+		public ExportDialog (Window owner) : base (owner, Tr ("Export"), 520)
 		{
 			var stt = Core.State ();
 			int segs = Core.fc_doc_segs (); curve = sCurve >= 0 ? sCurve : segs <= 48 ? 0 : segs <= 96 ? 1 : 2;
-			Row ("Format", Segmented (FMT, fmt, k => { fmt = k; Recompute (); }).box, 0);
-			var w = Segmented (new[] { "Whole part", "Selected body" }, 0, k => { what = k; Recompute (); });
+			Row (Tr ("Format"), Segmented (FMT, fmt, k => { fmt = k; Recompute (); }).box, 0);
+			var w = Segmented (new[] { Tr ("Whole part"), Tr ("Selected body") }, 0, k => { what = k; Recompute (); });
 			if (stt.SelBody < 0) w.r[1].IsEnabled = false;
-			Row ("What", w.box, 10);
-			var cs = new StackPanel (); cs.Children.Add (Segmented (new[] { "Draft", "Fine", "Very fine" }, curve, k => { curve = k; Recompute (); }).box);
+			Row (Tr ("What"), w.box, 10);
+			var cs = new StackPanel (); cs.Children.Add (Segmented (new[] { Tr ("Draft"), Tr ("Fine"), Tr ("Very fine") }, curve, k => { curve = k; Recompute (); }).box);
 			curveNote.FontSize = 11.5; curveNote.Foreground = (Brush) FindResource ("Dim"); curveNote.Margin = new Thickness (2, 4, 0, 0); cs.Children.Add (curveNote);
-			Row ("Curves", cs, 10);
-			foreach (var v in new[] { "Front", "Back", "Left", "Right", "Top", "Bottom", "As on screen" }) viewD.Items.Add (v);
+			Row (Tr ("Curves"), cs, 10);
+			foreach (var v in new[] { Tr ("Front"), Tr ("Back"), Tr ("Left"), Tr ("Right"), Tr ("Top"), Tr ("Bottom"), Tr ("As on screen") }) viewD.Items.Add (v);
 			viewD.SelectedIndex = view; viewD.SelectionChanged += (s, e) => { view = viewD.SelectedIndex; Recompute (); };
 			var vs = new StackPanel { Orientation = Orientation.Horizontal }; vs.Children.Add (viewD);
 			viewNote.Foreground = (Brush) FindResource ("Dim"); viewNote.FontSize = 11.5; viewNote.VerticalAlignment = VerticalAlignment.Center; viewNote.Margin = new Thickness (12, 0, 0, 0); vs.Children.Add (viewNote);
-			Row ("Seen from", vs, 10); viewRow = vs;
+			Row (Tr ("Seen from"), vs, 10); viewRow = vs;
 			binC.IsChecked = bin; hidC.IsChecked = hid;
 			binC.Click += (s, e) => { bin = binC.IsChecked == true; Recompute (); }; hidC.Click += (s, e) => { hid = hidC.IsChecked == true; Recompute (); };
 			var ck = new StackPanel (); ck.Children.Add (binC); ck.Children.Add (hidC); Row (null, ck, 10); checkRow = ck;
 			var sp = new StackPanel { Orientation = Orientation.Horizontal }; sp.Children.Add (sumIcon); sp.Children.Add (sum);
 			Row (null, new Border { Child = sp, Background = Brushes.White, BorderBrush = (Brush) FindResource ("Line"), BorderThickness = new Thickness (1), CornerRadius = new CornerRadius (6), Padding = new Thickness (12, 9, 12, 9) }, 16);
-			Add ("Cancel", false, Close);
-			Add ("Export...", true, Export);
+			Add (Tr ("Cancel"), false, Close);
+			Add (Tr ("Export..."), true, Export);
 			Loaded += (s, e) => Recompute ();
 		}
 		bool Flat => fmt >= 2;
 		void Recompute ()
 		{
 			viewRow.Visibility = Flat ? Visibility.Visible : Visibility.Collapsed;
-			((FrameworkElement) G.Children.OfType<TextBlock> ().First (t => t.Text == "Seen from")).Visibility = viewRow.Visibility;
+			((FrameworkElement) G.Children.OfType<TextBlock> ().First (t => t.Text == Tr ("Seen from"))).Visibility = viewRow.Visibility;
 			binC.Visibility = fmt == 0 ? Visibility.Visible : Visibility.Collapsed; hidC.Visibility = fmt >= 2 && fmt <= 4 ? Visibility.Visible : Visibility.Collapsed;
 			checkRow.Visibility = fmt == 0 || (fmt >= 2 && fmt <= 4) ? Visibility.Visible : Visibility.Collapsed;
-			curveNote.Text = (curve == 0 ? 48 : curve == 1 ? 96 : 192) + " sides to a circle";
-			viewNote.Text = fmt == 5 ? "1024 pixels" : "at its size, in mm";
+			curveNote.Text = string.Format (Tr ("{0} sides to a circle"), curve == 0 ? 48 : curve == 1 ? 96 : 192);
+			viewNote.Text = fmt == 5 ? Tr ("1024 pixels") : Tr ("at its size, in mm");
 			Cursor = System.Windows.Input.Cursors.Wait;
 			try { info = Core.Export (fmt, what, curve, view, bin, hid, BaseName ()); } finally { Cursor = null; }
 			double bytes = info[4]; bool closed = info[5] != 0, ok = bytes > 0 && (Flat || closed);
-			string size = bytes >= 1048576 ? (bytes / 1048576).ToString ("0.0") + " MB" : Math.Ceiling (bytes / 1024) + " KB";
-			if (bytes <= 0) sum.Text = "Nothing to export yet";
-			else if (fmt == 5) sum.Text = info[2] + " × " + info[3] + " pixels · " + size;
-			else if (Flat) sum.Text = info[1] + " lines · " + info[6].ToString ("0.0") + " × " + info[7].ToString ("0.0") + " mm · " + size;
-			else sum.Text = info[0].ToString ("N0") + " triangles · " + size + " · " + (closed ? "closed solid" : "not closed");
+			string size = bytes >= 1048576 ? string.Format (Tr ("{0} MB"), (bytes / 1048576).ToString ("0.0")) : string.Format (Tr ("{0} KB"), Math.Ceiling (bytes / 1024));
+			if (bytes <= 0) sum.Text = Tr ("Nothing to export yet");
+			else if (fmt == 5) sum.Text = string.Format (Tr ("{0} × {1} pixels · {2}"), info[2], info[3], size);
+			else if (Flat) sum.Text = string.Format (Tr ("{0} lines · {1} × {2} mm · {3}"), info[1], info[6].ToString ("0.0"), info[7].ToString ("0.0"), size);
+			else sum.Text = string.Format (Tr ("{0} triangles · {1} · {2}"), info[0].ToString ("N0"), size, closed ? Tr ("closed solid") : Tr ("not closed"));
 			sumIcon.Content = Icons.Image (ok ? I.CHECK : I.WARN, 18, ok ? 0x3C9650u : 0x4A3A10u, ok ? 0x3C9650u : Icons.ACC);
 		}
 		void Export ()
 		{
-			if (info[4] <= 0) { MessageBox.Show (this, "There is nothing to export yet.", "Export", MessageBoxButton.OK, MessageBoxImage.Information); return; }
+			if (info[4] <= 0) { MessageBox.Show (this, Tr ("There is nothing to export yet."), Tr ("Export"), MessageBoxButton.OK, MessageBoxImage.Information); return; }
 			var d = new SaveFileDialog { Filter = DESC[fmt] + " (*" + EXT[fmt] + ")|*" + EXT[fmt], DefaultExt = EXT[fmt], AddExtension = true, FileName = BaseName () + EXT[fmt], InitialDirectory = MainWindow.LastDir };
 			if (d.ShowDialog (this) != true) return;
 			if (fmt == 4) Core.Export (fmt, what, curve, view, bin, hid, Path.GetFileNameWithoutExtension (d.FileName));	// (its title: the file's name)
-			if (!Core.ExportWrite (d.FileName)) { MessageBox.Show (this, "The file could not be written.", "Export", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+			if (!Core.ExportWrite (d.FileName)) { MessageBox.Show (this, Tr ("The file could not be written."), Tr ("Export"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 			MainWindow.LastDir = Path.GetDirectoryName (d.FileName);
 			sFmt = fmt; sView = view; sCurve = curve; sBin = bin; sHid = hid;
-			Core.SetHint ("Exported: " + Path.GetFileName (d.FileName) + ".");
+			Core.SetHint (string.Format (Tr ("Exported: {0}."), Path.GetFileName (d.FileName)));
 			Close ();
 		}
 	}
@@ -147,7 +149,7 @@ namespace Forge
 	class GcodeDialog : DialogBase
 	{
 		readonly bool good;
-		public GcodeDialog (Window owner) : base (owner, "G-code", 640)
+		public GcodeDialog (Window owner) : base (owner, Tr ("G-code"), 640)
 		{
 			good = Core.Gcode (out string checks, out string sum);
 			Row (null, Checks (checks), 0);
@@ -156,18 +158,18 @@ namespace Forge
 				Height = 240, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, Background = Brushes.White, BorderBrush = (Brush) FindResource ("FieldLine"), Padding = new Thickness (6) };
 			Row (null, tb, 10);
 			Row (null, new TextBlock { Text = sum, Foreground = (Brush) FindResource ("Dim"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap }, 8);
-			Row (null, new TextBlock { Text = good ? ".nc · GRBL, millimetres · try it in the air first" : "Nothing is written until this is put right.", FontSize = 11.5,
+			Row (null, new TextBlock { Text = good ? Tr (".nc · GRBL, millimetres · try it in the air first") : Tr ("Nothing is written until this is put right."), FontSize = 11.5,
 				Foreground = good ? (Brush) FindResource ("Dim") : new SolidColorBrush (Color.FromRgb (0xB0, 0x3A, 0x30)) }, 4);
-			Add ("Cancel", false, Close);
-			var s = Add ("Save...", true, Save); s.IsEnabled = good;
+			Add (Tr ("Cancel"), false, Close);
+			var s = Add (Tr ("Save..."), true, Save); s.IsEnabled = good;
 		}
 		void Save ()
 		{
-			var d = new SaveFileDialog { Filter = "G-code (*.nc)|*.nc|G-code (*.gcode)|*.gcode", DefaultExt = ".nc", AddExtension = true, FileName = BaseName () + ".nc", InitialDirectory = MainWindow.LastDir };
+			var d = new SaveFileDialog { Filter = Tr ("G-code (*.nc)|*.nc|G-code (*.gcode)|*.gcode"), DefaultExt = ".nc", AddExtension = true, FileName = BaseName () + ".nc", InitialDirectory = MainWindow.LastDir };
 			if (d.ShowDialog (this) != true) return;
-			if (!Core.GcodeWrite (d.FileName)) { MessageBox.Show (this, "The file could not be written.", "G-code", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+			if (!Core.GcodeWrite (d.FileName)) { MessageBox.Show (this, Tr ("The file could not be written."), Tr ("G-code"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 			MainWindow.LastDir = Path.GetDirectoryName (d.FileName);
-			Core.SetHint ("G-code written. Run it in the air first, the spindle well above the stock.");
+			Core.SetHint (Tr ("G-code written. Run it in the air first, the spindle well above the stock."));
 			Close ();
 		}
 	}
@@ -175,22 +177,22 @@ namespace Forge
 	class PrintFileDialog : DialogBase
 	{
 		readonly string ext;
-		public PrintFileDialog (Window owner) : base (owner, "Print file", 560)
+		public PrintFileDialog (Window owner) : base (owner, Tr ("Print file"), 560)
 		{
 			bool good = Core.PrintFile (out string checks, out string sum, out ext);
 			Row (null, Checks (checks), 0);
 			Row (null, new TextBlock { Text = sum, Foreground = (Brush) FindResource ("Dim"), FontSize = 11.5, TextWrapping = TextWrapping.Wrap }, 10);
-			if (!good) Row (null, new TextBlock { Text = "Nothing is written until this is put right.", FontSize = 11.5, Foreground = new SolidColorBrush (Color.FromRgb (0xB0, 0x3A, 0x30)) }, 6);
-			Add ("Cancel", false, Close);
-			var s = Add ("Save...", true, Save); s.IsEnabled = good;
+			if (!good) Row (null, new TextBlock { Text = Tr ("Nothing is written until this is put right."), FontSize = 11.5, Foreground = new SolidColorBrush (Color.FromRgb (0xB0, 0x3A, 0x30)) }, 6);
+			Add (Tr ("Cancel"), false, Close);
+			var s = Add (Tr ("Save..."), true, Save); s.IsEnabled = good;
 		}
 		void Save ()
 		{
-			var d = new SaveFileDialog { Filter = "Print file (*." + ext + ")|*." + ext, DefaultExt = "." + ext, AddExtension = true, FileName = BaseName () + "." + ext, InitialDirectory = MainWindow.LastDir };
+			var d = new SaveFileDialog { Filter = Tr ("Print file") + " (*." + ext + ")|*." + ext, DefaultExt = "." + ext, AddExtension = true, FileName = BaseName () + "." + ext, InitialDirectory = MainWindow.LastDir };
 			if (d.ShowDialog (this) != true) return;
-			if (!Core.PrintFileWrite (d.FileName)) { MessageBox.Show (this, "The file could not be written.", "Print file", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
+			if (!Core.PrintFileWrite (d.FileName)) { MessageBox.Show (this, Tr ("The file could not be written."), Tr ("Print file"), MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 			MainWindow.LastDir = Path.GetDirectoryName (d.FileName);
-			Core.SetHint ("The print file is written.");
+			Core.SetHint (Tr ("The print file is written."));
 			Close ();
 		}
 	}

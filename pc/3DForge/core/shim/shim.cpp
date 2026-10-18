@@ -206,3 +206,37 @@ unsigned *icon_load (const char *path, int *pw, int *ph)
 	*pw = W; *ph = H; return px;
 }
 }
+
+// ---- the catalogues: "English<TAB>translation" a line (\t \n \\ escaped, "#" a comment); none loaded: English ---------------
+#include <unordered_map>
+static std::unordered_map<std::string, std::string> g_words;
+static std::string unesc (const std::string &s)
+{
+	std::string o; for (size_t i = 0; i < s.size (); i++) { if (s[i] == '\\' && i + 1 < s.size ()) { char c = s[++i]; o += c == 't' ? '\t' : c == 'n' ? '\n' : c; } else o += s[i]; }
+	return o;
+}
+bool forge_lang_load (const char *path)
+{
+	std::wstring w = uikit::wide (path); FILE *f = _wfopen (w.c_str (), L"rb"); if (!f) return false;
+	std::string all; char b[65536]; size_t n; while ((n = fread (b, 1, sizeof b, f)) > 0) all.append (b, n); fclose (f);
+	size_t at = 0; if (all.compare (0, 3, "\xEF\xBB\xBF") == 0) at = 3;
+	while (at < all.size ())
+	{
+		size_t e = all.find ('\n', at); if (e == std::string::npos) e = all.size ();
+		std::string l = all.substr (at, e - at); at = e + 1;
+		if (!l.empty () && l.back () == '\r') l.pop_back ();
+		size_t t = l.find ('\t'); if (l.empty () || l[0] == '#' || t == std::string::npos || t + 1 >= l.size ()) continue;
+		g_words[unesc (l.substr (0, t))] = unesc (l.substr (t + 1));
+	}
+	return true;
+}
+const char *uk_tr (const char *en)
+{
+	if (!en || g_words.empty ()) return en;
+	auto i = g_words.find (en); return i == g_words.end () ? en : i->second.c_str ();
+}
+const char *uk_trc (const char *ctx, const char *en)
+{
+	if (!en || g_words.empty ()) return en;
+	auto i = g_words.find (std::string (ctx) + "|" + en); return i != g_words.end () ? i->second.c_str () : uk_tr (en);
+}

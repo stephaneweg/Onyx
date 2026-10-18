@@ -38,7 +38,7 @@ public:
 	void onDraw () override
 	{
 		static const int ic[N] = { I_BOX, I_CYL, I_SPHERE, I_TORUS, I_PYRAMID, I_PRISM, I_TAPER };
-		static const char *const nm[N] = { "Box", "Cylinder", "Sphere", "Torus", "Pyramid", "Prism", "Taper" };
+		static const char *const nm[N] = { TR ("Box"), TR ("Cylinder"), TR ("Sphere"), TR ("Torus"), TR ("Pyramid"), TR ("Prism"), TR ("Taper") };
 		unsigned face = uk_tone (C_BG, 176); canvas.clear (UK_TRANSPARENT_KEY); uk_popup (canvas, 0, 0, width, height, 8, face);
 		UkFaceScope fs (g_small);
 		for (int i = 0; i < N; i++)
@@ -96,19 +96,19 @@ public:
 // ---- the tools' bar ---------------------------------------------------------------------------------------------------
 struct ToolDef { int tool, ic; const char *name; };
 static const ToolDef TOOLS[] = {
-	{ -4, I_SHAPES, "Shapes" }, { T_SKETCH, I_SKETCH, "Sketch" }, { T_EXTRUDE, I_EXTRUDE, "Extrude" }, { -1, 0, 0 },
-	{ T_FILLET, I_FILLET, "Fillet" }, { T_CHAMFER, I_CHAMFER, "Chamfer" }, { T_MOVE, I_MOVE, "Move" }, { -1, 0, 0 },
-	{ T_UNION, I_UNION, "Union" }, { T_SUB, I_SUB, "Subtract" }, { T_INT, I_INT, "Intersect" }, { -1, 0, 0 }, { T_MEASURE, I_MEASURE, "Measure" }, { -2, 0, 0 } };
+	{ -4, I_SHAPES, TRN ("Shapes") }, { T_SKETCH, I_SKETCH, TRN ("Sketch") }, { T_EXTRUDE, I_EXTRUDE, TRN ("Extrude") }, { -1, 0, 0 },
+	{ T_FILLET, I_FILLET, TRN ("Fillet") }, { T_CHAMFER, I_CHAMFER, TRN ("Chamfer") }, { T_MOVE, I_MOVE, TRN ("Move") }, { -1, 0, 0 },
+	{ T_UNION, I_UNION, TRN ("Union") }, { T_SUB, I_SUB, TRN ("Subtract") }, { T_INT, I_INT, TRN ("Intersect") }, { -1, 0, 0 }, { T_MEASURE, I_MEASURE, TRN ("Measure") }, { -2, 0, 0 } };
 static const ToolDef CAMTOOLS[] = {
-	{ -10, I_CAM_SETUP, "Setup" }, { -11, I_CAM_TOOL, "Tool" }, { -1, 0, 0 }, { -12, I_CAM_CLEAR, "Clearing" }, { -13, I_CAM_CONTOUR, "Contour" }, { -1, 0, 0 },
-	{ -14, I_PLAY, "Simulate" }, { -2, 0, 0 } };
+	{ -10, I_CAM_SETUP, TRN ("Setup") }, { -11, I_CAM_TOOL, TRN ("Tool") }, { -1, 0, 0 }, { -12, I_CAM_CLEAR, TRN ("Clearing") }, { -13, I_CAM_CONTOUR, TRN ("Contour") }, { -1, 0, 0 },
+	{ -14, I_PLAY, TRN ("Simulate") }, { -2, 0, 0 } };
 static const ToolDef PRINTTOOLS[] = {
-	{ -20, I_PR_PLATE, "Setup" }, { -21, I_PR_RESIN, "Resin" }, { -1, 0, 0 }, { -22, I_PR_SUP, "Supports" }, { -1, 0, 0 }, { -23, I_PR_LAYERS, "Layers" }, { -2, 0, 0 } };
+	{ -20, I_PR_PLATE, TRN ("Setup") }, { -21, I_PR_RESIN, TRN ("Resin") }, { -1, 0, 0 }, { -22, I_PR_SUP, TRN ("Supports") }, { -1, 0, 0 }, { -23, I_PR_LAYERS, TRN ("Layers") }, { -2, 0, 0 } };
 static const ToolDef FDMTOOLS[] = {
-	{ -20, I_PR_PLATE, "Setup" }, { -21, I_PR_FIL, "Filament" }, { -1, 0, 0 }, { -23, I_PR_LAYERS, "Layers" }, { -2, 0, 0 } };
+	{ -20, I_PR_PLATE, TRN ("Setup") }, { -21, I_PR_FIL, TRN ("Filament") }, { -1, 0, 0 }, { -23, I_PR_LAYERS, TRN ("Layers") }, { -2, 0, 0 } };
 static const ToolDef SKTOOLS[] = {
-	{ T_LINE, I_LINE, "Line" }, { T_RECT, I_RECT, "Rectangle" }, { T_CIRCLE, I_CIRCLE, "Circle" }, { T_ARC, I_ARC, "Arc" }, { T_ARC3, I_ARC3, "3-pt arc" },
-	{ T_SPLINE, I_SPLINE, "Spline" }, { T_POINT, I_POINT, "Point" }, { -3, I_CLOSE, "Close" }, { -2, 0, 0 } };
+	{ T_LINE, I_LINE, TRN ("Line") }, { T_RECT, I_RECT, TRN ("Rectangle") }, { T_CIRCLE, I_CIRCLE, TRN ("Circle") }, { T_ARC, I_ARC, TRN ("Arc") }, { T_ARC3, I_ARC3, TRN ("3-pt arc") },
+	{ T_SPLINE, I_SPLINE, TRN ("Spline") }, { T_POINT, I_POINT, TRN ("Point") }, { -3, I_CLOSE, TRN ("Close") }, { -2, 0, 0 } };
 
 class Ribbon : public Widget
 {
@@ -118,14 +118,14 @@ public:
 	ABtn *bExport, *bCancel, *bFinish, *bGcode, *bPrint, *bValid, *bRevert;
 	Ribbon (int w) : Widget (0, 0, w, H), nz (0), hot (-1), down (-1)
 	{
-		bExport = new ABtn (w - 108, 14, 98, 28, "Export", CMD_EXPORT, true, I_EXPORT);
-		bCancel = new ABtn (w - 232, 14, 84, 28, "Cancel", CMD_SK_CANCEL);
-		bFinish = new ABtn (w - 140, 14, 130, 28, "Finish sketch", CMD_SK_FINISH, true);
-		bGcode = new ABtn (w - 118, 14, 108, 28, "G-code", CMD_GCODE, true, I_GCODE);
-		bPrint = new ABtn (w - 128, 14, 118, 28, "Print file", CMD_PR_FILE, true, I_GCODE);
+		bExport = new ABtn (w - 108, 14, 98, 28, TR ("Export"), CMD_EXPORT, true, I_EXPORT);
+		bCancel = new ABtn (w - 232, 14, 84, 28, TR ("Cancel"), CMD_SK_CANCEL);
+		bFinish = new ABtn (w - 140, 14, 130, 28, TR ("Finish sketch"), CMD_SK_FINISH, true);
+		bGcode = new ABtn (w - 118, 14, 108, 28, TR ("G-code"), CMD_GCODE, true, I_GCODE);
+		bPrint = new ABtn (w - 128, 14, 118, 28, TR ("Print file"), CMD_PR_FILE, true, I_GCODE);
 		// (milling: values changed and not yet computed -- beside G-code, as a sketch's Cancel and Finish)
-		bRevert = new ABtn (w - 118 - 10 - 100 - 8 - 84, 14, 84, 28, "Cancel", CMD_CAM_REVERT);
-		bValid = new ABtn (w - 118 - 10 - 100, 14, 100, 28, "Validate", CMD_CAM_VALIDATE, true);
+		bRevert = new ABtn (w - 118 - 10 - 100 - 8 - 84, 14, 84, 28, TR ("Cancel"), CMD_CAM_REVERT);
+		bValid = new ABtn (w - 118 - 10 - 100, 14, 100, 28, TR ("Validate"), CMD_CAM_VALIDATE, true);
 		for (ABtn *b : { bExport, bCancel, bFinish, bGcode, bPrint, bValid, bRevert }) { b->anchor = ANCHOR_TOP | ANCHOR_RIGHT; addChild (b); }
 		sync ();
 	}
@@ -149,7 +149,7 @@ public:
 		UkFaceScope fs (g_small);
 		if (!A.sketching)				// the app's two halves: Design, Manufacture
 		{
-			static const char *const MD[2] = { "Design", "Manufacture" }; int sw = uk_tw (MD[1], 2) + 16;	// (one over the other: the bar is short)
+			static const char *const MD[2] = { TR ("Design"), TR ("Manufacture") }; int sw = uk_tw (MD[1], 2) + 16;	// (one over the other: the bar is short)
 			uk_sunken (canvas, x, 8, sw, 46, 5, C_FIELD);
 			for (int i = 0; i < 2; i++)
 			{
@@ -166,7 +166,7 @@ public:
 			if (list[i].tool == -1) { uk_etch_v (canvas, x + 4, 8, 46, C_BG); x += 10; continue; }
 			// (the shapes' button: an arrow -- a click unfolds them)
 			bool more = list[i].tool == -4; int tl = list[i].tool, ic = list[i].ic;
-			const char *nm = list[i].name;
+			const char *nm = TR (list[i].name);
 			int bw = uk_tw (nm) + (more ? 22 : 10); if (bw < 48) bw = 48;
 			bool camTile = tl <= -10;
 			bool on = tl <= -20 ? A.camPage == -20 - tl : camTile ? (tl == -10 ? A.camPage == 0 && !A.camSim : tl == -11 ? A.camPage == 1 && !A.camSim : tl == -14 ? A.camSim
@@ -224,34 +224,34 @@ public:
 		char t[96], a[24], b[24], c[24];
 		if (printer ())					// the setup, the supports
 		{
-			if (i == 0) snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 %s", body_name (A.print.body), A.gen == 2 ? "a filament printer" : A.print.machine.name);
-			else if (A.print.tips.empty ()) snprintf (out, cap, "Supports  \xC2\xB7  none");
-			else snprintf (out, cap, "Supports  \xC2\xB7  %d pillars%s", (int) A.print.tips.size (), A.print.raft ? " \xC2\xB7 a raft" : "");
+			if (i == 0) snprintf (out, cap, TR ("Setup  \xC2\xB7  %s \xC2\xB7 %s"), body_name (A.print.body), A.gen == 2 ? TR ("a filament printer") : A.print.machine.name);
+			else if (A.print.tips.empty ()) snprintf (out, cap, TR ("Supports  \xC2\xB7  none"));
+			else snprintf (out, cap, TR ("Supports  \xC2\xB7  %d pillars%s"), (int) A.print.tips.size (), A.print.raft ? TR (" \xC2\xB7 a raft") : "");
 			return;
 		}
 		if (A.camMode)					// the setup, then its operations
 		{
-			if (i == 0) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s", body_name (A.job.body), a, b, c); return; }
+			if (i == 0) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (out, cap, TR ("Setup  \xC2\xB7  %s \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s"), body_name (A.job.body), a, b, c); return; }
 			const CamOp &o = A.job.ops[i - 1]; fmt (A.job.tool.dia, a, 12);
 			if (o.failed) snprintf (out, cap, "%s  \xC2\xB7  %s", o.name, o.err);
-			else snprintf (out, cap, "%s  \xC2\xB7  \xC3\x98 %s flat \xC2\xB7 %d min%s", o.name, a, (int) (o.minutes + 0.5), o.useFace ? " \xC2\xB7 one face" : "");
+			else snprintf (out, cap, TR ("%s  \xC2\xB7  \xC3\x98 %s flat \xC2\xB7 %d min%s"), o.name, a, (int) (o.minutes + 0.5), o.useFace ? TR (" \xC2\xB7 one face") : "");
 			return;
 		}
 		if (!A.sketching)
 		{
 			const Feature &f = A.doc.feats[i];
 			if (f.failed && i < A.doc.upto) snprintf (t, sizeof t, "%s", f.err); else describe (A.doc, f, t, sizeof t);
-			snprintf (out, cap, "%s  \xC2\xB7  %s%s", f.name, t, i >= A.doc.upto ? "  (rolled back)" : ""); return;
+			snprintf (out, cap, "%s  \xC2\xB7  %s%s", f.name, t, i >= A.doc.upto ? TR ("  (rolled back)") : ""); return;
 		}
-		static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
+		static const char *const EN[] = { TR ("Line"), TR ("Arc"), TR ("Circle"), TR ("Rectangle"), TR ("Close"), TR ("Spline"), TR ("Point") };
 		const SkEl &e = A.sk.els[i]; int k = 0; for (int j = 0; j <= i; j++) if (A.sk.els[j].kind == e.kind) k++;
-		if (e.kind == SK_LINE) { fmt (e.len, a); fmt (e.a, b); snprintf (t, sizeof t, e.rel ? "%s \xC2\xB7 turn %s\xC2\xB0" : "%s \xC2\xB7 at %s\xC2\xB0", a, b); }
+		if (e.kind == SK_LINE) { fmt (e.len, a); fmt (e.a, b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC2\xB7 turn %s\xC2\xB0") : TR ("%s \xC2\xB7 at %s\xC2\xB0"), a, b); }
 		else if (e.kind == SK_ARC) { fmt (e.r, a); fmt (e.sweep, b); snprintf (t, sizeof t, "R %s \xC2\xB7 %s\xC2\xB0", a, b); }
-		else if (e.kind == SK_SPLINE) snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + 1);
-		else if (e.kind == SK_POINT) { fmt (e.x, a); fmt (e.y, b); snprintf (t, sizeof t, "a mark at %s, %s", a, b); }
-		else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, "\xC3\x98 %s \xC2\xB7 at %s, %s", a, b, c); }
-		else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? "%s \xC3\x97 %s \xC2\xB7 from its centre" : "%s \xC3\x97 %s", a, b); }
-		else snprintf (t, sizeof t, "back to the start");
+		else if (e.kind == SK_SPLINE) snprintf (t, sizeof t, TR ("through %d points"), (int) e.pts.size () + 1);
+		else if (e.kind == SK_POINT) { fmt (e.x, a); fmt (e.y, b); snprintf (t, sizeof t, TR ("a mark at %s, %s"), a, b); }
+		else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, TR ("\xC3\x98 %s \xC2\xB7 at %s, %s"), a, b, c); }
+		else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC3\x97 %s \xC2\xB7 from its centre") : "%s \xC3\x97 %s", a, b); }
+		else snprintf (t, sizeof t, TR ("back to the start"));
 		snprintf (out, cap, "%s %d  \xC2\xB7  %s", EN[e.kind], k, t);
 	}
 	// the cells' room: [x0, x1), the arrows shown when they do not all fit
@@ -309,7 +309,7 @@ public:
 			uk_glyph (canvas, WKG_CHEV_LEFT, 8 + ARROW / 2, H / 2, 10, scroll > 0 ? C_FIELD_TEXT : uk_mix (C_FIELD_TEXT, C_FIELD, 190));
 			uk_glyph (canvas, WKG_CHEV_RIGHT, x1 + ARROW / 2, H / 2, 10, scroll < most ? C_FIELD_TEXT : uk_mix (C_FIELD_TEXT, C_FIELD, 190));
 		}
-		if (!n) { UkFaceScope fs (g_small); uk_text (canvas, 14, (H - uk_fh ()) / 2, A.sketching ? "The sketch's elements come here, in the order they are drawn." : "The steps you make come here: click one to change its values.", uk_mix (C_FIELD_TEXT, C_FIELD, 140)); }
+		if (!n) { UkFaceScope fs (g_small); uk_text (canvas, 14, (H - uk_fh ()) / 2, A.sketching ? TR ("The sketch's elements come here, in the order they are drawn.") : TR ("The steps you make come here: click one to change its values."), uk_mix (C_FIELD_TEXT, C_FIELD, 140)); }
 		// at the right: the step pointed or selected; a sketch: its outlines
 		int tx = (arrows ? x1 + ARROW : x1) + 8, tw = width - 10 - tx; char t[160], fit[160];
 		if (tw < 80) return;
@@ -322,14 +322,14 @@ public:
 		}
 		else if (A.sketching)
 		{
-			snprintf (t, sizeof t, "%d closed outline%s", A.ev.nclosed, A.ev.nclosed == 1 ? "" : "s");
+			snprintf (t, sizeof t, TR ("%d closed outline%s"), A.ev.nclosed, A.ev.nclosed == 1 ? "" : "s");
 			if (A.ev.nclosed) icon (canvas, I_CHECK, tx, 6, 14, C_GREEN, C_GREEN, C_FIELD);
 			uk_text (canvas, tx + 18, 7, t, A.ev.nclosed ? 0x286E38 : uk_mix (C_FIELD_TEXT, C_FIELD, 110));
-			if (A.ev.nopen) { snprintf (t, sizeof t, "%d still open", A.ev.nopen); icon (canvas, I_WARN, tx, 22, 14, 0x4A3A10, C_ACCENT, C_FIELD); }
-			else snprintf (t, sizeof t, "none open");
+			if (A.ev.nopen) { snprintf (t, sizeof t, TR ("%d still open"), A.ev.nopen); icon (canvas, I_WARN, tx, 22, 14, 0x4A3A10, C_ACCENT, C_FIELD); }
+			else snprintf (t, sizeof t, TR ("none open"));
 			uk_text (canvas, tx + 18, 23, t, A.ev.nopen ? 0x8A5A10 : uk_mix (C_FIELD_TEXT, C_FIELD, 110));
 		}
-		else if (n) { snprintf (t, sizeof t, "%d step%s", n, n == 1 ? "" : "s"); uk_text (canvas, tx, 7, "History", C_FIELD_TEXT, 2); uk_text (canvas, tx, 23, t, uk_mix (C_FIELD_TEXT, C_FIELD, 110)); }
+		else if (n) { snprintf (t, sizeof t, TR ("%d step%s"), n, n == 1 ? "" : "s"); uk_text (canvas, tx, 7, TR ("History"), C_FIELD_TEXT, 2); uk_text (canvas, tx, 23, t, uk_mix (C_FIELD_TEXT, C_FIELD, 110)); }
 	}
 	void pick (int i, bool dbl, bool right, int mx, int my)
 	{
@@ -340,7 +340,7 @@ public:
 			if (right && i > 0)
 			{
 				Root *r = Root::current (); int ax = 0, ay = 0; for (Widget *w = this; w && w != r; w = w->parent) { ax += w->left; ay += w->top; }
-				PopupMenu pm (ax + mx, ay + my - 40); pm.add ("Delete", CMD_CAM_DELETE);
+				PopupMenu pm (ax + mx, ay + my - 40); pm.add (TR ("Delete"), CMD_CAM_DELETE);
 				int c = pm.run (); if (c > 0) cmd (c);
 			}
 			return;
@@ -352,9 +352,9 @@ public:
 		{
 			Root *r = Root::current (); int ax = 0, ay = 0; for (Widget *w = this; w && w != r; w = w->parent) { ax += w->left; ay += w->top; }
 			PopupMenu pm (ax + mx, ay + my - 110);
-			if (A.doc.feats[i].kind == F_SKETCH) pm.add ("Edit sketch", CMD_EDIT_SKETCH);
-			pm.add ("Roll back to here", CMD_ROLL_HERE, i + 1 != A.doc.upto); pm.add ("Roll to the end", CMD_ROLL_END, A.doc.upto < (int) A.doc.feats.size ());
-			pm.separator (); pm.add ("Delete", CMD_DELETE);
+			if (A.doc.feats[i].kind == F_SKETCH) pm.add (TR ("Edit sketch"), CMD_EDIT_SKETCH);
+			pm.add (TR ("Roll back to here"), CMD_ROLL_HERE, i + 1 != A.doc.upto); pm.add (TR ("Roll to the end"), CMD_ROLL_END, A.doc.upto < (int) A.doc.feats.size ());
+			pm.separator (); pm.add (TR ("Delete"), CMD_DELETE);
 			int c = pm.run (); if (c > 0) cmd (c);
 		}
 		else if (dbl && A.doc.feats[i].kind == F_SKETCH) cmd (CMD_EDIT_SKETCH);
@@ -374,7 +374,7 @@ public:
 			if (k != A.doc.upto)
 			{
 				A.doc.upto = k; A.doc.touch (); if (A.selFeat >= k) A.selFeat = -1; if (!A.doc.body (A.selBody)) A.selBody = -1;
-				set_hint (k < count () ? "The part as it was after that step. Drag the bar back to the end for the rest." : "The whole history again.");
+				set_hint (k < count () ? TR ("The part as it was after that step. Drag the bar back to the end for the rest.") : TR ("The whole history again."));
 				ui (R_ALL); if (g_view) g_view->invalidate (true);
 			}
 			invalidate (true); return true;
@@ -494,9 +494,9 @@ public:
 	int bodyProcess (int y, int body)
 	{
 		int hw = (width - 24 - 8) / 2;
-		label (12, y, "Body", UK_AUTO, 2); label (12 + hw + 8, y, "Process", UK_AUTO, 2); y += 20;
+		label (12, y, TR ("Body"), UK_AUTO, 2); label (12 + hw + 8, y, TR ("Process"), UK_AUTO, 2); y += 20;
 		ABtn *b = new ABtn (12, y, hw, 26, body_name (body), CMD_CAM_BODY); b->bg = panel_col (); addChild (b);
-		ABtn *g = new ABtn (12 + hw + 8, y, hw, 26, A.gen == 2 ? "Filament" : A.gen == 1 ? "Resin print" : "Milling", CMD_GEN); g->bg = panel_col (); addChild (g);
+		ABtn *g = new ABtn (12 + hw + 8, y, hw, 26, A.gen == 2 ? TR ("Filament") : A.gen == 1 ? TR ("Resin print") : TR ("Milling"), CMD_GEN); g->bg = panel_col (); addChild (g);
 		return y + 34;
 	}
 	int prSumY = -1, prInfoY = -1;
@@ -506,37 +506,37 @@ public:
 		PrintSetup &s = A.print; FdmSettings &f = A.fdm;
 		if (A.camPage == 0)
 		{
-			head (I_PR_PLATE, "Setup", "the body, on the bed");
+			head (I_PR_PLATE, TR ("Setup"), TR ("the body, on the bed"));
 			y = bodyProcess (y, s.body);
-			label (12, y, "Bed", UK_AUTO, 2); y += 20;
-			field (y, "Width", &A.fmach.bedX, "mm", -1); y += 27; field (y, "Depth", &A.fmach.bedY, "mm", -1); y += 27; field (y, "Height", &A.fmach.sizeZ, "mm", -1); y += 33;
-			label (12, y, "On the bed", UK_AUTO, 2); y += 20;
-			field (y, "X", &s.x, "mm", -1); y += 27; field (y, "Y", &s.y, "mm", -1); y += 27;
-			field (y, "Tilted, X", &s.tiltX, "\xC2\xB0", -1); y += 27; field (y, "Tilted, Y", &s.tiltY, "\xC2\xB0", -1); y += 27; field (y, "Turned", &s.turn, "\xC2\xB0", -1); y += 34;
+			label (12, y, TR ("Bed"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Width"), &A.fmach.bedX, TR ("mm"), -1); y += 27; field (y, TR ("Depth"), &A.fmach.bedY, TR ("mm"), -1); y += 27; field (y, TR ("Height"), &A.fmach.sizeZ, TR ("mm"), -1); y += 33;
+			label (12, y, TR ("On the bed"), UK_AUTO, 2); y += 20;
+			field (y, "X", &s.x, TR ("mm"), -1); y += 27; field (y, "Y", &s.y, TR ("mm"), -1); y += 27;
+			field (y, TR ("Tilted, X"), &s.tiltX, "\xC2\xB0", -1); y += 27; field (y, TR ("Tilted, Y"), &s.tiltY, "\xC2\xB0", -1); y += 27; field (y, TR ("Turned"), &s.turn, "\xC2\xB0", -1); y += 34;
 			prSumY = y;
 		}
 		else if (A.camPage == 1)
 		{
-			head (I_PR_FIL, "Filament", "layers, shell, infill");
-			label (12, y, "Layers", UK_AUTO, 2); y += 20;
-			field (y, "Height", &f.layer, "mm", -1); y += 27; field (y, "Line's width", &f.width, "mm", -1); y += 33;
-			label (12, y, "Shell", UK_AUTO, 2); y += 20;
-			field (y, "Walls", &f.walls, 0, -1); y += 27; field (y, "Solid above", &f.top, "lay.", -1); y += 27; field (y, "Solid below", &f.bottom, "lay.", -1); y += 33;
-			label (12, y, "Infill", UK_AUTO, 2); y += 20;
-			field (y, "Share", &A.fdmPct, "%", -1); y += 27; field (y, "Turned", &f.angle, "\xC2\xB0", -1); y += 29;
-			static const char *const PT[3] = { "Lines", "Grid", "Honeycomb" };
-			label (12, y + 5, "As"); int py = y; y += 37;
-			label (12, y, "Skirt", UK_AUTO, 2); y += 20;
-			field (y, "Loops", &f.skirt, 0, -1); y += 27; field (y, "Away by", &f.skirtGap, "mm", -1);
+			head (I_PR_FIL, TR ("Filament"), TR ("layers, shell, infill"));
+			label (12, y, TR ("Layers"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Height"), &f.layer, TR ("mm"), -1); y += 27; field (y, TR ("Line's width"), &f.width, TR ("mm"), -1); y += 33;
+			label (12, y, TR ("Shell"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Walls"), &f.walls, 0, -1); y += 27; field (y, TR ("Solid above"), &f.top, TR ("lay."), -1); y += 27; field (y, TR ("Solid below"), &f.bottom, TR ("lay."), -1); y += 33;
+			label (12, y, TR ("Infill"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Share"), &A.fdmPct, "%", -1); y += 27; field (y, TR ("Turned"), &f.angle, "\xC2\xB0", -1); y += 29;
+			static const char *const PT[3] = { TR ("Lines"), TR ("Grid"), TR ("Honeycomb") };
+			label (12, y + 5, TR ("As")); int py = y; y += 37;
+			label (12, y, TR ("Skirt"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Loops"), &f.skirt, 0, -1); y += 27; field (y, TR ("Away by"), &f.skirtGap, TR ("mm"), -1);
 			Dropdown *d = new Dropdown (width - 12 - 122, py, 122, 26, PT, 3, f.pattern < 0 || f.pattern > 2 ? 0 : f.pattern, onPattern); addChild (d);	// (last: its list opens over the rest)
 		}
 		else
 		{
-			head (I_PR_LAYERS, "Layers", "the nozzle's path");
+			head (I_PR_LAYERS, TR ("Layers"), TR ("the nozzle's path"));
 			prInfoY = y; y += 4 * 22 + 12;
-			check (y, "Show it in the 3D view", A.layer3d, 33); y += 32;
-			label (12, y, "Play draws the layer as the", dim_col (), 0, true); y += 15; label (12, y, "printer would, then the next.", dim_col (), 0, true); y += 24;
-			label (12, y, "The file for a printer comes", dim_col (), 0, true); y += 15; label (12, y, "later: the path is what is shown.", dim_col (), 0, true);
+			check (y, TR ("Show it in the 3D view"), A.layer3d, 33); y += 32;
+			label (12, y, TR ("Play draws the layer as the"), dim_col (), 0, true); y += 15; label (12, y, TR ("printer would, then the next."), dim_col (), 0, true); y += 24;
+			label (12, y, TR ("The file for a printer comes"), dim_col (), 0, true); y += 15; label (12, y, TR ("later: the path is what is shown."), dim_col (), 0, true);
 		}
 	}
 	void printPages (int y)
@@ -545,51 +545,51 @@ public:
 		if (A.gen == 2) { fdmPages (y); return; }
 		if (A.camPage == 0)
 		{
-			head (I_PR_PLATE, "Setup", "the body, on the plate");
+			head (I_PR_PLATE, TR ("Setup"), TR ("the body, on the plate"));
 			y = bodyProcess (y, s.body);
-			label (12, y, "Printer", UK_AUTO, 2); y += 19; label (12, y, s.machine.name); y += 18;
+			label (12, y, TR ("Printer"), UK_AUTO, 2); y += 19; label (12, y, s.machine.name); y += 18;
 			snprintf (t, sizeof t, "%d \xC3\x97 %d \xC2\xB7 %.3g \xC2\xB5m \xC2\xB7 .%s", s.machine.resX, s.machine.resY, s.machine.pixel, s.machine.ext); label (12, y, t, dim_col (), 0, true); y += 15;
-			snprintf (t, sizeof t, "room %.4g \xC3\x97 %.4g \xC3\x97 %.4g mm", s.machine.resX * s.machine.pixel / 1000, s.machine.resY * s.machine.pixel / 1000, s.machine.sizeZ); label (12, y, t, dim_col (), 0, true); y += 24;
-			label (12, y, "On the plate", UK_AUTO, 2); y += 20;
-			field (y, "X", &s.x, "mm", -1); y += 27; field (y, "Y", &s.y, "mm", -1); y += 27; field (y, "Lifted", &s.lift, "mm", -1); y += 27;
-			field (y, "Tilted, X", &s.tiltX, "\xC2\xB0", -1); y += 27; field (y, "Tilted, Y", &s.tiltY, "\xC2\xB0", -1); y += 27; field (y, "Turned", &s.turn, "\xC2\xB0", -1); y += 32;
-			check (y, "Mirror the picture", s.mirror, 30); y += 28;
+			snprintf (t, sizeof t, TR ("room %.4g \xC3\x97 %.4g \xC3\x97 %.4g mm"), s.machine.resX * s.machine.pixel / 1000, s.machine.resY * s.machine.pixel / 1000, s.machine.sizeZ); label (12, y, t, dim_col (), 0, true); y += 24;
+			label (12, y, TR ("On the plate"), UK_AUTO, 2); y += 20;
+			field (y, "X", &s.x, TR ("mm"), -1); y += 27; field (y, "Y", &s.y, TR ("mm"), -1); y += 27; field (y, TR ("Lifted"), &s.lift, TR ("mm"), -1); y += 27;
+			field (y, TR ("Tilted, X"), &s.tiltX, "\xC2\xB0", -1); y += 27; field (y, TR ("Tilted, Y"), &s.tiltY, "\xC2\xB0", -1); y += 27; field (y, TR ("Turned"), &s.turn, "\xC2\xB0", -1); y += 32;
+			check (y, TR ("Mirror the picture"), s.mirror, 30); y += 28;
 			prSumY = y;
 		}
 		else if (A.camPage == 1)
 		{
-			head (I_PR_RESIN, "Resin", "exposures, the lift");
+			head (I_PR_RESIN, TR ("Resin"), TR ("exposures, the lift"));
 			PrintResin &r = s.resin;
 			ABtn *b = new ABtn (12, y, width - 24, 26, r.name, CMD_PR_PRESET); b->bg = panel_col (); addChild (b); y += 34;
-			label (12, y, "Layers", UK_AUTO, 2); y += 20;
-			field (y, "Height", &r.layer, "mm", -1); y += 27; field (y, "Exposure", &r.exposure, "s", -1); y += 27; field (y, "Light off", &r.off, "s", -1); y += 31;
-			label (12, y, "First layers", UK_AUTO, 2); y += 20;
-			field (y, "How many", &r.bottomLayers, 0, -1); y += 27; field (y, "Exposure", &r.bottomExposure, "s", -1); y += 27; field (y, "Then, over", &r.transition, "lay.", -1); y += 31;
-			label (12, y, "Lift, after each layer", UK_AUTO, 2); y += 20;
-			field (y, "Slowly", &r.normal.h1, "mm", -1); y += 27; field (y, "... at", &r.normal.up1, "/s", -1); y += 27;
-			field (y, "Then", &r.normal.h2, "mm", -1); y += 27; field (y, "... at", &r.normal.up2, "/s", -1); y += 27;
-			field (y, "Back down at", &r.normal.down2, "/s", -1);
+			label (12, y, TR ("Layers"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Height"), &r.layer, TR ("mm"), -1); y += 27; field (y, TR ("Exposure"), &r.exposure, "s", -1); y += 27; field (y, TR ("Light off"), &r.off, "s", -1); y += 31;
+			label (12, y, TR ("First layers"), UK_AUTO, 2); y += 20;
+			field (y, TR ("How many"), &r.bottomLayers, 0, -1); y += 27; field (y, TR ("Exposure"), &r.bottomExposure, "s", -1); y += 27; field (y, TR ("Then, over"), &r.transition, TR ("lay."), -1); y += 31;
+			label (12, y, TR ("Lift, after each layer"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Slowly"), &r.normal.h1, TR ("mm"), -1); y += 27; field (y, TR ("... at"), &r.normal.up1, "/s", -1); y += 27;
+			field (y, TR ("Then"), &r.normal.h2, TR ("mm"), -1); y += 27; field (y, TR ("... at"), &r.normal.up2, "/s", -1); y += 27;
+			field (y, TR ("Back down at"), &r.normal.down2, "/s", -1);
 		}
 		else if (A.camPage == 2)
 		{
-			head (I_PR_SUP, "Supports", "what holds the body");
-			ABtn *g = new ABtn (12, y, width - 24, 28, "Generate", CMD_PR_GENERATE, true); g->bg = panel_col (); addChild (g); y += 38;
-			label (12, y, "Where", UK_AUTO, 2); y += 20;
-			field (y, "Overhang", &s.supAngle, "\xC2\xB0", -1); y += 27; field (y, "A pillar every", &s.supEvery, "mm", -1); y += 31;
-			check (y, "Also under low points", s.supLow, 31); y += 30;
-			label (12, y, "Pillars", UK_AUTO, 2); y += 20;
-			field (y, "Diameter", &s.supDia, "mm", -1); y += 27; field (y, "Tip", &s.supTip, "mm", -1); y += 27; field (y, "Into the body", &s.supInto, "mm", -1); y += 33;
-			check (y, "A raft under it all", s.raft, 32); y += 26;
-			field (y, "Thick", &s.raftThick, "mm", -1); y += 27; field (y, "Wider by", &s.raftMore, "mm", -1); y += 33;
+			head (I_PR_SUP, TR ("Supports"), TR ("what holds the body"));
+			ABtn *g = new ABtn (12, y, width - 24, 28, TR ("Generate"), CMD_PR_GENERATE, true); g->bg = panel_col (); addChild (g); y += 38;
+			label (12, y, TR ("Where"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Overhang"), &s.supAngle, "\xC2\xB0", -1); y += 27; field (y, TR ("A pillar every"), &s.supEvery, TR ("mm"), -1); y += 31;
+			check (y, TR ("Also under low points"), s.supLow, 31); y += 30;
+			label (12, y, TR ("Pillars"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Diameter"), &s.supDia, TR ("mm"), -1); y += 27; field (y, TR ("Tip"), &s.supTip, TR ("mm"), -1); y += 27; field (y, TR ("Into the body"), &s.supInto, TR ("mm"), -1); y += 33;
+			check (y, TR ("A raft under it all"), s.raft, 32); y += 26;
+			field (y, TR ("Thick"), &s.raftThick, TR ("mm"), -1); y += 27; field (y, TR ("Wider by"), &s.raftMore, TR ("mm"), -1); y += 33;
 			prSumY = y;
-			ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Remove them all", CMD_PR_CLEAR); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
+			ABtn *d = new ABtn (12, height - 40, width - 24, 28, TR ("Remove them all"), CMD_PR_CLEAR); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
 		}
 		else
 		{
-			head (I_PR_LAYERS, "Layers", "what the screen shows");
+			head (I_PR_LAYERS, TR ("Layers"), TR ("what the screen shows"));
 			prInfoY = y; y += 4 * 22 + 8 + 20 + 3 * 21 + 12;
-			check (y, "Show it in the 3D view", A.layer3d, 33); y += 30;
-			ABtn *w = new ABtn (12, height - 40, width - 24, 28, "Write the print file...", CMD_PR_FILE, true); w->bg = panel_col (); w->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (w);
+			check (y, TR ("Show it in the 3D view"), A.layer3d, 33); y += 30;
+			ABtn *w = new ABtn (12, height - 40, width - 24, 28, TR ("Write the print file..."), CMD_PR_FILE, true); w->bg = panel_col (); w->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (w);
 		}
 	}
 	// Print's own in the panel: whether it fits, the supports' sum, the layers' numbers and what was checked.
@@ -603,9 +603,9 @@ public:
 		{
 			const FdmJob &j = A.fjob; int y = prInfoY, n = (int) j.layers.size ();
 			auto row = [&] (const char *k, const char *v) { uk_text (canvas, 12, y, k, dim_col ()); uk_text (canvas, width - 12 - uk_tw (v), y, v, C_TEXT); y += 22; };
-			if (!A.fdmReady) { row ("Layers", j.err[0] ? "\xE2\x80\x94" : "..."); return; }
-			snprintf (t, sizeof t, "%d", n); row ("Layers", t); fmt (n * A.fdm.layer, a, 12); snprintf (t, sizeof t, "%s mm", a); row ("Height", t);
-			snprintf (t, sizeof t, "%.1f m", j.length / 1000); row ("Line drawn", t); snprintf (t, sizeof t, "%.2f m \xC2\xB7 %.1f cm\xC2\xB3", j.filament / 1000, j.volume / 1000); row ("Filament", t);
+			if (!A.fdmReady) { row (TR ("Layers"), j.err[0] ? "\xE2\x80\x94" : "..."); return; }
+			snprintf (t, sizeof t, "%d", n); row (TR ("Layers"), t); fmt (n * A.fdm.layer, a, 12); snprintf (t, sizeof t, TR ("%s mm"), a); row (TR ("Height"), t);
+			snprintf (t, sizeof t, "%.1f m", j.length / 1000); row (TR ("Line drawn"), t); snprintf (t, sizeof t, TR ("%.2f m \xC2\xB7 %.1f cm\xC2\xB3"), j.filament / 1000, j.volume / 1000); row (TR ("Filament"), t);
 			return;
 		}
 		if (prSumY >= 0)
@@ -615,35 +615,35 @@ public:
 			if (A.camPage == 0)
 			{
 				icon (canvas, fits ? I_CHECK : I_WARN, 20, prSumY + 12, 17, fits ? C_GREEN : 0x4A3A10, C_ACCENT, ic);
-				fmt (sz.x, a, 12); fmt (sz.y, b, 12); fmt (sz.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s: %s", a, b, c, fits ? "it fits" : "too large");
+				fmt (sz.x, a, 12); fmt (sz.y, b, 12); fmt (sz.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s: %s", a, b, c, fits ? TR ("it fits") : TR ("too large"));
 				uk_text (canvas, 44, prSumY + 6, t, fits ? 0x286E38 : 0x8A5A10);
-				snprintf (t, sizeof t, "%d layers of %.3g mm", (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / lh - 1e-6), lh); uk_text (canvas, 44, prSumY + 22, t, dim_col ());
+				snprintf (t, sizeof t, TR ("%d layers of %.3g mm"), (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / lh - 1e-6), lh); uk_text (canvas, 44, prSumY + 22, t, dim_col ());
 			}
 			else
 			{
 				bool floats = A.placedMesh.tris () && A.placedMesh.lo.z > s.resin.layer && s.tips.empty ();
 				icon (canvas, floats ? I_WARN : I_CHECK, 20, prSumY + 12, 17, floats ? 0x4A3A10 : C_GREEN, C_ACCENT, ic);
-				if (s.tips.empty ()) snprintf (t, sizeof t, floats ? "Nothing holds the body" : "No supports"); else snprintf (t, sizeof t, "%d pillars%s", (int) s.tips.size (), s.raft ? " \xC2\xB7 a raft" : "");
+				if (s.tips.empty ()) snprintf (t, sizeof t, floats ? TR ("Nothing holds the body") : TR ("No supports")); else snprintf (t, sizeof t, TR ("%d pillars%s"), (int) s.tips.size (), s.raft ? TR (" \xC2\xB7 a raft") : "");
 				uk_text (canvas, 44, prSumY + 6, t, floats ? 0x8A5A10 : 0x286E38);
-				uk_text (canvas, 44, prSumY + 22, floats ? "it is lifted off the plate" : A.placedMesh.tris () && A.placedMesh.lo.z < 0.3 ? "the body lies on the plate" : "click the body to add one", dim_col ());
+				uk_text (canvas, 44, prSumY + 22, floats ? TR ("it is lifted off the plate") : A.placedMesh.tris () && A.placedMesh.lo.z < 0.3 ? TR ("the body lies on the plate") : TR ("click the body to add one"), dim_col ());
 			}
 		}
 		if (prInfoY >= 0)
 		{
 			const PrintJob &j = A.pjob; int y = prInfoY, n = (int) j.file.layers.size (); bool ok = A.sliced;
 			auto row = [&] (const char *k, const char *v) { uk_text (canvas, 12, y, k, dim_col ()); uk_text (canvas, width - 12 - uk_tw (v), y, v, C_TEXT); y += 22; };
-			if (ok) snprintf (t, sizeof t, "%d", n); else snprintf (t, sizeof t, "%d of %d...", j.done, j.total); row ("Layers", t);
-			fmt (n * s.resin.layer, a, 12); snprintf (t, sizeof t, "%s mm", a); row ("Height", ok ? t : "\xE2\x80\x94");
-			snprintf (t, sizeof t, "%.1f ml", j.volume); row ("Resin", ok ? t : "\xE2\x80\x94");
-			int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (t, sizeof t, "%d h %02d", mn / 60, mn % 60); else snprintf (t, sizeof t, "%d min", mn); row ("Time", ok ? t : "\xE2\x80\x94");
-			y += 8; uk_text (canvas, 12, y, "Checked", C_TEXT, 2); y += 20;
+			if (ok) snprintf (t, sizeof t, "%d", n); else snprintf (t, sizeof t, TR ("%d of %d..."), j.done, j.total); row (TR ("Layers"), t);
+			fmt (n * s.resin.layer, a, 12); snprintf (t, sizeof t, TR ("%s mm"), a); row (TR ("Height"), ok ? t : "\xE2\x80\x94");
+			snprintf (t, sizeof t, TR ("%.1f ml"), j.volume); row (TR ("Resin"), ok ? t : "\xE2\x80\x94");
+			int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (t, sizeof t, "%d h %02d", mn / 60, mn % 60); else snprintf (t, sizeof t, TR ("%d min"), mn); row (TR ("Time"), ok ? t : "\xE2\x80\x94");
+			y += 8; uk_text (canvas, 12, y, TR ("Checked"), C_TEXT, 2); y += 20;
 			UkFaceScope fs (g_small);
 			auto chk = [&] (bool good, const char *txt) { icon (canvas, good ? I_CHECK : I_WARN, 12, y, 15, good ? C_GREEN : 0x4A3A10, C_ACCENT, pc); uk_text (canvas, 34, y + 1, txt, good ? C_TEXT : 0x8A5A10); y += 21; };
-			if (!ok) { uk_text (canvas, 12, y, j.err[0] ? j.err : "cutting the layers...", dim_col ()); return; }
-			chk (!j.tooLarge, j.tooLarge ? "It does not fit the printer" : "It fits the plate and the room");
-			chk (j.onPlate, j.onPlate ? "The first layers lie on the plate" : "Nothing lies on the plate");
-			if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, "%d part%s in mid-air (at %s mm)", j.islands, j.islands > 1 ? "s start" : " starts", a); chk (false, t); }
-			else chk (true, "Each layer rests on the last");
+			if (!ok) { uk_text (canvas, 12, y, j.err[0] ? j.err : TR ("cutting the layers..."), dim_col ()); return; }
+			chk (!j.tooLarge, j.tooLarge ? TR ("It does not fit the printer") : TR ("It fits the plate and the room"));
+			chk (j.onPlate, j.onPlate ? TR ("The first layers lie on the plate") : TR ("Nothing lies on the plate"));
+			if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, j.islands > 1 ? TR ("%d parts start in mid-air (at %s mm)") : TR ("%d part starts in mid-air (at %s mm)"), j.islands, a); chk (false, t); }
+			else chk (true, TR ("Each layer rests on the last"));
 		}
 	}
 	void camPages (int y)
@@ -653,80 +653,80 @@ public:
 		if (A.gen >= 1) { printPages (y); return; }
 		if (A.camPage == 0)
 		{
-			head (I_CAM_SETUP, "Setup", "the body, its stock");
+			head (I_CAM_SETUP, TR ("Setup"), TR ("the body, its stock"));
 			y = bodyProcess (y, c.body);
-			label (12, y, "Stock", UK_AUTO, 2); y += 20; seg2 (y, 0, "Around it", "Fixed size", c.fixed ? 1 : 0, 10); y += 32;
-			if (!c.fixed) { field (y, "Sides, more", &c.side, "mm", -1); y += 28; field (y, "Top, more", &c.top, "mm", -1); y += 28; field (y, "Under, more", &c.under, "mm", -1); y += 28; }
+			label (12, y, TR ("Stock"), UK_AUTO, 2); y += 20; seg2 (y, 0, TR ("Around it"), TR ("Fixed size"), c.fixed ? 1 : 0, 10); y += 32;
+			if (!c.fixed) { field (y, TR ("Sides, more"), &c.side, TR ("mm"), -1); y += 28; field (y, TR ("Top, more"), &c.top, TR ("mm"), -1); y += 28; field (y, TR ("Under, more"), &c.under, TR ("mm"), -1); y += 28; }
 			else
 			{
 				// (its size, then the body moved in it: from the middle, its underside on the stock's -- 0: there)
-				field (y, "Along X", &c.size.x, "mm", -1); y += 26; field (y, "Along Y", &c.size.y, "mm", -1); y += 26; field (y, "Height", &c.size.z, "mm", -1); y += 26;
-				field (y, "Moved, X", &c.off.x, "mm", -1); y += 26; field (y, "Moved, Y", &c.off.y, "mm", -1); y += 26; field (y, "Moved, Z", &c.off.z, "mm", -1); y += 28;
+				field (y, TR ("Along X"), &c.size.x, TR ("mm"), -1); y += 26; field (y, TR ("Along Y"), &c.size.y, TR ("mm"), -1); y += 26; field (y, TR ("Height"), &c.size.z, TR ("mm"), -1); y += 26;
+				field (y, TR ("Moved, X"), &c.off.x, TR ("mm"), -1); y += 26; field (y, TR ("Moved, Y"), &c.off.y, TR ("mm"), -1); y += 26; field (y, TR ("Moved, Z"), &c.off.z, TR ("mm"), -1); y += 28;
 			}
 			if (!c.fixed) { camSizeY = y; y += 22; }
-			label (12, y, "Origin", UK_AUTO, 2); y += 19; camOrgY = y; y += 64;
-			if (!c.fixed) { label (12, y, "Axes", UK_AUTO, 2); y += 20; }
-			static const char *const DIR[4] = { "right", "back", "left", "front" };
-			label (12, y + 5, "X goes"); Dropdown *d = new Dropdown (width - 12 - 96, y, 96, 26, DIR, 4, c.xdir & 3, onDrop);
-			snprintf (t, sizeof t, "Y goes %s; Z goes up.", DIR[(c.xdir + 1) & 3]);
+			label (12, y, TR ("Origin"), UK_AUTO, 2); y += 19; camOrgY = y; y += 64;
+			if (!c.fixed) { label (12, y, TR ("Axes"), UK_AUTO, 2); y += 20; }
+			static const char *const DIR[4] = { TR ("right"), TR ("back"), TR ("left"), TR ("front") };
+			label (12, y + 5, TR ("X goes")); Dropdown *d = new Dropdown (width - 12 - 96, y, 96, 26, DIR, 4, c.xdir & 3, onDrop);
+			snprintf (t, sizeof t, TR ("Y goes %s; Z goes up."), DIR[(c.xdir + 1) & 3]);
 			if (!c.fixed) { label (12, y + 31, t, dim_col (), 0, true); y += 52; } else y += 34;
-			if (!c.fixed) { label (12, y, "Heights above the stock", UK_AUTO, 2); y += 20; }
-			field (y, c.fixed ? "Safe, above" : "Safe", &c.safe, "mm", -1); y += 28; field (y, c.fixed ? "Retract, above" : "Retract", &c.retract, "mm", -1);
+			if (!c.fixed) { label (12, y, TR ("Heights above the stock"), UK_AUTO, 2); y += 20; }
+			field (y, c.fixed ? TR ("Safe, above") : TR ("Safe"), &c.safe, TR ("mm"), -1); y += 28; field (y, c.fixed ? TR ("Retract, above") : TR ("Retract"), &c.retract, TR ("mm"), -1);
 			addChild (d);					// (last: its list opens over what is under it)
 		}
 		else if (A.camPage == 1)
 		{
-			head (I_CAM_TOOL, "Tool", "a flat end mill");
-			label (12, y, "Tool", UK_AUTO, 2); y += 20;
-			label (12, y + 5, "Name"); Textbox *n = new Textbox (width - 12 - 146, y, 146, 26, c.tool.name); n->maxLen = 22; n->changed = onChanged; addChild (n);
+			head (I_CAM_TOOL, TR ("Tool"), TR ("a flat end mill"));
+			label (12, y, TR ("Tool"), UK_AUTO, 2); y += 20;
+			label (12, y + 5, TR ("Name")); Textbox *n = new Textbox (width - 12 - 146, y, 146, 26, c.tool.name); n->maxLen = 22; n->changed = onChanged; addChild (n);
 			{ Bind q = { n, 0, -1, false, c.tool.name }; b[nb++] = q; } y += 29;
-			field (y, "Diameter", &c.tool.dia, "mm", -1); y += 28; field (y, "Cutting length", &c.tool.flute, "mm", -1); y += 28;
-			field (y, "Spindle", &c.tool.rpm, "rpm", -1); y += 28; field (y, "Cutting feed", &c.tool.feed, "/min", -1); y += 28;
-			field (y, "Plunge feed", &c.tool.plunge, "/min", -1); y += 28; field (y, "Travel", &c.tool.travel, "/min", -1); y += 36;
-			label (12, y, "Machine", UK_AUTO, 2); y += 20;
-			label (12, y + 5, "Name"); Textbox *m = new Textbox (width - 12 - 146, y, 146, 26, c.machine.name); m->maxLen = 22; m->changed = onChanged; addChild (m);
+			field (y, TR ("Diameter"), &c.tool.dia, TR ("mm"), -1); y += 28; field (y, TR ("Cutting length"), &c.tool.flute, TR ("mm"), -1); y += 28;
+			field (y, TR ("Spindle"), &c.tool.rpm, TR ("rpm"), -1); y += 28; field (y, TR ("Cutting feed"), &c.tool.feed, TR ("/min"), -1); y += 28;
+			field (y, TR ("Plunge feed"), &c.tool.plunge, TR ("/min"), -1); y += 28; field (y, TR ("Travel"), &c.tool.travel, TR ("/min"), -1); y += 36;
+			label (12, y, TR ("Machine"), UK_AUTO, 2); y += 20;
+			label (12, y + 5, TR ("Name")); Textbox *m = new Textbox (width - 12 - 146, y, 146, 26, c.machine.name); m->maxLen = 22; m->changed = onChanged; addChild (m);
 			{ Bind q = { m, 0, -1, false, c.machine.name }; b[nb++] = q; } y += 29;
-			field (y, "Travel X", &c.machine.tx, "mm", -1); y += 28; field (y, "Travel Y", &c.machine.ty, "mm", -1); y += 28; field (y, "Travel Z", &c.machine.tz, "mm", -1); y += 28;
-			field (y, "Spindle, most", &c.machine.rpmMax, "rpm", -1); y += 28; field (y, "Spindle's wait", &c.machine.dwell, "s", -1);
+			field (y, TR ("Travel X"), &c.machine.tx, TR ("mm"), -1); y += 28; field (y, TR ("Travel Y"), &c.machine.ty, TR ("mm"), -1); y += 28; field (y, TR ("Travel Z"), &c.machine.tz, TR ("mm"), -1); y += 28;
+			field (y, TR ("Spindle, most"), &c.machine.rpmMax, TR ("rpm"), -1); y += 28; field (y, TR ("Spindle's wait"), &c.machine.dwell, "s", -1);
 		}
 		else if (op)
 		{
 			bool clear = op->kind == CAM_CLEAR;
-			head (clear ? I_CAM_CLEAR : I_CAM_CONTOUR, op->name, clear ? "roughing, by levels" : "the outline, to depth");
-			seg2 (y, "On", "The body", "A face", op->useFace ? 1 : 0, 11); y += 30;
+			head (clear ? I_CAM_CLEAR : I_CAM_CONTOUR, op->name, clear ? TR ("roughing, by levels") : TR ("the outline, to depth"));
+			seg2 (y, TR ("On"), TR ("The body"), TR ("A face"), op->useFace ? 1 : 0, 11); y += 30;
 			if (op->useFace)
 			{
 				const Body *b = A.doc.body (c.body); int g = b ? cam_face (b->mesh, op->facePt) : -1; char a[24]; fmt (op->facePt.z, a, 12);
-				if (g >= 0) snprintf (t, sizeof t, "the face at height %s", a); else snprintf (t, sizeof t, "click a flat face turned up");
+				if (g >= 0) snprintf (t, sizeof t, TR ("the face at height %s"), a); else snprintf (t, sizeof t, TR ("click a flat face turned up"));
 				label (12, y, t, g >= 0 ? dim_col () : 0xB03A30, 0, true); y += 20;
 			}
 			else y += 4;
 			if (clear)
 			{
-				field (y, "Step over", &op->stepover, "mm", -1); y += 28; field (y, "Step down", &op->stepdown, "mm", -1); y += 28;
-				field (y, "Left on walls", &op->leaveR, "mm", -1); y += 28; field (y, "Left on floors", &op->leaveZ, "mm", -1); y += 32;
-				seg2 (y, "Cut", "Climb", "Convent.", op->climb ? 0 : 1, 12); y += 34;
+				field (y, TR ("Step over"), &op->stepover, TR ("mm"), -1); y += 28; field (y, TR ("Step down"), &op->stepdown, TR ("mm"), -1); y += 28;
+				field (y, TR ("Left on walls"), &op->leaveR, TR ("mm"), -1); y += 28; field (y, TR ("Left on floors"), &op->leaveZ, TR ("mm"), -1); y += 32;
+				seg2 (y, TR ("Cut"), TR ("Climb"), TR ("Convent."), op->climb ? 0 : 1, 12); y += 34;
 				if (!op->useFace)
 				{
-					check (y, "To the lowest flat face", op->lowestAuto, 20); y += 26;
-					if (!op->lowestAuto) { field (y, "Lowest (model Z)", &op->lowest, "mm", -1); y += 30; }
+					check (y, TR ("To the lowest flat face"), op->lowestAuto, 20); y += 26;
+					if (!op->lowestAuto) { field (y, TR ("Lowest (model Z)"), &op->lowest, TR ("mm"), -1); y += 30; }
 				}
 			}
 			else
 			{
-				seg2 (y, "Side", "Outside", "Inside", op->inside ? 1 : 0, 13); y += 32; seg2 (y, "Cut", "Climb", "Convent.", op->climb ? 0 : 1, 12); y += 34;
-				field (y, "Step down", &op->stepdown, "mm", -1); y += 30;
-				check (y, "From the stock's top", op->fromAuto, 21); y += 26;
-				if (!op->fromAuto) { field (y, "From (model Z)", &op->from, "mm", -1); y += 30; }
+				seg2 (y, TR ("Side"), TR ("Outside"), TR ("Inside"), op->inside ? 1 : 0, 13); y += 32; seg2 (y, TR ("Cut"), TR ("Climb"), TR ("Convent."), op->climb ? 0 : 1, 12); y += 34;
+				field (y, TR ("Step down"), &op->stepdown, TR ("mm"), -1); y += 30;
+				check (y, TR ("From the stock's top"), op->fromAuto, 21); y += 26;
+				if (!op->fromAuto) { field (y, TR ("From (model Z)"), &op->from, TR ("mm"), -1); y += 30; }
 				if (!op->useFace)
 				{
-					field (y, "Under it, by", &op->under, "mm", -1); y += 32;
-					check (y, "Tabs", op->tabs, 22); y += 26;
-					if (op->tabs) { field (y, "How many", &op->ntabs, 0, -1); y += 28; field (y, "Width", &op->tabw, "mm", -1); y += 28; field (y, "Height", &op->tabh, "mm", -1); y += 30; }
+					field (y, TR ("Under it, by"), &op->under, TR ("mm"), -1); y += 32;
+					check (y, TR ("Tabs"), op->tabs, 22); y += 26;
+					if (op->tabs) { field (y, TR ("How many"), &op->ntabs, 0, -1); y += 28; field (y, TR ("Width"), &op->tabw, TR ("mm"), -1); y += 28; field (y, TR ("Height"), &op->tabh, TR ("mm"), -1); y += 30; }
 				}
 			}
 			camSumY = y + 4;
-			ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this operation", CMD_CAM_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
+			ABtn *d = new ABtn (12, height - 40, width - 24, 28, TR ("Delete this operation"), CMD_CAM_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
 		}
 	}
 	static void onCheck (Widget &w)
@@ -774,7 +774,7 @@ public:
 		if (w.tag == 3) { A.skPlane = s.selected; ui (R_ALL); }
 		if (w.tag == 16 && p->canvasPage ()) { A.doc.canvases[A.selCanvas].plane = s.selected; A.doc.changes++; if (g_view) g_view->invalidate (true); ui (R_ALL); }
 		if (w.tag == 10) { A.job.fixed = s.selected == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_touch (); ui (R_ALL); }
-		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_touch (); if (s.selected == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
+		if (w.tag == 11 && cam_op ()) { cam_op ()->useFace = s.selected == 1; cam_touch (); if (s.selected == 1) set_hint (TR ("Click the flat face, turned up, to work on.")); ui (R_ALL); }
 		if (w.tag == 12 && cam_op ()) { cam_op ()->climb = s.selected == 0; cam_touch (); }
 		if (w.tag == 13 && cam_op ()) { cam_op ()->inside = s.selected == 1; cam_touch (); }
 	}
@@ -791,9 +791,9 @@ public:
 		return tb;
 	}
 	void check (int y, const char *s, bool on, int tag) { Checkbox *c = new Checkbox (12, y, width - 24, 20, s, on, onCheck, panel_col ()); c->tag = tag; addChild (c); }
-	void okCancel (const char *ok = "OK")
+	void okCancel (const char *ok = TR ("OK"))
 	{
-		ABtn *c = new ABtn (12, height - 40, 90, 28, "Cancel", CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
+		ABtn *c = new ABtn (12, height - 40, 90, 28, TR ("Cancel"), CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
 		ABtn *o = new ABtn (width - 102, height - 40, 90, 28, ok, CMD_OK, true); o->bg = panel_col (); o->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (o);
 	}
 	void head (int ic, const char *t, const char *s0 = 0, const char *s1 = 0, int at = -1)
@@ -806,72 +806,72 @@ public:
 		{
 		case F_BOX:
 		{
-			Textbox *w = field (y, "Width", &f.w, "mm", 0, true); y += 32; field (y, "Depth", &f.d, "mm", 1, true); y += 32;
-			Textbox *h = field (y, "Height", &f.h, "mm", 2, true); y += 44;
+			Textbox *w = field (y, TR ("Width"), &f.w, TR ("mm"), 0, true); y += 32; field (y, TR ("Depth"), &f.d, TR ("mm"), 1, true); y += 32;
+			Textbox *h = field (y, TR ("Height"), &f.h, TR ("mm"), 2, true); y += 44;
 			if (making) (A.step == 2 ? h : w)->setFocus ();
 			y -= 12; break;
 		}
 		case F_CYL:
 		{
-			Textbox *d = field (y, "Diameter", &f.w, "mm", 0); y += 32; Textbox *h = field (y, f.h < 0 || f.through ? "Depth" : "Height", &f.h, "mm", 1, true); y += 34;
+			Textbox *d = field (y, TR ("Diameter"), &f.w, TR ("mm"), 0); y += 32; Textbox *h = field (y, f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true); y += 34;
 			if (making) (A.step == 2 ? h : d)->setFocus ();
-			check (y, "Through the whole body", f.through, 2); y += 26; break;
+			check (y, TR ("Through the whole body"), f.through, 2); y += 26; break;
 		}
 		case F_PYRAMID: case F_PRISM: case F_TAPER:
 		{
-			Textbox *n = field (y, "Sides", &f.n, 0, -1); y += 32;
-			Textbox *d = field (y, "Base radius", &f.w, "mm", 0); y += 32; Textbox *top = 0;
-			if (f.kind == F_TAPER) { top = field (y, "Top radius", &f.d, "mm", 2); y += 32; }
-			Textbox *h = field (y, "Height", &f.h, "mm", 1, true); y += 32;
+			Textbox *n = field (y, TR ("Sides"), &f.n, 0, -1); y += 32;
+			Textbox *d = field (y, TR ("Base radius"), &f.w, TR ("mm"), 0); y += 32; Textbox *top = 0;
+			if (f.kind == F_TAPER) { top = field (y, TR ("Top radius"), &f.d, TR ("mm"), 2); y += 32; }
+			Textbox *h = field (y, TR ("Height"), &f.h, TR ("mm"), 1, true); y += 32;
 			// (the field of what is being set has the keyboard: the sides first, Tab for the radius)
 			if (making) { Textbox *t = A.step <= 1 ? n : A.step == 2 && top ? top : h; t->setFocus (); t->caret = (int) strlen (t->text); (void) d; }
 			break;
 		}
-		case F_SPHERE: { Textbox *r = field (y, "Radius", &f.w, "mm", 0); y += 32; if (making) r->setFocus (); break; }
+		case F_SPHERE: { Textbox *r = field (y, TR ("Radius"), &f.w, TR ("mm"), 0); y += 32; if (making) r->setFocus (); break; }
 		case F_TORUS:
 		{
-			Textbox *r = field (y, "Ring radius", &f.w, "mm", 0); y += 32; Textbox *t = field (y, "Tube radius", &f.d, "mm", 1); y += 32;
+			Textbox *r = field (y, TR ("Ring radius"), &f.w, TR ("mm"), 0); y += 32; Textbox *t = field (y, TR ("Tube radius"), &f.d, TR ("mm"), 1); y += 32;
 			if (making) (A.step == 2 ? t : r)->setFocus ();
 			break;
 		}
 		case F_EXTRUDE:
 		{
-			Textbox *h = field (y, f.h < 0 || f.through ? "Depth" : "Height", &f.h, "mm", 1, true); y += 34; if (making) h->setFocus ();
-			check (y, "Through the whole body", f.through, 2); y += 34; break;
+			Textbox *h = field (y, f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true); y += 34; if (making) h->setFocus ();
+			check (y, TR ("Through the whole body"), f.through, 2); y += 34; break;
 		}
 		case F_FILLET: case F_CHAMFER:
 		{
-			static const char *const FC[] = { "Fillet", "Chamfer" };
+			static const char *const FC[] = { TR ("Fillet"), TR ("Chamfer") };
 			if (making) { SegmentedControl *s = new SegmentedControl (12, y, width - 24, 28, FC, 2, f.kind == F_FILLET ? 0 : 1, onSeg); s->tag = 1; addChild (s); y += 40; }
-			Textbox *r = field (y, f.kind == F_FILLET ? "Radius" : "Size", &f.r, "mm", 0); y += 42; if (making) r->setFocus ();
-			char t[48]; label (12, y, "Edges", UK_AUTO, 2); snprintf (t, sizeof t, "%d chosen", (int) f.edges.size ()); label (width - 12 - 70, y + 2, t, dim_col (), 0, true); y += 24;
-			if (f.edges.empty ()) label (12, y, "Click an edge of a body", dim_col (), 0, true);
-			else { Body *b = A.doc.body (f.target); snprintf (t, sizeof t, "on %s", body_name (f.target)); label (12, y, t, dim_col (), 0, true); (void) b; }
+			Textbox *r = field (y, f.kind == F_FILLET ? TR ("Radius") : TR ("Size"), &f.r, TR ("mm"), 0); y += 42; if (making) r->setFocus ();
+			char t[48]; label (12, y, TR ("Edges"), UK_AUTO, 2); snprintf (t, sizeof t, TR ("%d chosen"), (int) f.edges.size ()); label (width - 12 - 70, y + 2, t, dim_col (), 0, true); y += 24;
+			if (f.edges.empty ()) label (12, y, TR ("Click an edge of a body"), dim_col (), 0, true);
+			else { Body *b = A.doc.body (f.target); snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); label (12, y, t, dim_col (), 0, true); (void) b; }
 			y += 30;
-			if (making) { infoY = y; info[0] = "Straight edges, circles and"; info[1] = "arcs can be rounded; the"; info[2] = "others show in grey."; info[3] = 0; y += 70; }
+			if (making) { infoY = y; info[0] = TR ("Straight edges, circles and"); info[1] = TR ("arcs can be rounded; the"); info[2] = TR ("others show in grey."); info[3] = 0; y += 70; }
 			break;
 		}
 		case F_MOVE:
 		{
-			y -= 4; label (12, y, "Move", UK_AUTO, 2); y += 20;
-			Textbox *x = field (y, "Along X", &f.mv.x, "mm", 0); y += 29; field (y, "Along Y", &f.mv.y, "mm", 1); y += 29; field (y, "Along Z", &f.mv.z, "mm", 2); y += 34;
-			label (12, y, "Turn, about its centre", UK_AUTO, 2); y += 20;
-			field (y, "Around X", &f.rot.x, "\xC2\xB0", -1); y += 29; field (y, "Around Y", &f.rot.y, "\xC2\xB0", -1); y += 29; field (y, "Around Z", &f.rot.z, "\xC2\xB0", -1); y += 34;
-			label (12, y, "Scale (1: as it is)", UK_AUTO, 2); y += 20;
-			field (y, "Along X", &f.sc.x, "\xC3\x97", -1); y += 29; field (y, "Along Y", &f.sc.y, "\xC3\x97", -1); y += 29; field (y, "Along Z", &f.sc.z, "\xC3\x97", -1); y += 32;
-			check (y, "Clone: the original stays", f.clone, 8); y += 28;
+			y -= 4; label (12, y, TR ("Move"), UK_AUTO, 2); y += 20;
+			Textbox *x = field (y, TR ("Along X"), &f.mv.x, TR ("mm"), 0); y += 29; field (y, TR ("Along Y"), &f.mv.y, TR ("mm"), 1); y += 29; field (y, TR ("Along Z"), &f.mv.z, TR ("mm"), 2); y += 34;
+			label (12, y, TR ("Turn, about its centre"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Around X"), &f.rot.x, "\xC2\xB0", -1); y += 29; field (y, TR ("Around Y"), &f.rot.y, "\xC2\xB0", -1); y += 29; field (y, TR ("Around Z"), &f.rot.z, "\xC2\xB0", -1); y += 34;
+			label (12, y, TR ("Scale (1: as it is)"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Along X"), &f.sc.x, "\xC3\x97", -1); y += 29; field (y, TR ("Along Y"), &f.sc.y, "\xC3\x97", -1); y += 29; field (y, TR ("Along Z"), &f.sc.z, "\xC3\x97", -1); y += 32;
+			check (y, TR ("Clone: the original stays"), f.clone, 8); y += 28;
 			if (making && A.step == 1) x->setFocus ();
 			break;
 		}
-		case F_COMBINE: { char t[64]; snprintf (t, sizeof t, "%s, with another body", OP_NAME[f.op]); label (12, y, t, dim_col ()); y += 30; break; }
+		case F_COMBINE: { char t[64]; snprintf (t, sizeof t, TR ("%s, with another body"), TR (OP_NAME[f.op])); label (12, y, t, dim_col ()); y += 30; break; }
 		case F_SKETCH: { char t[64]; describe (A.doc, f, t, sizeof t); label (12, y, t, dim_col ()); y += 30; break; }
 		}
 		if (makes_solid (f.kind) && f.kind != F_EXTRUDE)		// where it is, on its plane
 		{
-			y += 4; field (y, f.kind == F_BOX && !f.centred ? "Corner X" : "Centre X", &f.x, "mm", -1); y += 28; field (y, "Y", &f.y, "mm", -1); y += 28;
+			y += 4; field (y, f.kind == F_BOX && !f.centred ? TR ("Corner X") : TR ("Centre X"), &f.x, TR ("mm"), -1); y += 28; field (y, "Y", &f.y, TR ("mm"), -1); y += 28;
 			// (off its plane: up from the ground, out of the face it was put on -- less than 0: sunk into it)
-			field (y, f.target >= 0 ? "Off the face" : f.pl.n.z > 0.9999 && fabs (f.pl.o.z) < 1e-9 ? "Z" : "Off the plane", &f.z, "mm", -1); y += 28;
-			if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) { field (y, "Turned", &f.turn, "\xC2\xB0", 3); y += 28; }
+			field (y, f.target >= 0 ? TR ("Off the face") : f.pl.n.z > 0.9999 && fabs (f.pl.o.z) < 1e-9 ? "Z" : TR ("Off the plane"), &f.z, TR ("mm"), -1); y += 28;
+			if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) { field (y, TR ("Turned"), &f.turn, "\xC2\xB0", 3); y += 28; }
 			y += 6;
 		}
 		if (makes_solid (f.kind))
@@ -879,10 +879,10 @@ public:
 			opY = y; y += 20 + 4 * 28 + 6 + 12;
 			if (f.op != OP_NEW && A.doc.body (f.target))
 			{
-				label (12, y + 2, f.op == OP_UNION ? "Joined to" : f.op == OP_SUB ? "Cut from" : "Kept inside", dim_col ());
+				label (12, y + 2, f.op == OP_UNION ? TR ("Joined to") : f.op == OP_SUB ? TR ("Cut from") : TR ("Kept inside"), dim_col ());
 				label (width - 12 - 92, y + 2, body_name (f.target)); swY = -(y + 1); y += 30;
 			}
-			if (f.kind == F_BOX) { check (y, "Centred on the first click", f.centred, 1); y += 28; }
+			if (f.kind == F_BOX) { check (y, TR ("Centred on the first click"), f.centred, 1); y += 28; }
 		}
 		return y;
 	}
@@ -895,68 +895,68 @@ public:
 		if (A.camMode) camPages (y);
 		else if (A.sketching)
 		{
-			static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
+			static const char *const EN[] = { TR ("Line"), TR ("Arc"), TR ("Circle"), TR ("Rectangle"), TR ("Close"), TR ("Spline"), TR ("Point") };
 			static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE, I_SPLINE, I_POINT };
 			bool edit = A.selEl >= 0 && A.selEl < (int) A.sk.els.size ();
 			SkEl &e = edit ? A.sk.els[A.selEl] : A.cur; el = &e;
-			if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, "3-point arc", "Ends", "Middle", A.curStep < 2 ? 0 : 1);
-			else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], "Arc", "Centre", "End", A.curStep < 2 ? 0 : 1);
-			else if (e.kind == SK_ARC && !edit) head (EI[e.kind], "Arc", "Centre", "Start \xC2\xB7 End", A.curStep == 0 ? 0 : 1);
-			else head (EI[e.kind], EN[e.kind], edit ? "selected" : 0);
+			if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, TR ("3-point arc"), TR ("Ends"), TR ("Middle"), A.curStep < 2 ? 0 : 1);
+			else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("End"), A.curStep < 2 ? 0 : 1);
+			else if (e.kind == SK_ARC && !edit) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("Start \xC2\xB7 End"), A.curStep == 0 ? 0 : 1);
+			else head (EI[e.kind], EN[e.kind], edit ? TR ("selected") : 0);
 			bool chained = e.chain;
-			const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? "Centre X"
-					 : e.kind == SK_RECT ? "Corner X" : e.kind == SK_POINT ? "At X" : "Starts at X";
-			if (e.kind != SK_CLOSE && !chained) { field (y, xn, &e.x, "mm", -1, false, 96); y += 32; field (y, "Y", &e.y, "mm", -1, false, 96); y += 32; }
-			else if (e.kind != SK_CLOSE) { label (12, y + 5, "Starts at"); label (width - 12 - 118, y + 5, "the end before", 0x2862B0); y += 32; }
+			const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? TR ("Centre X")
+					 : e.kind == SK_RECT ? TR ("Corner X") : e.kind == SK_POINT ? TR ("At X") : TR ("Starts at X");
+			if (e.kind != SK_CLOSE && !chained) { field (y, xn, &e.x, TR ("mm"), -1, false, 96); y += 32; field (y, "Y", &e.y, TR ("mm"), -1, false, 96); y += 32; }
+			else if (e.kind != SK_CLOSE) { label (12, y + 5, TR ("Starts at")); label (width - 12 - 118, y + 5, TR ("the end before"), 0x2862B0); y += 32; }
 			Textbox *first = 0;
-			if (e.kind == SK_LINE) { first = field (y, "Length", &e.len, "mm", 0); y += 32; field (y, "Angle", &e.a, "\xC2\xB0", 1); y += 34; if (chained) { check (y, "From the line before", e.rel, 7); y += 28; } }
+			if (e.kind == SK_LINE) { first = field (y, TR ("Length"), &e.len, TR ("mm"), 0); y += 32; field (y, TR ("Angle"), &e.a, "\xC2\xB0", 1); y += 34; if (chained) { check (y, TR ("From the line before"), e.rel, 7); y += 28; } }
 			else if (e.kind == SK_ARC)
 			{
-				first = field (y, "Radius", &e.r, "mm", 0); y += 32; field (y, "Centre at", &e.ca, "\xC2\xB0", -1); y += 32; Textbox *sw = field (y, "Angle", &e.sweep, "\xC2\xB0", 1); y += 30;
+				first = field (y, TR ("Radius"), &e.r, TR ("mm"), 0); y += 32; field (y, TR ("Centre at"), &e.ca, "\xC2\xB0", -1); y += 32; Textbox *sw = field (y, TR ("Angle"), &e.sweep, "\xC2\xB0", 1); y += 30;
 				if (!edit && A.curStep == 2 && A.tool != T_ARC3) first = sw;
-				label (12, y, "+ clockwise, \xE2\x88\x92 anticlockwise", dim_col (), 0, true); y += 26;
+				label (12, y, TR ("+ clockwise, \xE2\x88\x92 anticlockwise"), dim_col (), 0, true); y += 26;
 			}
 			else if (e.kind == SK_SPLINE)
 			{
-				snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + (edit ? 1 : 0)); label (12, y + 2, t); y += 24;
-				if (!edit) { label (12, y, "Enter, or the last point clicked", dim_col (), 0, true); y += 15; label (12, y, "again, ends it.", dim_col (), 0, true); y += 15; }
+				snprintf (t, sizeof t, TR ("through %d points"), (int) e.pts.size () + (edit ? 1 : 0)); label (12, y + 2, t); y += 24;
+				if (!edit) { label (12, y, TR ("Enter, or the last point clicked"), dim_col (), 0, true); y += 15; label (12, y, TR ("again, ends it."), dim_col (), 0, true); y += 15; }
 				y += 12;
 			}
-			else if (e.kind == SK_POINT) { label (12, y, "A mark to snap to: it is part", dim_col (), 0, true); y += 15; label (12, y, "of no outline.", dim_col (), 0, true); y += 27; }
-			else if (e.kind == SK_CIRCLE) { first = field (y, "Diameter", &e.w, "mm", 0); y += 40; }
+			else if (e.kind == SK_POINT) { label (12, y, TR ("A mark to snap to: it is part"), dim_col (), 0, true); y += 15; label (12, y, TR ("of no outline."), dim_col (), 0, true); y += 27; }
+			else if (e.kind == SK_CIRCLE) { first = field (y, TR ("Diameter"), &e.w, TR ("mm"), 0); y += 40; }
 			else if (e.kind == SK_RECT)
 			{
-				first = field (y, "Width", &e.w, "mm", 0); y += 32; field (y, "Height", &e.h, "mm", 1); y += 36;
-				static const char *const RC[] = { "Corner", "Centre" };
-				label (12, y + 5, "From its"); SegmentedControl *s = new SegmentedControl (width - 12 - 132, y, 132, 26, RC, 2, e.rel ? 1 : 0, onSeg); s->tag = 14; addChild (s); y += 40;
+				first = field (y, TR ("Width"), &e.w, TR ("mm"), 0); y += 32; field (y, TR ("Height"), &e.h, TR ("mm"), 1); y += 36;
+				static const char *const RC[] = { TR ("Corner"), TR ("Centre") };
+				label (12, y + 5, TR ("From its")); SegmentedControl *s = new SegmentedControl (width - 12 - 132, y, 132, 26, RC, 2, e.rel ? 1 : 0, onSeg); s->tag = 14; addChild (s); y += 40;
 			}
 			if (first && !edit && A.curStep > 0) first->setFocus ();
-			check (y, "Snap to points and angles", A.snap, 3); y += 38;
-			infoY = y; info[0] = "Each element starts from a"; info[1] = "point and keeps its own values."; info[2] = "Change one: what was drawn"; info[3] = "after it follows.";
-			if (edit) { ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this element", CMD_DEL_ELEMENT); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }
+			check (y, TR ("Snap to points and angles"), A.snap, 3); y += 38;
+			infoY = y; info[0] = TR ("Each element starts from a"); info[1] = TR ("point and keeps its own values."); info[2] = TR ("Change one: what was drawn"); info[3] = TR ("after it follows.");
+			if (edit) { ABtn *d = new ABtn (12, height - 40, width - 24, 28, TR ("Delete this element"), CMD_DEL_ELEMENT); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }
 		}
 		else if (A.tool == T_SKETCH)			// where the sketch goes: a face clicked, or a plane of the axes
 		{
-			head (I_SKETCH, "Sketch", "its plane");
-			label (12, y, "Click a flat face of a body,", dim_col (), 0, true); label (12, y + 16, "or draw on a plane of the axes:", dim_col (), 0, true); y += 42;
+			head (I_SKETCH, TR ("Sketch"), TR ("its plane"));
+			label (12, y, TR ("Click a flat face of a body,"), dim_col (), 0, true); label (12, y + 16, TR ("or draw on a plane of the axes:"), dim_col (), 0, true); y += 42;
 			static const char *const PL[] = { "XY", "XZ", "YZ" };
-			label (12, y + 5, "Plane"); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, A.skPlane, onSeg); s->tag = 3; addChild (s); y += 38;
-			Textbox *o = field (y, "Offset", &A.skOffset, "mm", -1); o->setFocus (); y += 34;
-			label (12, y, A.skPlane == 0 ? "XY: the ground, seen from above;" : A.skPlane == 1 ? "XZ: upright, seen from the front;" : "YZ: upright, seen from the right;", dim_col (), 0, true);
-			label (12, y + 16, A.skPlane == 0 ? "the offset is its height (Z)." : A.skPlane == 1 ? "the offset is along Y." : "the offset is along X.", dim_col (), 0, true); y += 46;
-			ABtn *b = new ABtn (12, y, width - 24, 28, "Start the sketch", CMD_SK_START, true); b->bg = panel_col (); addChild (b);
-			ABtn *c = new ABtn (12, height - 40, 90, 28, "Cancel", CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
+			label (12, y + 5, TR ("Plane")); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, A.skPlane, onSeg); s->tag = 3; addChild (s); y += 38;
+			Textbox *o = field (y, TR ("Offset"), &A.skOffset, TR ("mm"), -1); o->setFocus (); y += 34;
+			label (12, y, A.skPlane == 0 ? TR ("XY: the ground, seen from above;") : A.skPlane == 1 ? TR ("XZ: upright, seen from the front;") : TR ("YZ: upright, seen from the right;"), dim_col (), 0, true);
+			label (12, y + 16, A.skPlane == 0 ? TR ("the offset is its height (Z).") : A.skPlane == 1 ? TR ("the offset is along Y.") : TR ("the offset is along X."), dim_col (), 0, true); y += 46;
+			ABtn *b = new ABtn (12, y, width - 24, 28, TR ("Start the sketch"), CMD_SK_START, true); b->bg = panel_col (); addChild (b);
+			ABtn *c = new ABtn (12, height - 40, 90, 28, TR ("Cancel"), CMD_CANCEL); c->bg = panel_col (); c->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (c);
 		}
 		else if (A.hasPend)
 		{
 			Feature &f = A.pend; feat = 0;
-			snprintf (t, sizeof t, "%s %d", KIND_NAME[f.kind], A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
-			if (f.kind == F_BOX) head (I_BOX, t, "Base", "Height", A.step == 2 ? 1 : 0);
-			else if (f.kind == F_CYL) head (I_CYL, t, "Circle", "Depth", A.step == 2 ? 1 : 0);
-			else if (f.kind == F_TORUS) head (I_TORUS, t, "Ring", "Tube", A.step == 2 ? 1 : 0);
-			else if (f.kind == F_SPHERE) head (I_SPHERE, t, "Radius");
-			else if (f.kind == F_TAPER) head (I_TAPER, t, "Base", "Top \xC2\xB7 Height", A.step >= 2 ? 1 : 0);
-			else if (round_kind (f.kind)) head (icon_of_kind (f.kind), t, "Base", "Height", A.step == 2 ? 1 : 0);
+			snprintf (t, sizeof t, "%s %d", TR (KIND_NAME[f.kind]), A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
+			if (f.kind == F_BOX) head (I_BOX, t, TR ("Base"), TR ("Height"), A.step == 2 ? 1 : 0);
+			else if (f.kind == F_CYL) head (I_CYL, t, TR ("Circle"), TR ("Depth"), A.step == 2 ? 1 : 0);
+			else if (f.kind == F_TORUS) head (I_TORUS, t, TR ("Ring"), TR ("Tube"), A.step == 2 ? 1 : 0);
+			else if (f.kind == F_SPHERE) head (I_SPHERE, t, TR ("Radius"));
+			else if (f.kind == F_TAPER) head (I_TAPER, t, TR ("Base"), TR ("Top \xC2\xB7 Height"), A.step >= 2 ? 1 : 0);
+			else if (round_kind (f.kind)) head (icon_of_kind (f.kind), t, TR ("Base"), TR ("Height"), A.step == 2 ? 1 : 0);
 			else head (icon_of_kind (f.kind), t);
 			featureFields (f, y, true);
 			okCancel ();
@@ -964,63 +964,63 @@ public:
 		else if (canvasPage ())			// a canvas: a picture on a plane, to draw over
 		{
 			Canvas3 &c = A.doc.canvases[A.selCanvas]; char a[24], d[24];
-			head (I_SKETCH, c.name, "a canvas, to draw over");
-			label (12, y + 5, "Name"); Textbox *tb = new Textbox (width - 12 - 122, y, 122, 26, c.name); tb->maxLen = 22; tb->changed = onChanged; addChild (tb);
+			head (I_SKETCH, c.name, TR ("a canvas, to draw over"));
+			label (12, y + 5, TR ("Name")); Textbox *tb = new Textbox (width - 12 - 122, y, 122, 26, c.name); tb->maxLen = 22; tb->changed = onChanged; addChild (tb);
 			{ Bind q = { tb, 0, -1, false, c.name }; b[nb++] = q; } y += 34;
 			static const char *const PL[] = { "XY", "XZ", "YZ" };
-			label (12, y + 5, "Plane"); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, c.plane, onSeg); s->tag = 16; addChild (s); y += 36;
-			field (y, c.plane == 0 ? "Height (Z)" : c.plane == 1 ? "Along Y" : "Along X", &c.off, "mm", -1); y += 34;
-			label (12, y, "On its plane", UK_AUTO, 2); y += 20;
-			field (y, "X", &c.x, "mm", -1); y += 28; field (y, "Y", &c.y, "mm", -1); y += 28; field (y, "Width", &c.w, "mm", -1); y += 28; field (y, "Turned", &c.turn, "\xC2\xB0", -1); y += 30;
-			fmt (c.w, a, 12); fmt (c.w * c.aspect, d, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s mm", a, d); label (12, y, "Its size follows its width.", dim_col (), 0, true); y += 24;
-			label (12, y, "Seen", UK_AUTO, 2); y += 20;
-			field (y, "Opacity", &c.opacity, "%", -1); y += 30; check (y, "Shown", c.visible, 34); y += 30;
-			label (12, y, "Drag it in the view to move it,", dim_col (), 0, true); y += 15; label (12, y, "a corner to size it.", dim_col (), 0, true);
-			ABtn *dl = new ABtn (12, height - 40, width - 24, 28, "Remove this canvas", CMD_CANVAS_DELETE); dl->bg = panel_col (); dl->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (dl);
+			label (12, y + 5, TR ("Plane")); SegmentedControl *s = new SegmentedControl (width - 12 - 126, y, 126, 28, PL, 3, c.plane, onSeg); s->tag = 16; addChild (s); y += 36;
+			field (y, c.plane == 0 ? TR ("Height (Z)") : c.plane == 1 ? TR ("Along Y") : TR ("Along X"), &c.off, TR ("mm"), -1); y += 34;
+			label (12, y, TR ("On its plane"), UK_AUTO, 2); y += 20;
+			field (y, "X", &c.x, TR ("mm"), -1); y += 28; field (y, "Y", &c.y, TR ("mm"), -1); y += 28; field (y, TR ("Width"), &c.w, TR ("mm"), -1); y += 28; field (y, TR ("Turned"), &c.turn, "\xC2\xB0", -1); y += 30;
+			fmt (c.w, a, 12); fmt (c.w * c.aspect, d, 12); snprintf (t, sizeof t, TR ("%s \xC3\x97 %s mm"), a, d); label (12, y, TR ("Its size follows its width."), dim_col (), 0, true); y += 24;
+			label (12, y, TR ("Seen"), UK_AUTO, 2); y += 20;
+			field (y, TR ("Opacity"), &c.opacity, "%", -1); y += 30; check (y, TR ("Shown"), c.visible, 34); y += 30;
+			label (12, y, TR ("Drag it in the view to move it,"), dim_col (), 0, true); y += 15; label (12, y, TR ("a corner to size it."), dim_col (), 0, true);
+			ABtn *dl = new ABtn (12, height - 40, width - 24, 28, TR ("Remove this canvas"), CMD_CANVAS_DELETE); dl->bg = panel_col (); dl->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (dl);
 		}
 		else if (A.selFeat >= 0 && A.selFeat < (int) A.doc.feats.size ())
 		{
 			Feature &f = A.doc.feats[A.selFeat]; feat = &f;
-			head (icon_of_kind (f.kind), f.name, A.selFeat >= A.doc.upto ? "rolled back" : "a step of the history");
+			head (icon_of_kind (f.kind), f.name, A.selFeat >= A.doc.upto ? TR ("rolled back") : TR ("a step of the history"));
 			y = featureFields (f, y, false);
-			if (f.failed && A.selFeat < A.doc.upto) { label (12, y, "This step could not be made:", 0xB03A30, 0, true); label (12, y + 16, f.err, 0xB03A30, 0, true); y += 40; }
-			if (f.kind == F_SKETCH) { ABtn *e = new ABtn (12, y, width - 24, 28, "Edit sketch", CMD_EDIT_SKETCH); e->bg = panel_col (); addChild (e); }
-			ABtn *d = new ABtn (12, height - 40, width - 24, 28, "Delete this step", CMD_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
+			if (f.failed && A.selFeat < A.doc.upto) { label (12, y, TR ("This step could not be made:"), 0xB03A30, 0, true); label (12, y + 16, f.err, 0xB03A30, 0, true); y += 40; }
+			if (f.kind == F_SKETCH) { ABtn *e = new ABtn (12, y, width - 24, 28, TR ("Edit sketch"), CMD_EDIT_SKETCH); e->bg = panel_col (); addChild (e); }
+			ABtn *d = new ABtn (12, height - 40, width - 24, 28, TR ("Delete this step"), CMD_DELETE); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d);
 		}
 		else if (A.selBody >= 0 && A.doc.body (A.selBody))
 		{
 			Body &bd = *A.doc.body (A.selBody); BodyProp &p = A.doc.prop (A.selBody);
 			int steps = 0; for (int i = 0; i < A.doc.upto; i++) if (A.doc.feats[i].target == bd.id || i == bd.id) steps++;
-			snprintf (t, sizeof t, "Body \xC2\xB7 %d step%s", steps, steps == 1 ? "" : "s"); head (-2, p.name, t);
-			label (12, y + 5, "Name"); Textbox *tb = new Textbox (width - 12 - 122, y, 122, 26, p.name); tb->maxLen = 22; tb->changed = onChanged; addChild (tb);
+			snprintf (t, sizeof t, TR ("Body \xC2\xB7 %d step%s"), steps, steps == 1 ? "" : "s"); head (-2, p.name, t);
+			label (12, y + 5, TR ("Name")); Textbox *tb = new Textbox (width - 12 - 122, y, 122, 26, p.name); tb->maxLen = 22; tb->changed = onChanged; addChild (tb);
 			{ Bind q = { tb, 0, -1, false, p.name }; b[nb++] = q; } y += 34;
-			label (12, y + 5, "Colour"); swY = y + 3; y += 42;
-			label (12, y, "Measures", UK_AUTO, 2); y += 22;
+			label (12, y + 5, TR ("Colour")); swY = y + 3; y += 42;
+			label (12, y, TR ("Measures"), UK_AUTO, 2); y += 22;
 			char a[24], c[24], d[24]; V3 sz = bd.mesh.hi - bd.mesh.lo; fmt (sz.x, a, 12); fmt (sz.y, c, 12); fmt (sz.z, d, 12);
 			auto rowv = [&] (const char *k, const char *v) { label (12, y + 3, k, dim_col ()); label (-12, y + 3, v); y += 23; };
-			snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s mm", a, c, d); rowv ("Size", t);
-			snprintf (t, sizeof t, "%.1f cm\xC2\xB3", bd.m.Volume () / 1000); rowv ("Volume", t);
-			snprintf (t, sizeof t, "%.0f cm\xC2\xB2", bd.m.SurfaceArea () / 100); rowv ("Surface", t);
-			snprintf (t, sizeof t, "%d", bd.mesh.tris ()); rowv ("Triangles", t);
-			y += 14; label (12, y, "Display", UK_AUTO, 2); y += 24;
-			check (y, "Edges", A.showEdges, 4); y += 25; check (y, "Grid", A.showGrid, 5); y += 25; check (y, "See through", A.seeThrough, 6); y += 37;
-			label (12, y, "Print check", UK_AUTO, 2); y += 24;
+			snprintf (t, sizeof t, TR ("%s \xC3\x97 %s \xC3\x97 %s mm"), a, c, d); rowv (TR ("Size"), t);
+			snprintf (t, sizeof t, TR ("%.1f cm\xC2\xB3"), bd.m.Volume () / 1000); rowv (TR ("Volume"), t);
+			snprintf (t, sizeof t, TR ("%.0f cm\xC2\xB2"), bd.m.SurfaceArea () / 100); rowv (TR ("Surface"), t);
+			snprintf (t, sizeof t, "%d", bd.mesh.tris ()); rowv (TR ("Triangles"), t);
+			y += 14; label (12, y, TR ("Display"), UK_AUTO, 2); y += 24;
+			check (y, TR ("Edges"), A.showEdges, 4); y += 25; check (y, TR ("Grid"), A.showGrid, 5); y += 25; check (y, TR ("See through"), A.seeThrough, 6); y += 37;
+			label (12, y, TR ("Print check"), UK_AUTO, 2); y += 24;
 			bool ok = bd.m.Status () == Manifold::Error::NoError && !bd.m.IsEmpty ();
-			infoY = -(y); info[0] = ok ? "Closed solid, ready to print" : "Not a closed solid"; info[1] = ok ? "" : "!";
+			infoY = -(y); info[0] = ok ? TR ("Closed solid, ready to print") : TR ("Not a closed solid"); info[1] = ok ? "" : "!";
 		}
 		else
 		{
-			head (-1, "3DForge", A.doc.feats.empty () ? "A new part" : "Nothing selected");
+			head (-1, "3DForge", A.doc.feats.empty () ? TR ("A new part") : TR ("Nothing selected"));
 			if (A.doc.feats.empty ())
 			{
-				label (12, y, "Start with a shape:", UK_AUTO, 2); y += 26;
-				const char *const s[] = { "Box: click, move away, click,", "move up, click.", "", "Sketch: draw an outline on a", "face, then Extrude it.", "",
-							  "Each step stays in the history:", "click it to change its values." };
+				label (12, y, TR ("Start with a shape:"), UK_AUTO, 2); y += 26;
+				const char *const s[] = { TR ("Box: click, move away, click,"), TR ("move up, click."), "", TR ("Sketch: draw an outline on a"), TR ("face, then Extrude it."), "",
+							  TR ("Each step stays in the history:"), TR ("click it to change its values.") };
 				for (const char *q : s) { if (*q) label (12, y, q, dim_col (), 0, true); y += *q ? 16 : 8; }
 				y += 14;
 			}
-			label (12, y, "Display", UK_AUTO, 2); y += 24;
-			check (y, "Edges", A.showEdges, 4); y += 25; check (y, "Grid", A.showGrid, 5); y += 25; check (y, "See through", A.seeThrough, 6); y += 25;
+			label (12, y, TR ("Display"), UK_AUTO, 2); y += 24;
+			check (y, TR ("Edges"), A.showEdges, 4); y += 25; check (y, TR ("Grid"), A.showGrid, 5); y += 25; check (y, TR ("See through"), A.seeThrough, 6); y += 25;
 		}
 		invalidate (true);
 	}
@@ -1066,12 +1066,12 @@ public:
 			char t[96], a[24], b[24], c[24];
 			if (camSizeY >= 0)
 			{
-				V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s mm", a, b, c);
-				uk_text (canvas, 12, camSizeY, "Size", dim_col ()); uk_text (canvas, width - 12 - uk_tw (t), camSizeY, t, C_TEXT);
+				V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (t, sizeof t, TR ("%s \xC3\x97 %s \xC3\x97 %s mm"), a, b, c);
+				uk_text (canvas, 12, camSizeY, TR ("Size"), dim_col ()); uk_text (canvas, width - 12 - uk_tw (t), camSizeY, t, C_TEXT);
 			}
 			if (camOrgY >= 0)
 			{
-				static const char *const LN[3] = { "Top", "Middle", "Bottom" }; UkFaceScope fs (g_small);
+				static const char *const LN[3] = { TR ("Top"), TR ("Middle"), TR ("Bottom") }; UkFaceScope fs (g_small);
 				for (int li = 0; li < 3; li++)
 				{
 					int gx = 12 + li * 66; uk_text (canvas, gx + (56 - uk_tw (LN[li])) / 2, camOrgY, LN[li], dim_col ());
@@ -1090,21 +1090,21 @@ public:
 				uk_rbox (canvas, 12, camSumY, width - 24, 42, 6, ic, ic); uk_rline (canvas, 12, camSumY, width - 24, 42, 6, uk_tone (C_BG, 104));
 				icon (canvas, bad || A.camDirty ? I_WARN : I_CHECK, 20, camSumY + 12, 17, bad || A.camDirty ? 0x4A3A10 : C_GREEN, C_ACCENT, ic);
 				UkFaceScope fs (g_small);
-				if (A.camDirty) { uk_text (canvas, 44, camSumY + 6, "changed", 0x8A5A10); uk_text (canvas, 44, camSumY + 22, "Validate to compute", dim_col ()); }
+				if (A.camDirty) { uk_text (canvas, 44, camSumY + 6, TR ("changed"), 0x8A5A10); uk_text (canvas, 44, camSumY + 22, TR ("Validate to compute"), dim_col ()); }
 				else if (bad) { char fit[64]; uk_text_fit (op->err, width - 70, fit, sizeof fit); uk_text (canvas, 44, camSumY + 13, fit, 0x8A5A10); }
 				else
 				{
-					snprintf (t, sizeof t, "%.1f m cut \xC2\xB7 %d min", op->length / 1000, (int) (op->minutes + 0.5)); uk_text (canvas, 44, camSumY + 6, t, 0x286E38);
+					snprintf (t, sizeof t, TR ("%.1f m cut \xC2\xB7 %d min"), op->length / 1000, (int) (op->minutes + 0.5)); uk_text (canvas, 44, camSumY + 6, t, 0x286E38);
 					V3 o = cam_origin (A.job, A.paths.lo, A.paths.hi); double lowz = 1e30;
 					for (const CamMove &m : A.paths.moves) if (m.op == A.camSel - 1 && m.p.z < lowz) lowz = m.p.z;
-					fmt (lowz - o.z, a, 12); snprintf (t, sizeof t, "never below Z %s", a); uk_text (canvas, 44, camSumY + 22, t, dim_col ());
+					fmt (lowz - o.z, a, 12); snprintf (t, sizeof t, TR ("never below Z %s"), a); uk_text (canvas, 44, camSumY + 22, t, dim_col ());
 				}
 			}
 		}
 		if (opY >= 0)				// the operation: one of four
 		{
 			const Feature &f = A.hasPend ? A.pend : *feat;
-			uk_text (canvas, 12, opY, "Operation", C_TEXT, 2);
+			uk_text (canvas, 12, opY, TR ("Operation"), C_TEXT, 2);
 			uk_sunken (canvas, 12, opY + 20, width - 24, 4 * 28 + 6, 4, C_FIELD);
 			static const int OI[4] = { I_NEWBODY, I_UNION, I_SUB, I_INT };
 			for (int i = 0; i < 4; i++)
@@ -1113,7 +1113,7 @@ public:
 				bool can = i == OP_NEW || A.doc.body (f.target) || !A.doc.bodies.empty ();
 				if (on) uk_rbox (canvas, 15, y, width - 30, 28, 4, bg, bg);
 				icon (canvas, OI[i], 22, y + 4, 20, on ? 0xFFFFFF : uk_mix (C_FIELD_TEXT, bg, can ? 40 : 170), on ? 0xFFFFFF : C_ACCENT, bg);
-				uk_text (canvas, 52, y + (28 - uk_fh ()) / 2, OP_NAME[i], can ? ink : uk_mix (C_FIELD_TEXT, bg, 150), on ? 2 : 0);
+				uk_text (canvas, 52, y + (28 - uk_fh ()) / 2, TR (OP_NAME[i]), can ? ink : uk_mix (C_FIELD_TEXT, bg, 150), on ? 2 : 0);
 			}
 		}
 		if (swY > 0)				// the body's colour
@@ -1193,11 +1193,11 @@ public:
 				int w = uk_tw (s); rx -= w; uk_text (canvas, rx, ty, s, col); if (x0) { *x0 = rx - 6; *w0 = w + 12; }
 				rx -= 7; uk_etch_v (canvas, rx, 7, 14, C_BG); rx -= 7;
 			};
-			item ("mm", dim_col (), 0, 0);
+			item (TR ("mm"), dim_col (), 0, 0);
 			item (A.gpu ? "GPU" : "CPU", dim_col (), 0, 0);
-			item (A.snap ? "Snap 1 mm" : "Snap off", A.snap ? dim_col () : uk_mix (C_TEXT, C_BG, 170), &snapX, &snapW);
-			item (A.showGrid ? "Grid 10 mm" : "Grid off", A.showGrid ? dim_col () : uk_mix (C_TEXT, C_BG, 170), &gridX, &gridW);
-			int n = A.doc.tris (); if (n >= 1000) snprintf (t, sizeof t, "%d %03d triangles", n / 1000, n % 1000); else snprintf (t, sizeof t, "%d triangles", n);
+			item (A.snap ? TR ("Snap 1 mm") : TR ("Snap off"), A.snap ? dim_col () : uk_mix (C_TEXT, C_BG, 170), &snapX, &snapW);
+			item (A.showGrid ? TR ("Grid 10 mm") : TR ("Grid off"), A.showGrid ? dim_col () : uk_mix (C_TEXT, C_BG, 170), &gridX, &gridW);
+			int n = A.doc.tris (); if (n >= 1000) snprintf (t, sizeof t, TR ("%d %03d triangles"), n / 1000, n % 1000); else snprintf (t, sizeof t, TR ("%d triangles"), n);
 			item (t, dim_col (), 0, 0);
 		}
 		icon (canvas, I_INFO, 10, 5, 17, C_ACCENT, C_ACCENT, C_BG);

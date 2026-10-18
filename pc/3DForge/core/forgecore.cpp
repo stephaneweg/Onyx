@@ -250,7 +250,7 @@ static int print_file ()
 	if (!resin ()) return REQ_NONE;
 	if (A.printDirty) print_refresh ();
 	if (A.sliced) return REQ_PRINTFILE;
-	A.wantFile = true; print_slice_start (); set_hint ("Cutting the layers..."); ui (0);
+	A.wantFile = true; print_slice_start (); set_hint (TR ("Cutting the layers...")); ui (0);
 	return REQ_NONE;
 }
 static int command (int id)
@@ -271,7 +271,7 @@ static int command (int id)
 		if (!resin ()) break;
 		if (A.printDirty) print_refresh ();
 		print_supports_auto (A.placed, A.print, A.print.tips); A.doc.changes++; print_refresh ();
-		if (A.print.tips.empty ()) set_hint ("Nothing hangs: no support is needed as the body is.");
+		if (A.print.tips.empty ()) set_hint (TR ("Nothing hangs: no support is needed as the body is."));
 		ui (R_ALL); break;
 	case CMD_PR_CLEAR: if (resin ()) { A.print.tips.clear (); A.doc.changes++; print_refresh (); ui (R_ALL); } break;
 	case CMD_CANVAS_DELETE:
@@ -287,9 +287,9 @@ static int command (int id)
 	case CMD_CAM_SIM:
 		if (!A.camMode) break;
 		if (A.camDirty) cam_refresh ();
-		if (A.paths.hm.empty ()) { set_hint ("Add a clearing or a contour first: there is nothing to simulate."); ui (0); break; }
+		if (A.paths.hm.empty ()) { set_hint (TR ("Add a clearing or a contour first: there is nothing to simulate.")); ui (0); break; }
 		A.camSim = !A.camSim; A.simPlay = false; if (A.camSim) sim_to (A.paths.moves.size ());
-		set_hint (A.camSim ? "What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves." : ""); if (!A.camSim) cam_hint ();
+		set_hint (A.camSim ? TR ("What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves.") : ""); if (!A.camSim) cam_hint ();
 		ui (R_ALL); break;
 	case CMD_GCODE:
 		if (A.gen == 1) req = print_file ();
@@ -413,7 +413,7 @@ static void summary (bool ok, const char *l1, const char *c1, const char *l2, co
 static void info (std::initializer_list<const char *> lines) { std::vector<std::string> f; for (const char *l : lines) f.push_back (l); item_v ('I', f); }
 
 static bool canvasPage () { return !A.camMode && !A.sketching && !A.hasPend && A.tool == T_SELECT && A.selCanvas >= 0 && A.selCanvas < (int) A.doc.canvases.size () && A.selFeat < 0 && A.selBody < 0; }
-static void bodyProcess (int body) { item ('P', { body_name (body), A.gen == 2 ? "Filament" : A.gen == 1 ? "Resin print" : "Milling" }); }
+static void bodyProcess (int body) { item ('P', { body_name (body), A.gen == 2 ? TR ("Filament") : A.gen == 1 ? TR ("Resin print") : TR ("Milling") }); }
 
 // The fields of a step (the one being made, or one of the history): fui.h's featureFields.
 static void featureFields (Feature &f, bool making)
@@ -422,51 +422,51 @@ static void featureFields (Feature &f, bool making)
 	switch (f.kind)
 	{
 	case F_BOX:
-		field ("Width", &f.w, "mm", 0, true, making && A.step != 2); field ("Depth", &f.d, "mm", 1, true);
-		field ("Height", &f.h, "mm", 2, true, making && A.step == 2); break;
+		field (TR ("Width"), &f.w, TR ("mm"), 0, true, making && A.step != 2); field (TR ("Depth"), &f.d, TR ("mm"), 1, true);
+		field (TR ("Height"), &f.h, TR ("mm"), 2, true, making && A.step == 2); break;
 	case F_CYL:
-		field ("Diameter", &f.w, "mm", 0, false, making && A.step != 2); field (f.h < 0 || f.through ? "Depth" : "Height", &f.h, "mm", 1, true, making && A.step == 2);
-		check ("Through the whole body", f.through, 2); break;
+		field (TR ("Diameter"), &f.w, TR ("mm"), 0, false, making && A.step != 2); field (f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true, making && A.step == 2);
+		check (TR ("Through the whole body"), f.through, 2); break;
 	case F_PYRAMID: case F_PRISM: case F_TAPER:
 	{
 		bool top = f.kind == F_TAPER;
-		field ("Sides", &f.n, 0, -1, false, making && A.step <= 1);
-		field ("Base radius", &f.w, "mm", 0);
-		if (top) field ("Top radius", &f.d, "mm", 2, false, making && A.step == 2);
-		field ("Height", &f.h, "mm", 1, true, making && A.step > 1 && !(A.step == 2 && top));
+		field (TR ("Sides"), &f.n, 0, -1, false, making && A.step <= 1);
+		field (TR ("Base radius"), &f.w, TR ("mm"), 0);
+		if (top) field (TR ("Top radius"), &f.d, TR ("mm"), 2, false, making && A.step == 2);
+		field (TR ("Height"), &f.h, TR ("mm"), 1, true, making && A.step > 1 && !(A.step == 2 && top));
 		break;
 	}
-	case F_SPHERE: field ("Radius", &f.w, "mm", 0, false, making); break;
-	case F_TORUS: field ("Ring radius", &f.w, "mm", 0, false, making && A.step != 2); field ("Tube radius", &f.d, "mm", 1, false, making && A.step == 2); break;
+	case F_SPHERE: field (TR ("Radius"), &f.w, TR ("mm"), 0, false, making); break;
+	case F_TORUS: field (TR ("Ring radius"), &f.w, TR ("mm"), 0, false, making && A.step != 2); field (TR ("Tube radius"), &f.d, TR ("mm"), 1, false, making && A.step == 2); break;
 	case F_EXTRUDE:
-		field (f.h < 0 || f.through ? "Depth" : "Height", &f.h, "mm", 1, true, making);
-		check ("Through the whole body", f.through, 2); break;
+		field (f.h < 0 || f.through ? TR ("Depth") : TR ("Height"), &f.h, TR ("mm"), 1, true, making);
+		check (TR ("Through the whole body"), f.through, 2); break;
 	case F_FILLET: case F_CHAMFER:
-		if (making) seg (1, "", f.kind == F_FILLET ? 0 : 1, { "Fillet", "Chamfer" });
-		field (f.kind == F_FILLET ? "Radius" : "Size", &f.r, "mm", 0, false, making);
-		snprintf (t, sizeof t, "%d chosen", (int) f.edges.size ()); kv ("Edges", t, "");
-		if (f.edges.empty ()) note ("Click an edge of a body");
-		else { snprintf (t, sizeof t, "on %s", body_name (f.target)); note (t); }
-		if (making) info ({ "Straight edges, circles and arcs can be", "rounded; the others show in grey." });
+		if (making) seg (1, "", f.kind == F_FILLET ? 0 : 1, { TR ("Fillet"), TR ("Chamfer") });
+		field (f.kind == F_FILLET ? TR ("Radius") : TR ("Size"), &f.r, TR ("mm"), 0, false, making);
+		snprintf (t, sizeof t, TR ("%d chosen"), (int) f.edges.size ()); kv (TR ("Edges"), t, "");
+		if (f.edges.empty ()) note (TR ("Click an edge of a body"));
+		else { snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); note (t); }
+		if (making) info ({ TR ("Straight edges, circles and arcs can be rounded; the others show in grey.") });
 		break;
 	case F_MOVE:
-		section ("Move");
-		field ("Along X", &f.mv.x, "mm", 0, false, making && A.step == 1); field ("Along Y", &f.mv.y, "mm", 1); field ("Along Z", &f.mv.z, "mm", 2);
-		section ("Turn, about its centre");
-		field ("Around X", &f.rot.x, "\xC2\xB0", -1); field ("Around Y", &f.rot.y, "\xC2\xB0", -1); field ("Around Z", &f.rot.z, "\xC2\xB0", -1);
-		section ("Scale (1: as it is)");
-		field ("Along X", &f.sc.x, "\xC3\x97", -1); field ("Along Y", &f.sc.y, "\xC3\x97", -1); field ("Along Z", &f.sc.z, "\xC3\x97", -1);
-		check ("Clone: the original stays", f.clone, 8);
+		section (TR ("Move"));
+		field (TR ("Along X"), &f.mv.x, TR ("mm"), 0, false, making && A.step == 1); field (TR ("Along Y"), &f.mv.y, TR ("mm"), 1); field (TR ("Along Z"), &f.mv.z, TR ("mm"), 2);
+		section (TR ("Turn, about its centre"));
+		field (TR ("Around X"), &f.rot.x, "\xC2\xB0", -1); field (TR ("Around Y"), &f.rot.y, "\xC2\xB0", -1); field (TR ("Around Z"), &f.rot.z, "\xC2\xB0", -1);
+		section (TR ("Scale (1: as it is)"));
+		field (TR ("Along X"), &f.sc.x, "\xC3\x97", -1); field (TR ("Along Y"), &f.sc.y, "\xC3\x97", -1); field (TR ("Along Z"), &f.sc.z, "\xC3\x97", -1);
+		check (TR ("Clone: the original stays"), f.clone, 8);
 		break;
-	case F_COMBINE: snprintf (t, sizeof t, "%s, with another body", OP_NAME[f.op]); label (t, CDIM); break;
+	case F_COMBINE: snprintf (t, sizeof t, TR ("%s, with another body"), TR (OP_NAME[f.op])); label (t, CDIM); break;
 	case F_SKETCH: describe (A.doc, f, t, sizeof t); label (t, CDIM); break;
 	}
 	if (makes_solid (f.kind) && f.kind != F_EXTRUDE)		// where it is, on its plane
 	{
-		section ("Place");
-		field (f.kind == F_BOX && !f.centred ? "Corner X" : "Centre X", &f.x, "mm", -1); field ("Y", &f.y, "mm", -1);
-		field (f.target >= 0 ? "Off the face" : f.pl.n.z > 0.9999 && fabs (f.pl.o.z) < 1e-9 ? "Z" : "Off the plane", &f.z, "mm", -1);
-		if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) field ("Turned", &f.turn, "\xC2\xB0", 3);
+		section (TR ("Place"));
+		field (f.kind == F_BOX && !f.centred ? TR ("Corner X") : TR ("Centre X"), &f.x, TR ("mm"), -1); field ("Y", &f.y, TR ("mm"), -1);
+		field (f.target >= 0 ? TR ("Off the face") : f.pl.n.z > 0.9999 && fabs (f.pl.o.z) < 1e-9 ? "Z" : TR ("Off the plane"), &f.z, TR ("mm"), -1);
+		if (f.kind == F_BOX || ((f.kind == F_PYRAMID || f.kind == F_PRISM || f.kind == F_TAPER) && f.n >= 2.5)) field (TR ("Turned"), &f.turn, "\xC2\xB0", 3);
 	}
 	if (makes_solid (f.kind))
 	{
@@ -474,8 +474,8 @@ static void featureFields (Feature &f, bool making)
 		for (int i = 0; i < 4; i++) o.push_back (i == OP_NEW || A.doc.body (f.target) || !A.doc.bodies.empty () ? "1" : "0");
 		item_v ('O', o);
 		if (f.op != OP_NEW && A.doc.body (f.target))
-			item ('R', { f.op == OP_UNION ? "Joined to" : f.op == OP_SUB ? "Cut from" : "Kept inside", body_name (f.target), hex (A.doc.prop (f.target).colour) });
-		if (f.kind == F_BOX) check ("Centred on the first click", f.centred, 1);
+			item ('R', { f.op == OP_UNION ? TR ("Joined to") : f.op == OP_SUB ? TR ("Cut from") : TR ("Kept inside"), body_name (f.target), hex (A.doc.prop (f.target).colour) });
+		if (f.kind == F_BOX) check (TR ("Centred on the first click"), f.centred, 1);
 	}
 }
 
@@ -488,66 +488,66 @@ static void print_summary ()
 	double lh = A.gen == 2 ? A.fdm.layer : s.resin.layer;
 	if (A.camPage == 0)
 	{
-		fmt (sz.x, a, 12); fmt (sz.y, b, 12); fmt (sz.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s: %s", a, b, c, fits ? "it fits" : "too large");
-		char l2[64]; snprintf (l2, sizeof l2, "%d layers of %.3g mm", (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / lh - 1e-6), lh);
+		fmt (sz.x, a, 12); fmt (sz.y, b, 12); fmt (sz.z, c, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s: %s", a, b, c, fits ? TR ("it fits") : TR ("too large"));
+		char l2[64]; snprintf (l2, sizeof l2, TR ("%d layers of %.3g mm"), (int) ceil ((A.placedMesh.tris () ? A.placedMesh.hi.z : 0) / lh - 1e-6), lh);
 		summary (fits, t, fits ? "286E38" : "8A5A10", l2, CDIM);
 	}
 	else
 	{
 		bool floats = A.placedMesh.tris () && A.placedMesh.lo.z > s.resin.layer && s.tips.empty ();
-		if (s.tips.empty ()) snprintf (t, sizeof t, floats ? "Nothing holds the body" : "No supports"); else snprintf (t, sizeof t, "%d pillars%s", (int) s.tips.size (), s.raft ? " \xC2\xB7 a raft" : "");
-		summary (!floats, t, floats ? "8A5A10" : "286E38", floats ? "it is lifted off the plate" : A.placedMesh.tris () && A.placedMesh.lo.z < 0.3 ? "the body lies on the plate" : "click the body to add one", CDIM);
+		if (s.tips.empty ()) snprintf (t, sizeof t, floats ? TR ("Nothing holds the body") : TR ("No supports")); else snprintf (t, sizeof t, TR ("%d pillars%s"), (int) s.tips.size (), s.raft ? TR (" \xC2\xB7 a raft") : "");
+		summary (!floats, t, floats ? "8A5A10" : "286E38", floats ? TR ("it is lifted off the plate") : A.placedMesh.tris () && A.placedMesh.lo.z < 0.3 ? TR ("the body lies on the plate") : TR ("click the body to add one"), CDIM);
 	}
 }
 static void fdm_info ()
 {
 	const FdmJob &j = A.fjob; int n = (int) j.layers.size (); char t[64], a[24];
-	if (!A.fdmReady) { kv ("Layers", j.err[0] ? "\xE2\x80\x94" : "..."); return; }
-	snprintf (t, sizeof t, "%d", n); kv ("Layers", t); fmt (n * A.fdm.layer, a, 12); snprintf (t, sizeof t, "%s mm", a); kv ("Height", t);
-	snprintf (t, sizeof t, "%.1f m", j.length / 1000); kv ("Line drawn", t); snprintf (t, sizeof t, "%.2f m \xC2\xB7 %.1f cm\xC2\xB3", j.filament / 1000, j.volume / 1000); kv ("Filament", t);
+	if (!A.fdmReady) { kv (TR ("Layers"), j.err[0] ? "\xE2\x80\x94" : "..."); return; }
+	snprintf (t, sizeof t, "%d", n); kv (TR ("Layers"), t); fmt (n * A.fdm.layer, a, 12); snprintf (t, sizeof t, TR ("%s mm"), a); kv (TR ("Height"), t);
+	snprintf (t, sizeof t, "%.1f m", j.length / 1000); kv (TR ("Line drawn"), t); snprintf (t, sizeof t, TR ("%.2f m \xC2\xB7 %.1f cm\xC2\xB3"), j.filament / 1000, j.volume / 1000); kv (TR ("Filament"), t);
 }
 static void resin_info ()
 {
 	const PrintSetup &s = A.print; const PrintJob &j = A.pjob; int n = (int) j.file.layers.size (); bool ok = A.sliced; char t[96], a[24];
-	if (ok) snprintf (t, sizeof t, "%d", n); else snprintf (t, sizeof t, "%d of %d...", j.done, j.total); kv ("Layers", t);
-	fmt (n * s.resin.layer, a, 12); snprintf (t, sizeof t, "%s mm", a); kv ("Height", ok ? t : "\xE2\x80\x94");
-	snprintf (t, sizeof t, "%.1f ml", j.volume); kv ("Resin", ok ? t : "\xE2\x80\x94");
-	int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (t, sizeof t, "%d h %02d", mn / 60, mn % 60); else snprintf (t, sizeof t, "%d min", mn); kv ("Time", ok ? t : "\xE2\x80\x94");
-	section ("Checked");
-	if (!ok) { label (j.err[0] ? j.err : "cutting the layers...", CDIM, false, true); return; }
-	mark (!j.tooLarge, j.tooLarge ? "It does not fit the printer" : "It fits the plate and the room", j.tooLarge ? "8A5A10" : "");
-	mark (j.onPlate, j.onPlate ? "The first layers lie on the plate" : "Nothing lies on the plate", j.onPlate ? "" : "8A5A10");
-	if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, "%d part%s in mid-air (at %s mm)", j.islands, j.islands > 1 ? "s start" : " starts", a); mark (false, t, "8A5A10"); }
-	else mark (true, "Each layer rests on the last", "");
+	if (ok) snprintf (t, sizeof t, "%d", n); else snprintf (t, sizeof t, TR ("%d of %d..."), j.done, j.total); kv (TR ("Layers"), t);
+	fmt (n * s.resin.layer, a, 12); snprintf (t, sizeof t, TR ("%s mm"), a); kv (TR ("Height"), ok ? t : "\xE2\x80\x94");
+	snprintf (t, sizeof t, TR ("%.1f ml"), j.volume); kv (TR ("Resin"), ok ? t : "\xE2\x80\x94");
+	int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (t, sizeof t, "%d h %02d", mn / 60, mn % 60); else snprintf (t, sizeof t, TR ("%d min"), mn); kv (TR ("Time"), ok ? t : "\xE2\x80\x94");
+	section (TR ("Checked"));
+	if (!ok) { label (j.err[0] ? j.err : TR ("cutting the layers..."), CDIM, false, true); return; }
+	mark (!j.tooLarge, j.tooLarge ? TR ("It does not fit the printer") : TR ("It fits the plate and the room"), j.tooLarge ? "8A5A10" : "");
+	mark (j.onPlate, j.onPlate ? TR ("The first layers lie on the plate") : TR ("Nothing lies on the plate"), j.onPlate ? "" : "8A5A10");
+	if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, j.islands > 1 ? TR ("%d parts start in mid-air (at %s mm)") : TR ("%d part starts in mid-air (at %s mm)"), j.islands, a); mark (false, t, "8A5A10"); }
+	else mark (true, TR ("Each layer rests on the last"), "");
 }
 static void fdm_pages ()
 {
 	PrintSetup &s = A.print; FdmSettings &f = A.fdm;
 	if (A.camPage == 0)
 	{
-		head (I_PR_PLATE, "Setup", "the body, on the bed");
+		head (I_PR_PLATE, TR ("Setup"), TR ("the body, on the bed"));
 		bodyProcess (s.body);
-		section ("Bed"); field ("Width", &A.fmach.bedX, "mm", -1); field ("Depth", &A.fmach.bedY, "mm", -1); field ("Height", &A.fmach.sizeZ, "mm", -1);
-		section ("On the bed"); field ("X", &s.x, "mm", -1); field ("Y", &s.y, "mm", -1);
-		field ("Tilted, X", &s.tiltX, "\xC2\xB0", -1); field ("Tilted, Y", &s.tiltY, "\xC2\xB0", -1); field ("Turned", &s.turn, "\xC2\xB0", -1);
+		section (TR ("Bed")); field (TR ("Width"), &A.fmach.bedX, TR ("mm"), -1); field (TR ("Depth"), &A.fmach.bedY, TR ("mm"), -1); field (TR ("Height"), &A.fmach.sizeZ, TR ("mm"), -1);
+		section (TR ("On the bed")); field ("X", &s.x, TR ("mm"), -1); field ("Y", &s.y, TR ("mm"), -1);
+		field (TR ("Tilted, X"), &s.tiltX, "\xC2\xB0", -1); field (TR ("Tilted, Y"), &s.tiltY, "\xC2\xB0", -1); field (TR ("Turned"), &s.turn, "\xC2\xB0", -1);
 		print_summary ();
 	}
 	else if (A.camPage == 1)
 	{
-		head (I_PR_FIL, "Filament", "layers, shell, infill");
-		section ("Layers"); field ("Height", &f.layer, "mm", -1); field ("Line's width", &f.width, "mm", -1);
-		section ("Shell"); field ("Walls", &f.walls, 0, -1); field ("Solid above", &f.top, "lay.", -1); field ("Solid below", &f.bottom, "lay.", -1);
-		section ("Infill"); field ("Share", &A.fdmPct, "%", -1); field ("Turned", &f.angle, "\xC2\xB0", -1);
-		drop (1, "As", f.pattern < 0 || f.pattern > 2 ? 0 : f.pattern, { "Lines", "Grid", "Honeycomb" });
-		section ("Skirt"); field ("Loops", &f.skirt, 0, -1); field ("Away by", &f.skirtGap, "mm", -1);
+		head (I_PR_FIL, TR ("Filament"), TR ("layers, shell, infill"));
+		section (TR ("Layers")); field (TR ("Height"), &f.layer, TR ("mm"), -1); field (TR ("Line's width"), &f.width, TR ("mm"), -1);
+		section (TR ("Shell")); field (TR ("Walls"), &f.walls, 0, -1); field (TR ("Solid above"), &f.top, TR ("lay."), -1); field (TR ("Solid below"), &f.bottom, TR ("lay."), -1);
+		section (TR ("Infill")); field (TR ("Share"), &A.fdmPct, "%", -1); field (TR ("Turned"), &f.angle, "\xC2\xB0", -1);
+		drop (1, TR ("As"), f.pattern < 0 || f.pattern > 2 ? 0 : f.pattern, { TR ("Lines"), TR ("Grid"), TR ("Honeycomb") });
+		section (TR ("Skirt")); field (TR ("Loops"), &f.skirt, 0, -1); field (TR ("Away by"), &f.skirtGap, TR ("mm"), -1);
 	}
 	else
 	{
-		head (I_PR_LAYERS, "Layers", "the nozzle's path");
+		head (I_PR_LAYERS, TR ("Layers"), TR ("the nozzle's path"));
 		fdm_info ();
-		check ("Show it in the 3D view", A.layer3d, 33);
-		note ("Play draws the layer as the printer would, then the next.");
-		note ("The file for a printer comes later: the path is what is shown.");
+		check (TR ("Show it in the 3D view"), A.layer3d, 33);
+		note (TR ("Play draws the layer as the printer would, then the next."));
+		note (TR ("The file for a printer comes later: the path is what is shown."));
 	}
 }
 static void print_pages ()
@@ -556,43 +556,43 @@ static void print_pages ()
 	if (A.gen == 2) { fdm_pages (); return; }
 	if (A.camPage == 0)
 	{
-		head (I_PR_PLATE, "Setup", "the body, on the plate");
+		head (I_PR_PLATE, TR ("Setup"), TR ("the body, on the plate"));
 		bodyProcess (s.body);
-		section ("Printer"); label (s.machine.name);
+		section (TR ("Printer")); label (s.machine.name);
 		snprintf (t, sizeof t, "%d \xC3\x97 %d \xC2\xB7 %.3g \xC2\xB5m \xC2\xB7 .%s", s.machine.resX, s.machine.resY, s.machine.pixel, s.machine.ext); note (t);
-		snprintf (t, sizeof t, "room %.4g \xC3\x97 %.4g \xC3\x97 %.4g mm", s.machine.resX * s.machine.pixel / 1000, s.machine.resY * s.machine.pixel / 1000, s.machine.sizeZ); note (t);
-		section ("On the plate"); field ("X", &s.x, "mm", -1); field ("Y", &s.y, "mm", -1); field ("Lifted", &s.lift, "mm", -1);
-		field ("Tilted, X", &s.tiltX, "\xC2\xB0", -1); field ("Tilted, Y", &s.tiltY, "\xC2\xB0", -1); field ("Turned", &s.turn, "\xC2\xB0", -1);
-		check ("Mirror the picture", s.mirror, 30);
+		snprintf (t, sizeof t, TR ("room %.4g \xC3\x97 %.4g \xC3\x97 %.4g mm"), s.machine.resX * s.machine.pixel / 1000, s.machine.resY * s.machine.pixel / 1000, s.machine.sizeZ); note (t);
+		section (TR ("On the plate")); field ("X", &s.x, TR ("mm"), -1); field ("Y", &s.y, TR ("mm"), -1); field (TR ("Lifted"), &s.lift, TR ("mm"), -1);
+		field (TR ("Tilted, X"), &s.tiltX, "\xC2\xB0", -1); field (TR ("Tilted, Y"), &s.tiltY, "\xC2\xB0", -1); field (TR ("Turned"), &s.turn, "\xC2\xB0", -1);
+		check (TR ("Mirror the picture"), s.mirror, 30);
 		print_summary ();
 	}
 	else if (A.camPage == 1)
 	{
-		head (I_PR_RESIN, "Resin", "exposures, the lift");
+		head (I_PR_RESIN, TR ("Resin"), TR ("exposures, the lift"));
 		PrintResin &r = s.resin;
 		button (CMD_PR_PRESET, r.name);
-		section ("Layers"); field ("Height", &r.layer, "mm", -1); field ("Exposure", &r.exposure, "s", -1); field ("Light off", &r.off, "s", -1);
-		section ("First layers"); field ("How many", &r.bottomLayers, 0, -1); field ("Exposure", &r.bottomExposure, "s", -1); field ("Then, over", &r.transition, "lay.", -1);
-		section ("Lift, after each layer"); field ("Slowly", &r.normal.h1, "mm", -1); field ("... at", &r.normal.up1, "/s", -1);
-		field ("Then", &r.normal.h2, "mm", -1); field ("... at", &r.normal.up2, "/s", -1); field ("Back down at", &r.normal.down2, "/s", -1);
+		section (TR ("Layers")); field (TR ("Height"), &r.layer, TR ("mm"), -1); field (TR ("Exposure"), &r.exposure, "s", -1); field (TR ("Light off"), &r.off, "s", -1);
+		section (TR ("First layers")); field (TR ("How many"), &r.bottomLayers, 0, -1); field (TR ("Exposure"), &r.bottomExposure, "s", -1); field (TR ("Then, over"), &r.transition, TR ("lay."), -1);
+		section (TR ("Lift, after each layer")); field (TR ("Slowly"), &r.normal.h1, TR ("mm"), -1); field (TR ("... at"), &r.normal.up1, "/s", -1);
+		field (TR ("Then"), &r.normal.h2, TR ("mm"), -1); field (TR ("... at"), &r.normal.up2, "/s", -1); field (TR ("Back down at"), &r.normal.down2, "/s", -1);
 	}
 	else if (A.camPage == 2)
 	{
-		head (I_PR_SUP, "Supports", "what holds the body");
-		button (CMD_PR_GENERATE, "Generate", true);
-		section ("Where"); field ("Overhang", &s.supAngle, "\xC2\xB0", -1); field ("A pillar every", &s.supEvery, "mm", -1);
-		check ("Also under low points", s.supLow, 31);
-		section ("Pillars"); field ("Diameter", &s.supDia, "mm", -1); field ("Tip", &s.supTip, "mm", -1); field ("Into the body", &s.supInto, "mm", -1);
-		check ("A raft under it all", s.raft, 32); field ("Thick", &s.raftThick, "mm", -1); field ("Wider by", &s.raftMore, "mm", -1);
+		head (I_PR_SUP, TR ("Supports"), TR ("what holds the body"));
+		button (CMD_PR_GENERATE, TR ("Generate"), true);
+		section (TR ("Where")); field (TR ("Overhang"), &s.supAngle, "\xC2\xB0", -1); field (TR ("A pillar every"), &s.supEvery, TR ("mm"), -1);
+		check (TR ("Also under low points"), s.supLow, 31);
+		section (TR ("Pillars")); field (TR ("Diameter"), &s.supDia, TR ("mm"), -1); field (TR ("Tip"), &s.supTip, TR ("mm"), -1); field (TR ("Into the body"), &s.supInto, TR ("mm"), -1);
+		check (TR ("A raft under it all"), s.raft, 32); field (TR ("Thick"), &s.raftThick, TR ("mm"), -1); field (TR ("Wider by"), &s.raftMore, TR ("mm"), -1);
 		print_summary ();
-		button (CMD_PR_CLEAR, "Remove them all", false, true);
+		button (CMD_PR_CLEAR, TR ("Remove them all"), false, true);
 	}
 	else
 	{
-		head (I_PR_LAYERS, "Layers", "what the screen shows");
+		head (I_PR_LAYERS, TR ("Layers"), TR ("what the screen shows"));
 		resin_info ();
-		check ("Show it in the 3D view", A.layer3d, 33);
-		button (CMD_PR_FILE, "Write the print file...", true, true);
+		check (TR ("Show it in the 3D view"), A.layer3d, 33);
+		button (CMD_PR_FILE, TR ("Write the print file..."), true, true);
 	}
 }
 static void cam_pages ()
@@ -601,83 +601,83 @@ static void cam_pages ()
 	if (A.gen >= 1) { print_pages (); return; }
 	if (A.camPage == 0)
 	{
-		head (I_CAM_SETUP, "Setup", "the body, its stock");
+		head (I_CAM_SETUP, TR ("Setup"), TR ("the body, its stock"));
 		bodyProcess (c.body);
-		section ("Stock"); seg (10, "", c.fixed ? 1 : 0, { "Around it", "Fixed size" });
-		if (!c.fixed) { field ("Sides, more", &c.side, "mm", -1); field ("Top, more", &c.top, "mm", -1); field ("Under, more", &c.under, "mm", -1); }
+		section (TR ("Stock")); seg (10, "", c.fixed ? 1 : 0, { TR ("Around it"), TR ("Fixed size") });
+		if (!c.fixed) { field (TR ("Sides, more"), &c.side, TR ("mm"), -1); field (TR ("Top, more"), &c.top, TR ("mm"), -1); field (TR ("Under, more"), &c.under, TR ("mm"), -1); }
 		else
 		{
-			field ("Along X", &c.size.x, "mm", -1); field ("Along Y", &c.size.y, "mm", -1); field ("Height", &c.size.z, "mm", -1);
-			field ("Moved, X", &c.off.x, "mm", -1); field ("Moved, Y", &c.off.y, "mm", -1); field ("Moved, Z", &c.off.z, "mm", -1);
+			field (TR ("Along X"), &c.size.x, TR ("mm"), -1); field (TR ("Along Y"), &c.size.y, TR ("mm"), -1); field (TR ("Height"), &c.size.z, TR ("mm"), -1);
+			field (TR ("Moved, X"), &c.off.x, TR ("mm"), -1); field (TR ("Moved, Y"), &c.off.y, TR ("mm"), -1); field (TR ("Moved, Z"), &c.off.z, TR ("mm"), -1);
 		}
-		if (!c.fixed) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, d, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s mm", a, b, d); kv ("Size", t); }
-		section ("Origin"); item ('G', { std::to_string (c.origin) });
-		section ("Axes");
-		static const char *const DIR[4] = { "right", "back", "left", "front" };
-		drop (2, "X goes", c.xdir & 3, { DIR[0], DIR[1], DIR[2], DIR[3] });
-		snprintf (t, sizeof t, "Y goes %s; Z goes up.", DIR[(c.xdir + 1) & 3]); note (t);
-		section ("Heights above the stock");
-		field ("Safe", &c.safe, "mm", -1); field ("Retract", &c.retract, "mm", -1);
+		if (!c.fixed) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, d, 12); snprintf (t, sizeof t, TR ("%s \xC3\x97 %s \xC3\x97 %s mm"), a, b, d); kv (TR ("Size"), t); }
+		section (TR ("Origin")); item ('G', { std::to_string (c.origin) });
+		section (TR ("Axes"));
+		static const char *const DIR[4] = { TR ("right"), TR ("back"), TR ("left"), TR ("front") };
+		drop (2, TR ("X goes"), c.xdir & 3, { DIR[0], DIR[1], DIR[2], DIR[3] });
+		snprintf (t, sizeof t, TR ("Y goes %s; Z goes up."), DIR[(c.xdir + 1) & 3]); note (t);
+		section (TR ("Heights above the stock"));
+		field (TR ("Safe"), &c.safe, TR ("mm"), -1); field (TR ("Retract"), &c.retract, TR ("mm"), -1);
 	}
 	else if (A.camPage == 1)
 	{
-		head (I_CAM_TOOL, "Tool", "a flat end mill");
-		section ("Tool"); textbind ("Name", c.tool.name);
-		field ("Diameter", &c.tool.dia, "mm", -1); field ("Cutting length", &c.tool.flute, "mm", -1);
-		field ("Spindle", &c.tool.rpm, "rpm", -1); field ("Cutting feed", &c.tool.feed, "/min", -1);
-		field ("Plunge feed", &c.tool.plunge, "/min", -1); field ("Travel", &c.tool.travel, "/min", -1);
-		section ("Machine"); textbind ("Name", c.machine.name);
-		field ("Travel X", &c.machine.tx, "mm", -1); field ("Travel Y", &c.machine.ty, "mm", -1); field ("Travel Z", &c.machine.tz, "mm", -1);
-		field ("Spindle, most", &c.machine.rpmMax, "rpm", -1); field ("Spindle's wait", &c.machine.dwell, "s", -1);
+		head (I_CAM_TOOL, TR ("Tool"), TR ("a flat end mill"));
+		section (TR ("Tool")); textbind (TR ("Name"), c.tool.name);
+		field (TR ("Diameter"), &c.tool.dia, TR ("mm"), -1); field (TR ("Cutting length"), &c.tool.flute, TR ("mm"), -1);
+		field (TR ("Spindle"), &c.tool.rpm, TR ("rpm"), -1); field (TR ("Cutting feed"), &c.tool.feed, TR ("/min"), -1);
+		field (TR ("Plunge feed"), &c.tool.plunge, TR ("/min"), -1); field (TR ("Travel"), &c.tool.travel, TR ("/min"), -1);
+		section (TR ("Machine")); textbind (TR ("Name"), c.machine.name);
+		field (TR ("Travel X"), &c.machine.tx, TR ("mm"), -1); field (TR ("Travel Y"), &c.machine.ty, TR ("mm"), -1); field (TR ("Travel Z"), &c.machine.tz, TR ("mm"), -1);
+		field (TR ("Spindle, most"), &c.machine.rpmMax, TR ("rpm"), -1); field (TR ("Spindle's wait"), &c.machine.dwell, "s", -1);
 	}
 	else if (op)
 	{
 		bool clear = op->kind == CAM_CLEAR;
-		head (clear ? I_CAM_CLEAR : I_CAM_CONTOUR, op->name, clear ? "roughing, by levels" : "the outline, to depth");
-		seg (11, "On", op->useFace ? 1 : 0, { "The body", "A face" });
+		head (clear ? I_CAM_CLEAR : I_CAM_CONTOUR, op->name, clear ? TR ("roughing, by levels") : TR ("the outline, to depth"));
+		seg (11, TR ("On"), op->useFace ? 1 : 0, { TR ("The body"), TR ("A face") });
 		if (op->useFace)
 		{
 			const Body *bd = A.doc.body (c.body); int g = bd ? cam_face (bd->mesh, op->facePt) : -1; fmt (op->facePt.z, a, 12);
-			if (g >= 0) snprintf (t, sizeof t, "the face at height %s", a); else snprintf (t, sizeof t, "click a flat face turned up");
+			if (g >= 0) snprintf (t, sizeof t, TR ("the face at height %s"), a); else snprintf (t, sizeof t, TR ("click a flat face turned up"));
 			label (t, g >= 0 ? CDIM : CRED, false, true);
 		}
 		if (clear)
 		{
-			field ("Step over", &op->stepover, "mm", -1); field ("Step down", &op->stepdown, "mm", -1);
-			field ("Left on walls", &op->leaveR, "mm", -1); field ("Left on floors", &op->leaveZ, "mm", -1);
-			seg (12, "Cut", op->climb ? 0 : 1, { "Climb", "Convent." });
+			field (TR ("Step over"), &op->stepover, TR ("mm"), -1); field (TR ("Step down"), &op->stepdown, TR ("mm"), -1);
+			field (TR ("Left on walls"), &op->leaveR, TR ("mm"), -1); field (TR ("Left on floors"), &op->leaveZ, TR ("mm"), -1);
+			seg (12, TR ("Cut"), op->climb ? 0 : 1, { TR ("Climb"), TR ("Convent.") });
 			if (!op->useFace)
 			{
-				check ("To the lowest flat face", op->lowestAuto, 20);
-				if (!op->lowestAuto) field ("Lowest (model Z)", &op->lowest, "mm", -1);
+				check (TR ("To the lowest flat face"), op->lowestAuto, 20);
+				if (!op->lowestAuto) field (TR ("Lowest (model Z)"), &op->lowest, TR ("mm"), -1);
 			}
 		}
 		else
 		{
-			seg (13, "Side", op->inside ? 1 : 0, { "Outside", "Inside" }); seg (12, "Cut", op->climb ? 0 : 1, { "Climb", "Convent." });
-			field ("Step down", &op->stepdown, "mm", -1);
-			check ("From the stock's top", op->fromAuto, 21);
-			if (!op->fromAuto) field ("From (model Z)", &op->from, "mm", -1);
+			seg (13, TR ("Side"), op->inside ? 1 : 0, { TR ("Outside"), TR ("Inside") }); seg (12, TR ("Cut"), op->climb ? 0 : 1, { TR ("Climb"), TR ("Convent.") });
+			field (TR ("Step down"), &op->stepdown, TR ("mm"), -1);
+			check (TR ("From the stock's top"), op->fromAuto, 21);
+			if (!op->fromAuto) field (TR ("From (model Z)"), &op->from, TR ("mm"), -1);
 			if (!op->useFace)
 			{
-				field ("Under it, by", &op->under, "mm", -1);
-				check ("Tabs", op->tabs, 22);
-				if (op->tabs) { field ("How many", &op->ntabs, 0, -1); field ("Width", &op->tabw, "mm", -1); field ("Height", &op->tabh, "mm", -1); }
+				field (TR ("Under it, by"), &op->under, TR ("mm"), -1);
+				check (TR ("Tabs"), op->tabs, 22);
+				if (op->tabs) { field (TR ("How many"), &op->ntabs, 0, -1); field (TR ("Width"), &op->tabw, TR ("mm"), -1); field (TR ("Height"), &op->tabh, TR ("mm"), -1); }
 			}
 		}
 		// its sum: what it cuts, how long, how low
 		bool bad = op->failed;
-		if (A.camDirty) summary (false, "changed", "8A5A10", "Validate to compute", CDIM);
+		if (A.camDirty) summary (false, TR ("changed"), "8A5A10", TR ("Validate to compute"), CDIM);
 		else if (bad) summary (false, op->err, "8A5A10", 0, 0);
 		else
 		{
-			snprintf (t, sizeof t, "%.1f m cut \xC2\xB7 %d min", op->length / 1000, (int) (op->minutes + 0.5));
+			snprintf (t, sizeof t, TR ("%.1f m cut \xC2\xB7 %d min"), op->length / 1000, (int) (op->minutes + 0.5));
 			V3 o = cam_origin (A.job, A.paths.lo, A.paths.hi); double lowz = 1e30;
 			for (const CamMove &m : A.paths.moves) if (m.op == A.camSel - 1 && m.p.z < lowz) lowz = m.p.z;
-			char l2[48]; fmt (lowz - o.z, a, 12); snprintf (l2, sizeof l2, "never below Z %s", a);
+			char l2[48]; fmt (lowz - o.z, a, 12); snprintf (l2, sizeof l2, TR ("never below Z %s"), a);
 			summary (true, t, "286E38", l2, CDIM);
 		}
-		button (CMD_CAM_DELETE, "Delete this operation", false, true);
+		button (CMD_CAM_DELETE, TR ("Delete this operation"), false, true);
 	}
 }
 static void form_build ()
@@ -687,125 +687,125 @@ static void form_build ()
 	if (A.camMode) { cam_pages (); return; }
 	if (A.sketching)
 	{
-		static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
+		static const char *const EN[] = { TR ("Line"), TR ("Arc"), TR ("Circle"), TR ("Rectangle"), TR ("Close"), TR ("Spline"), TR ("Point") };
 		static const int EI[] = { I_LINE, I_ARC, I_CIRCLE, I_RECT, I_CLOSE, I_SPLINE, I_POINT };
 		bool edit = A.selEl >= 0 && A.selEl < (int) A.sk.els.size ();
 		SkEl &e = edit ? A.sk.els[A.selEl] : A.cur; g_el = &e;
-		if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, "3-point arc", "Ends", "Middle", A.curStep < 2 ? 0 : 1);
-		else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], "Arc", "Centre", "End", A.curStep < 2 ? 0 : 1);
-		else if (e.kind == SK_ARC && !edit) head (EI[e.kind], "Arc", "Centre", "Start \xC2\xB7 End", A.curStep == 0 ? 0 : 1);
-		else head (EI[e.kind], EN[e.kind], edit ? "selected" : 0);
+		if (e.kind == SK_ARC && !edit && A.tool == T_ARC3) head (I_ARC3, TR ("3-point arc"), TR ("Ends"), TR ("Middle"), A.curStep < 2 ? 0 : 1);
+		else if (e.kind == SK_ARC && !edit && e.chain) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("End"), A.curStep < 2 ? 0 : 1);
+		else if (e.kind == SK_ARC && !edit) head (EI[e.kind], TR ("Arc"), TR ("Centre"), TR ("Start \xC2\xB7 End"), A.curStep == 0 ? 0 : 1);
+		else head (EI[e.kind], EN[e.kind], edit ? TR ("selected") : 0);
 		bool chained = e.chain, fresh = !edit && A.curStep > 0;
-		const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? "Centre X"
-				 : e.kind == SK_RECT ? "Corner X" : e.kind == SK_POINT ? "At X" : "Starts at X";
-		if (e.kind != SK_CLOSE && !chained) { field (xn, &e.x, "mm", -1); field ("Y", &e.y, "mm", -1); }
-		else if (e.kind != SK_CLOSE) kv ("Starts at", "the end before", "");
+		const char *xn = e.kind == SK_CIRCLE || (e.kind == SK_RECT && e.rel) || (e.kind == SK_ARC && !edit && A.tool == T_ARC && A.curStep == 0) ? TR ("Centre X")
+				 : e.kind == SK_RECT ? TR ("Corner X") : e.kind == SK_POINT ? TR ("At X") : TR ("Starts at X");
+		if (e.kind != SK_CLOSE && !chained) { field (xn, &e.x, TR ("mm"), -1); field ("Y", &e.y, TR ("mm"), -1); }
+		else if (e.kind != SK_CLOSE) kv (TR ("Starts at"), TR ("the end before"), "");
 		if (e.kind == SK_LINE)
 		{
-			field ("Length", &e.len, "mm", 0, false, fresh); field ("Angle", &e.a, "\xC2\xB0", 1);
-			if (chained) check ("From the line before", e.rel, 7);
+			field (TR ("Length"), &e.len, TR ("mm"), 0, false, fresh); field (TR ("Angle"), &e.a, "\xC2\xB0", 1);
+			if (chained) check (TR ("From the line before"), e.rel, 7);
 		}
 		else if (e.kind == SK_ARC)
 		{
 			bool swf = fresh && A.curStep == 2 && A.tool != T_ARC3;
-			field ("Radius", &e.r, "mm", 0, false, fresh && !swf); field ("Centre at", &e.ca, "\xC2\xB0", -1); field ("Angle", &e.sweep, "\xC2\xB0", 1, false, swf);
-			note ("+ clockwise, \xE2\x88\x92 anticlockwise");
+			field (TR ("Radius"), &e.r, TR ("mm"), 0, false, fresh && !swf); field (TR ("Centre at"), &e.ca, "\xC2\xB0", -1); field (TR ("Angle"), &e.sweep, "\xC2\xB0", 1, false, swf);
+			note (TR ("+ clockwise, \xE2\x88\x92 anticlockwise"));
 		}
 		else if (e.kind == SK_SPLINE)
 		{
-			snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + (edit ? 1 : 0)); label (t);
-			if (!edit) note ("Enter, or the last point clicked again, ends it.");
+			snprintf (t, sizeof t, TR ("through %d points"), (int) e.pts.size () + (edit ? 1 : 0)); label (t);
+			if (!edit) note (TR ("Enter, or the last point clicked again, ends it."));
 		}
-		else if (e.kind == SK_POINT) note ("A mark to snap to: it is part of no outline.");
-		else if (e.kind == SK_CIRCLE) field ("Diameter", &e.w, "mm", 0, false, fresh);
+		else if (e.kind == SK_POINT) note (TR ("A mark to snap to: it is part of no outline."));
+		else if (e.kind == SK_CIRCLE) field (TR ("Diameter"), &e.w, TR ("mm"), 0, false, fresh);
 		else if (e.kind == SK_RECT)
 		{
-			field ("Width", &e.w, "mm", 0, false, fresh); field ("Height", &e.h, "mm", 1);
-			seg (14, "From its", e.rel ? 1 : 0, { "Corner", "Centre" });
+			field (TR ("Width"), &e.w, TR ("mm"), 0, false, fresh); field (TR ("Height"), &e.h, TR ("mm"), 1);
+			seg (14, TR ("From its"), e.rel ? 1 : 0, { TR ("Corner"), TR ("Centre") });
 		}
-		check ("Snap to points and angles", A.snap, 3);
-		info ({ "Each element starts from a point and keeps", "its own values. Change one: what was", "drawn after it follows." });
-		if (edit) button (CMD_DEL_ELEMENT, "Delete this element", false, true);
+		check (TR ("Snap to points and angles"), A.snap, 3);
+		info ({ TR ("Each element starts from a point and keeps its own values. Change one: what was drawn after it follows.") });
+		if (edit) button (CMD_DEL_ELEMENT, TR ("Delete this element"), false, true);
 		return;
 	}
 	if (A.tool == T_SKETCH)				// where the sketch goes: a face clicked, or a plane of the axes
 	{
-		head (I_SKETCH, "Sketch", "its plane");
-		note ("Click a flat face of a body, or draw on a plane of the axes:");
-		seg (3, "Plane", A.skPlane, { "XY", "XZ", "YZ" });
-		field ("Offset", &A.skOffset, "mm", -1, false, true);
-		note (A.skPlane == 0 ? "XY: the ground, seen from above; the offset is its height (Z)." : A.skPlane == 1 ? "XZ: upright, seen from the front; the offset is along Y." : "YZ: upright, seen from the right; the offset is along X.");
-		button (CMD_SK_START, "Start the sketch", true);
-		button (CMD_CANCEL, "Cancel", false, true);
+		head (I_SKETCH, TR ("Sketch"), TR ("its plane"));
+		note (TR ("Click a flat face of a body, or draw on a plane of the axes:"));
+		seg (3, TR ("Plane"), A.skPlane, { TR ("XY"), TR ("XZ"), TR ("YZ") });
+		field (TR ("Offset"), &A.skOffset, TR ("mm"), -1, false, true);
+		note (A.skPlane == 0 ? TR ("XY: the ground, seen from above; the offset is its height (Z).") : A.skPlane == 1 ? TR ("XZ: upright, seen from the front; the offset is along Y.") : TR ("YZ: upright, seen from the right; the offset is along X."));
+		button (CMD_SK_START, TR ("Start the sketch"), true);
+		button (CMD_CANCEL, TR ("Cancel"), false, true);
 		return;
 	}
 	if (A.hasPend)
 	{
 		Feature &f = A.pend;
-		snprintf (t, sizeof t, "%s %d", KIND_NAME[f.kind], A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
-		if (f.kind == F_BOX) head (I_BOX, t, "Base", "Height", A.step == 2 ? 1 : 0);
-		else if (f.kind == F_CYL) head (I_CYL, t, "Circle", "Depth", A.step == 2 ? 1 : 0);
-		else if (f.kind == F_TORUS) head (I_TORUS, t, "Ring", "Tube", A.step == 2 ? 1 : 0);
-		else if (f.kind == F_SPHERE) head (I_SPHERE, t, "Radius");
-		else if (f.kind == F_TAPER) head (I_TAPER, t, "Base", "Top \xC2\xB7 Height", A.step >= 2 ? 1 : 0);
-		else if (round_kind (f.kind)) head (icon_of_kind (f.kind), t, "Base", "Height", A.step == 2 ? 1 : 0);
+		snprintf (t, sizeof t, "%s %d", TR (KIND_NAME[f.kind]), A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
+		if (f.kind == F_BOX) head (I_BOX, t, TR ("Base"), TR ("Height"), A.step == 2 ? 1 : 0);
+		else if (f.kind == F_CYL) head (I_CYL, t, TR ("Circle"), TR ("Depth"), A.step == 2 ? 1 : 0);
+		else if (f.kind == F_TORUS) head (I_TORUS, t, TR ("Ring"), TR ("Tube"), A.step == 2 ? 1 : 0);
+		else if (f.kind == F_SPHERE) head (I_SPHERE, t, TR ("Radius"));
+		else if (f.kind == F_TAPER) head (I_TAPER, t, TR ("Base"), TR ("Top \xC2\xB7 Height"), A.step >= 2 ? 1 : 0);
+		else if (round_kind (f.kind)) head (icon_of_kind (f.kind), t, TR ("Base"), TR ("Height"), A.step == 2 ? 1 : 0);
 		else head (icon_of_kind (f.kind), t);
 		featureFields (f, true);
-		button (CMD_CANCEL, "Cancel", false, true); button (CMD_OK, "OK", true, true);
+		button (CMD_CANCEL, TR ("Cancel"), false, true); button (CMD_OK, TR ("OK"), true, true);
 		return;
 	}
 	if (canvasPage ())				// a canvas: a picture on a plane, to draw over
 	{
 		Canvas3 &c = A.doc.canvases[A.selCanvas]; char a[24], d[24];
-		head (I_SKETCH, c.name, "a canvas, to draw over");
-		textbind ("Name", c.name);
-		seg (16, "Plane", c.plane, { "XY", "XZ", "YZ" });
-		field (c.plane == 0 ? "Height (Z)" : c.plane == 1 ? "Along Y" : "Along X", &c.off, "mm", -1);
-		section ("On its plane"); field ("X", &c.x, "mm", -1); field ("Y", &c.y, "mm", -1); field ("Width", &c.w, "mm", -1); field ("Turned", &c.turn, "\xC2\xB0", -1);
-		fmt (c.w, a, 12); fmt (c.w * c.aspect, d, 12); snprintf (t, sizeof t, "%s \xC3\x97 %s mm", a, d); kv ("Size", t); note ("Its size follows its width.");
-		section ("Seen"); field ("Opacity", &c.opacity, "%", -1); check ("Shown", c.visible, 34);
-		note ("Drag it in the view to move it, a corner to size it.");
-		button (CMD_CANVAS_DELETE, "Remove this canvas", false, true);
+		head (I_SKETCH, c.name, TR ("a canvas, to draw over"));
+		textbind (TR ("Name"), c.name);
+		seg (16, TR ("Plane"), c.plane, { TR ("XY"), TR ("XZ"), TR ("YZ") });
+		field (c.plane == 0 ? TR ("Height (Z)") : c.plane == 1 ? TR ("Along Y") : TR ("Along X"), &c.off, TR ("mm"), -1);
+		section (TR ("On its plane")); field ("X", &c.x, TR ("mm"), -1); field ("Y", &c.y, TR ("mm"), -1); field (TR ("Width"), &c.w, TR ("mm"), -1); field (TR ("Turned"), &c.turn, "\xC2\xB0", -1);
+		fmt (c.w, a, 12); fmt (c.w * c.aspect, d, 12); snprintf (t, sizeof t, TR ("%s \xC3\x97 %s mm"), a, d); kv (TR ("Size"), t); note (TR ("Its size follows its width."));
+		section (TR ("Seen")); field (TR ("Opacity"), &c.opacity, "%", -1); check (TR ("Shown"), c.visible, 34);
+		note (TR ("Drag it in the view to move it, a corner to size it."));
+		button (CMD_CANVAS_DELETE, TR ("Remove this canvas"), false, true);
 		return;
 	}
 	if (A.selFeat >= 0 && A.selFeat < (int) A.doc.feats.size ())
 	{
 		Feature &f = A.doc.feats[A.selFeat]; g_feat = &f;
-		head (icon_of_kind (f.kind), f.name, A.selFeat >= A.doc.upto ? "rolled back" : "a step of the history");
+		head (icon_of_kind (f.kind), f.name, A.selFeat >= A.doc.upto ? TR ("rolled back") : TR ("a step of the history"));
 		featureFields (f, false);
-		if (f.failed && A.selFeat < A.doc.upto) { label ("This step could not be made:", CRED, false, true); label (f.err, CRED, false, true); }
-		if (f.kind == F_SKETCH) button (CMD_EDIT_SKETCH, "Edit sketch");
-		button (CMD_DELETE, "Delete this step", false, true);
+		if (f.failed && A.selFeat < A.doc.upto) { label (TR ("This step could not be made:"), CRED, false, true); label (f.err, CRED, false, true); }
+		if (f.kind == F_SKETCH) button (CMD_EDIT_SKETCH, TR ("Edit sketch"));
+		button (CMD_DELETE, TR ("Delete this step"), false, true);
 		return;
 	}
 	if (A.selBody >= 0 && A.doc.body (A.selBody))
 	{
 		Body &bd = *A.doc.body (A.selBody); BodyProp &p = A.doc.prop (A.selBody);
 		int steps = 0; for (int i = 0; i < A.doc.upto; i++) if (A.doc.feats[i].target == bd.id || i == bd.id) steps++;
-		snprintf (t, sizeof t, "Body \xC2\xB7 %d step%s", steps, steps == 1 ? "" : "s"); head (-2, p.name, t, 0, -1, p.colour);
-		textbind ("Name", p.name);
+		snprintf (t, sizeof t, TR ("Body \xC2\xB7 %d step%s"), steps, steps == 1 ? "" : "s"); head (-2, p.name, t, 0, -1, p.colour);
+		textbind (TR ("Name"), p.name);
 		{ std::vector<std::string> w = { hex (p.colour) }; for (int i = 0; i < 5; i++) w.push_back (hex (BODY_COLOURS[i])); item_v ('W', w); }
-		section ("Measures");
+		section (TR ("Measures"));
 		char a[24], c[24], d[24]; V3 sz = bd.mesh.hi - bd.mesh.lo; fmt (sz.x, a, 12); fmt (sz.y, c, 12); fmt (sz.z, d, 12);
-		snprintf (t, sizeof t, "%s \xC3\x97 %s \xC3\x97 %s mm", a, c, d); kv ("Size", t);
-		snprintf (t, sizeof t, "%.1f cm\xC2\xB3", bd.m.Volume () / 1000); kv ("Volume", t);
-		snprintf (t, sizeof t, "%.0f cm\xC2\xB2", bd.m.SurfaceArea () / 100); kv ("Surface", t);
-		snprintf (t, sizeof t, "%d", bd.mesh.tris ()); kv ("Triangles", t);
-		section ("Display"); check ("Edges", A.showEdges, 4); check ("Grid", A.showGrid, 5); check ("See through", A.seeThrough, 6);
-		section ("Print check");
+		snprintf (t, sizeof t, TR ("%s \xC3\x97 %s \xC3\x97 %s mm"), a, c, d); kv (TR ("Size"), t);
+		snprintf (t, sizeof t, TR ("%.1f cm\xC2\xB3"), bd.m.Volume () / 1000); kv (TR ("Volume"), t);
+		snprintf (t, sizeof t, TR ("%.0f cm\xC2\xB2"), bd.m.SurfaceArea () / 100); kv (TR ("Surface"), t);
+		snprintf (t, sizeof t, "%d", bd.mesh.tris ()); kv (TR ("Triangles"), t);
+		section (TR ("Display")); check (TR ("Edges"), A.showEdges, 4); check (TR ("Grid"), A.showGrid, 5); check (TR ("See through"), A.seeThrough, 6);
+		section (TR ("Print check"));
 		bool ok = bd.m.Status () == Manifold::Error::NoError && !bd.m.IsEmpty ();
-		mark (ok, ok ? "Closed solid, ready to print" : "Not a closed solid", ok ? "286E38" : "8A5A10");
+		mark (ok, ok ? TR ("Closed solid, ready to print") : TR ("Not a closed solid"), ok ? "286E38" : "8A5A10");
 		return;
 	}
-	head (-1, "3DForge", A.doc.feats.empty () ? "A new part" : "Nothing selected");
+	head (-1, TR ("3DForge"), A.doc.feats.empty () ? TR ("A new part") : TR ("Nothing selected"));
 	if (A.doc.feats.empty ())
 	{
-		section ("Start with a shape:");
-		note ("Box: click, move away, click, move up, click.");
-		note ("Sketch: draw an outline on a face, then Extrude it.");
-		note ("Each step stays in the history: click it to change its values.");
+		section (TR ("Start with a shape:"));
+		note (TR ("Box: click, move away, click, move up, click."));
+		note (TR ("Sketch: draw an outline on a face, then Extrude it."));
+		note (TR ("Each step stays in the history: click it to change its values."));
 	}
-	section ("Display"); check ("Edges", A.showEdges, 4); check ("Grid", A.showGrid, 5); check ("See through", A.seeThrough, 6);
+	section (TR ("Display")); check (TR ("Edges"), A.showEdges, 4); check (TR ("Grid"), A.showGrid, 5); check (TR ("See through"), A.seeThrough, 6);
 }
 
 // A value changed (a field, a check box, a choice): what it belongs to is made again (fui.h's Props::applied).
@@ -855,34 +855,34 @@ static void tl_text (int i, char *out, int cap)
 	char t[96], a[24], b[24], c[24];
 	if (printer ())
 	{
-		if (i == 0) snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 %s", body_name (A.print.body), A.gen == 2 ? "a filament printer" : A.print.machine.name);
-		else if (A.print.tips.empty ()) snprintf (out, cap, "Supports  \xC2\xB7  none");
-		else snprintf (out, cap, "Supports  \xC2\xB7  %d pillars%s", (int) A.print.tips.size (), A.print.raft ? " \xC2\xB7 a raft" : "");
+		if (i == 0) snprintf (out, cap, TR ("Setup  \xC2\xB7  %s \xC2\xB7 %s"), body_name (A.print.body), A.gen == 2 ? TR ("a filament printer") : A.print.machine.name);
+		else if (A.print.tips.empty ()) snprintf (out, cap, TR ("Supports  \xC2\xB7  none"));
+		else snprintf (out, cap, TR ("Supports  \xC2\xB7  %d pillars%s"), (int) A.print.tips.size (), A.print.raft ? TR (" \xC2\xB7 a raft") : "");
 		return;
 	}
 	if (A.camMode)
 	{
-		if (i == 0) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (out, cap, "Setup  \xC2\xB7  %s \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s", body_name (A.job.body), a, b, c); return; }
+		if (i == 0) { V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12); snprintf (out, cap, TR ("Setup  \xC2\xB7  %s \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s"), body_name (A.job.body), a, b, c); return; }
 		const CamOp &o = A.job.ops[i - 1]; fmt (A.job.tool.dia, a, 12);
 		if (o.failed) snprintf (out, cap, "%s  \xC2\xB7  %s", o.name, o.err);
-		else snprintf (out, cap, "%s  \xC2\xB7  \xC3\x98 %s flat \xC2\xB7 %d min%s", o.name, a, (int) (o.minutes + 0.5), o.useFace ? " \xC2\xB7 one face" : "");
+		else snprintf (out, cap, TR ("%s  \xC2\xB7  \xC3\x98 %s flat \xC2\xB7 %d min%s"), o.name, a, (int) (o.minutes + 0.5), o.useFace ? TR (" \xC2\xB7 one face") : "");
 		return;
 	}
 	if (!A.sketching)
 	{
 		const Feature &f = A.doc.feats[i];
 		if (f.failed && i < A.doc.upto) snprintf (t, sizeof t, "%s", f.err); else describe (A.doc, f, t, sizeof t);
-		snprintf (out, cap, "%s  \xC2\xB7  %s%s", f.name, t, i >= A.doc.upto ? "  (rolled back)" : ""); return;
+		snprintf (out, cap, "%s  \xC2\xB7  %s%s", f.name, t, i >= A.doc.upto ? TR ("  (rolled back)") : ""); return;
 	}
-	static const char *const EN[] = { "Line", "Arc", "Circle", "Rectangle", "Close", "Spline", "Point" };
+	static const char *const EN[] = { TR ("Line"), TR ("Arc"), TR ("Circle"), TR ("Rectangle"), TR ("Close"), TR ("Spline"), TR ("Point") };
 	const SkEl &e = A.sk.els[i]; int k = 0; for (int j = 0; j <= i; j++) if (A.sk.els[j].kind == e.kind) k++;
-	if (e.kind == SK_LINE) { fmt (e.len, a); fmt (e.a, b); snprintf (t, sizeof t, e.rel ? "%s \xC2\xB7 turn %s\xC2\xB0" : "%s \xC2\xB7 at %s\xC2\xB0", a, b); }
+	if (e.kind == SK_LINE) { fmt (e.len, a); fmt (e.a, b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC2\xB7 turn %s\xC2\xB0") : TR ("%s \xC2\xB7 at %s\xC2\xB0"), a, b); }
 	else if (e.kind == SK_ARC) { fmt (e.r, a); fmt (e.sweep, b); snprintf (t, sizeof t, "R %s \xC2\xB7 %s\xC2\xB0", a, b); }
-	else if (e.kind == SK_SPLINE) snprintf (t, sizeof t, "through %d points", (int) e.pts.size () + 1);
-	else if (e.kind == SK_POINT) { fmt (e.x, a); fmt (e.y, b); snprintf (t, sizeof t, "a mark at %s, %s", a, b); }
-	else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, "\xC3\x98 %s \xC2\xB7 at %s, %s", a, b, c); }
-	else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? "%s \xC3\x97 %s \xC2\xB7 from its centre" : "%s \xC3\x97 %s", a, b); }
-	else snprintf (t, sizeof t, "back to the start");
+	else if (e.kind == SK_SPLINE) snprintf (t, sizeof t, TR ("through %d points"), (int) e.pts.size () + 1);
+	else if (e.kind == SK_POINT) { fmt (e.x, a); fmt (e.y, b); snprintf (t, sizeof t, TR ("a mark at %s, %s"), a, b); }
+	else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, TR ("\xC3\x98 %s \xC2\xB7 at %s, %s"), a, b, c); }
+	else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC3\x97 %s \xC2\xB7 from its centre") : "%s \xC3\x97 %s", a, b); }
+	else snprintf (t, sizeof t, TR ("back to the start"));
 	snprintf (out, cap, "%s %d  \xC2\xB7  %s", EN[e.kind], k, t);
 }
 
@@ -900,6 +900,9 @@ FC void fc_init (const char *configDir, const char *printersIni)
 	tool_set (T_SELECT);
 	g_flags = FL_PANEL | FL_UI | FL_VIEW;
 }
+// A catalogue of words in the user's language (Onyx's lang/<code>.txt files: "English<TAB>translation"), before fc_init:
+// the host loads 3DForge's and its own when Windows speaks that language. 0: it cannot be read.
+FC int fc_lang (const char *path) { return forge_lang_load (path) ? 1 : 0; }
 // What changed since the last call (FL_*): the host shows it again.
 FC int fc_poll () { int f = g_flags | (g_view && g_view->dirty ? FL_VIEW : 0); g_flags = 0; return f; }
 FC void fc_set_accent (unsigned rgb) { C_ACCENT = rgb & 0xFFFFFF; view_dirty (); }
@@ -1090,7 +1093,7 @@ FC void fc_form_seg (int tag, int sel)
 	if (tag == 3) { A.skPlane = sel; ui (R_ALL); }
 	if (tag == 16 && canvasPage ()) { A.doc.canvases[A.selCanvas].plane = sel; A.doc.changes++; view_dirty (); ui (R_ALL); }
 	if (tag == 10) { A.job.fixed = sel == 1; if (A.job.fixed) A.job.size = A.paths.hi - A.paths.lo; cam_touch (); ui (R_ALL); }
-	if (tag == 11 && cam_op ()) { cam_op ()->useFace = sel == 1; cam_touch (); if (sel == 1) set_hint ("Click the flat face, turned up, to work on."); ui (R_ALL); }
+	if (tag == 11 && cam_op ()) { cam_op ()->useFace = sel == 1; cam_touch (); if (sel == 1) set_hint (TR ("Click the flat face, turned up, to work on.")); ui (R_ALL); }
 	if (tag == 12 && cam_op ()) { cam_op ()->climb = sel == 0; cam_touch (); ui (R_PANELS); }
 	if (tag == 13 && cam_op ()) { cam_op ()->inside = sel == 1; cam_touch (); ui (R_PANELS); }
 	view_dirty ();
@@ -1128,8 +1131,8 @@ FC int fc_list (int which, char *buf, int cap)
 	if (which == 1)
 	{
 		std::string ini; read_text (g_printers.c_str (), ini); std::vector<PrintMachine> ms = print_machines (ini.c_str ());
-		s = "Milling \xC2\xB7 G-code for a router (GRBL)\nFilament printing \xC2\xB7 the nozzle's path\n";
-		for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, "Resin printing \xC2\xB7 %s\n", ms[i].name); s += t; }
+		s = std::string (TR ("Milling \xC2\xB7 G-code for a router (GRBL)")) + "\n" + TR ("Filament printing \xC2\xB7 the nozzle's path") + "\n";
+		for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, TR ("Resin printing \xC2\xB7 %s"), ms[i].name); s += t; s += "\n"; }
 	}
 	if (which == 2) for (int i = 0; i < 3; i++) { s += PRINT_RESINS[i].name; s += '\n'; }
 	return put (s, buf, cap);
@@ -1186,7 +1189,7 @@ FC void fc_tl_set_upto (int k)
 	if (k < 0) k = 0; if (k > tl_count ()) k = tl_count ();
 	if (k == A.doc.upto) return;
 	A.doc.upto = k; A.doc.touch (); if (A.selFeat >= k) A.selFeat = -1; if (!A.doc.body (A.selBody)) A.selBody = -1;
-	set_hint (k < tl_count () ? "The part as it was after that step. Drag the bar back to the end for the rest." : "The whole history again.");
+	set_hint (k < tl_count () ? TR ("The part as it was after that step. Drag the bar back to the end for the rest.") : TR ("The whole history again."));
 	ui (R_ALL); view_dirty ();
 }
 // A click on an item (dbl: twice; right: the right button -- the host then shows its menu).
@@ -1242,10 +1245,10 @@ FC int fc_save (const char *path)
 // A picture laid on a plane to draw over (main.cpp's canvas_add): "" done, else why not.
 FC int fc_canvas_add (const char *path, char *err, int cap)
 {
-	if (A.camMode) return put ("A canvas belongs to Design.", err, cap);
+	if (A.camMode) return put (TR ("A canvas belongs to Design."), err, cap);
 	const App::CanvasPic *pic = canvas_pic (path);
-	if (!pic || !pic->px || pic->w < 1 || pic->h < 1) return put ("That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, TIFF).", err, cap);
-	if (A.doc.canvases.size () >= 32) return put ("A part holds 32 canvases at most.", err, cap);
+	if (!pic || !pic->px || pic->w < 1 || pic->h < 1) return put (TR ("That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, TIFF)."), err, cap);
+	if (A.doc.canvases.size () >= 32) return put (TR ("A part holds 32 canvases at most."), err, cap);
 	Canvas3 c; snprintf (c.path, sizeof c.path, "%s", path); snprintf (c.name, sizeof c.name, "%.22s", base_name (path)); char *dot = strrchr (c.name, '.'); if (dot && dot != c.name) *dot = 0;
 	c.aspect = (double) pic->h / pic->w;
 	if (A.sketching)
@@ -1255,7 +1258,7 @@ FC int fc_canvas_add (const char *path, char *err, int cap)
 	}
 	else { undo_push (); if (A.tool == T_SKETCH) { c.plane = A.skPlane; c.off = A.skOffset; } }
 	A.doc.canvases.push_back (c); A.doc.changes++;
-	if (!A.sketching) { tool_set (T_SELECT); A.selCanvas = (int) A.doc.canvases.size () - 1; A.selBody = A.selFeat = -1; set_hint ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right."); }
+	if (!A.sketching) { tool_set (T_SELECT); A.selCanvas = (int) A.doc.canvases.size () - 1; A.selBody = A.selFeat = -1; set_hint (TR ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right.")); }
 	ui (R_ALL); view_dirty ();
 	return put ("", err, cap);
 }
@@ -1300,25 +1303,25 @@ FC int fc_gcode (char *checks, int cap, char *sum, int scap)
 	bool bad = p.hitFast || p.gouge || p.moves.empty ();
 	std::string r;
 	auto row = [&] (int st, const char *x) { r += std::to_string (st); r += '\t'; r += x; r += '\n'; };
-	if (p.moves.empty ()) row (2, "There is no operation to write yet.");
+	if (p.moves.empty ()) row (2, TR ("There is no operation to write yet."));
 	else
 	{
 		V3 o = cam_origin (s, p.lo, p.hi);
-		row (p.hitFast ? 2 : 0, p.hitFast ? "A fast move goes through matter." : "No fast move goes through matter.");
-		row (p.gouge ? 2 : 0, p.gouge ? "The tool cuts into the body." : "The body is never cut into.");
+		row (p.hitFast ? 2 : 0, p.hitFast ? TR ("A fast move goes through matter.") : TR ("No fast move goes through matter."));
+		row (p.gouge ? 2 : 0, p.gouge ? TR ("The tool cuts into the body.") : TR ("The body is never cut into."));
 		fmt (p.lowestZ - o.z, a, 12); fmt (p.lowestZ - p.lo.z, b, 12);
-		if (p.lowestZ < p.lo.z - 1e-6) { fmt (p.lo.z - p.lowestZ, b, 12); snprintf (t, sizeof t, "The lowest point is Z %s: %s mm under the stock (a spoil board).", a, b); }
-		else snprintf (t, sizeof t, "The lowest point is Z %s: %s mm above the stock's underside.", a, b);
+		if (p.lowestZ < p.lo.z - 1e-6) { fmt (p.lo.z - p.lowestZ, b, 12); snprintf (t, sizeof t, TR ("The lowest point is Z %s: %s mm under the stock (a spoil board)."), a, b); }
+		else snprintf (t, sizeof t, TR ("The lowest point is Z %s: %s mm above the stock's underside."), a, b);
 		row (p.lowestZ < p.lo.z - 1e-6 ? 1 : 0, t);
 		fmt (s.machine.tx, a, 12); fmt (s.machine.ty, b, 12); fmt (s.machine.tz, c, 12);
-		snprintf (t, sizeof t, p.outside ? "Larger than the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm)." : "Within the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm).", a, b, c); row (p.outside ? 1 : 0, t);
+		snprintf (t, sizeof t, p.outside ? TR ("Larger than the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm).") : TR ("Within the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm)."), a, b, c); row (p.outside ? 1 : 0, t);
 		fmt (s.tool.flute, a, 12);
-		snprintf (t, sizeof t, p.tooDeep ? "Deeper than the tool's cutting length (%s mm)." : "Within the tool's cutting length (%s mm).", a); row (p.tooDeep ? 1 : 0, t);
+		snprintf (t, sizeof t, p.tooDeep ? TR ("Deeper than the tool's cutting length (%s mm).") : TR ("Within the tool's cutting length (%s mm)."), a); row (p.tooDeep ? 1 : 0, t);
 	}
 	put (r, checks, cap);
 	int h = (int) (p.minutes / 60), m = (int) (p.minutes + 0.5) % 60;
-	if (h) snprintf (a, sizeof a, "%d h %02d", h, m); else snprintf (a, sizeof a, "%d min", m);
-	snprintf (t, sizeof t, "%d lines \xC2\xB7 %u KB \xC2\xB7 %.1f m cut \xC2\xB7 about %s \xC2\xB7 %s, %d rpm", lines, (unsigned) (g_code.size () + 1023) / 1024, p.length / 1000, a, s.tool.name, (int) s.tool.rpm);
+	if (h) snprintf (a, sizeof a, "%d h %02d", h, m); else snprintf (a, sizeof a, TR ("%d min"), m);
+	snprintf (t, sizeof t, TR ("%d lines \xC2\xB7 %u KB \xC2\xB7 %.1f m cut \xC2\xB7 about %s \xC2\xB7 %s, %d rpm"), lines, (unsigned) (g_code.size () + 1023) / 1024, p.length / 1000, a, s.tool.name, (int) s.tool.rpm);
 	put (t, sum, scap);
 	return bad ? 0 : 1;
 }
@@ -1332,15 +1335,15 @@ FC int fc_printfile (char *checks, int cap, char *sum, int scap, char *ext, int 
 	bool bad = j.tooLarge || !j.onPlate || j.file.layers.empty ();
 	std::string r;
 	auto row = [&] (int st, const char *x) { r += std::to_string (st); r += '\t'; r += x; r += '\n'; };
-	row (j.tooLarge ? 2 : 0, j.tooLarge ? "It does not fit the printer." : "It fits the plate and the room.");
-	row (j.onPlate ? 0 : 2, j.onPlate ? "The first layers lie on the plate." : "Nothing lies on the plate: lower the body, or give it supports.");
-	if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, "%d part%s in mid-air, the first at %s mm: it needs a support.", j.islands, j.islands > 1 ? "s start" : " starts", a); row (1, t); }
-	else row (0, "Each layer rests on the one before.");
+	row (j.tooLarge ? 2 : 0, j.tooLarge ? TR ("It does not fit the printer.") : TR ("It fits the plate and the room."));
+	row (j.onPlate ? 0 : 2, j.onPlate ? TR ("The first layers lie on the plate.") : TR ("Nothing lies on the plate: lower the body, or give it supports."));
+	if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, j.islands > 1 ? TR ("%d parts start in mid-air, the first at %s mm: they need a support.") : TR ("%d part starts in mid-air, at %s mm: it needs a support."), j.islands, a); row (1, t); }
+	else row (0, TR ("Each layer rests on the one before."));
 	put (r, checks, cap);
-	int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (a, sizeof a, "%d h %02d", mn / 60, mn % 60); else snprintf (a, sizeof a, "%d min", mn);
+	int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (a, sizeof a, "%d h %02d", mn / 60, mn % 60); else snprintf (a, sizeof a, TR ("%d min"), mn);
 	std::string s;
-	snprintf (t, sizeof t, "%d layers of %.3g mm \xC2\xB7 %.1f ml of resin \xC2\xB7 about %s\n", (int) j.file.layers.size (), A.print.resin.layer, j.volume, a); s += t;
-	snprintf (t, sizeof t, "%s \xC2\xB7 %s \xC2\xB7 %.3g s a layer, %.3g s the first %d", A.print.machine.name, A.print.resin.name, A.print.resin.exposure, A.print.resin.bottomExposure, (int) (A.print.resin.bottomLayers + 0.5)); s += t;
+	snprintf (t, sizeof t, TR ("%d layers of %.3g mm \xC2\xB7 %.1f ml of resin \xC2\xB7 about %s"), (int) j.file.layers.size (), A.print.resin.layer, j.volume, a); s += t; s += "\n";
+	snprintf (t, sizeof t, TR ("%s \xC2\xB7 %s \xC2\xB7 %.3g s a layer, %.3g s the first %d"), A.print.machine.name, A.print.resin.name, A.print.resin.exposure, A.print.resin.bottomExposure, (int) (A.print.resin.bottomLayers + 0.5)); s += t;
 	put (s, sum, scap); put (A.print.machine.ext, ext, ecap);
 	return bad ? 0 : 1;
 }

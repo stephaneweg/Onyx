@@ -17,6 +17,7 @@ namespace Forge
 		public const int REQ_NONE = 0, REQ_GCODE = 1, REQ_PRINTFILE = 2;
 
 		[DllImport (D, CallingConvention = C)] static extern void fc_init (byte[] cfg, byte[] printers);
+		[DllImport (D, CallingConvention = C)] public static extern int fc_lang (byte[] path);
 		[DllImport (D, CallingConvention = C)] public static extern int fc_poll ();
 		[DllImport (D, CallingConvention = C)] public static extern void fc_set_accent (uint rgb);
 		[DllImport (D, CallingConvention = C)] public static extern void fc_view_draw (IntPtr px, int w, int h, int stride);

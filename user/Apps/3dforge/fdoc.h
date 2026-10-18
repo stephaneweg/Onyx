@@ -28,6 +28,16 @@
 #include "manifold/manifold.h"
 #include "manifold/cross_section.h"
 
+// The words shown, in the system's language (uikit/lang.h's TR, the app's catalogue); the document alone -- the tests
+// on the PC, the tools -- keeps them in English. A default name (a step's "Box 1", a body's "Body 1") is made in
+// the language in use: it is the user's text from then on, as one he typed.
+#ifndef TR
+#define TR(s) (s)
+#endif
+#ifndef TRN
+#define TRN(s) (s)
+#endif
+
 namespace forge {
 
 using manifold::Manifold;
@@ -84,9 +94,9 @@ static inline bool makes_solid (int k) { return k == F_BOX || k == F_CYL || k ==
 static inline bool round_kind (int k) { return k == F_CYL || k == F_PYRAMID || k == F_PRISM || k == F_TAPER || k == F_TORUS || k == F_SPHERE; }
 enum { OP_NEW, OP_UNION, OP_SUB, OP_INT };
 enum { SK_LINE, SK_ARC, SK_CIRCLE, SK_RECT, SK_CLOSE, SK_SPLINE, SK_POINT };
-static const char *const KIND_NAME[F_KINDS] = { "Box", "Cylinder", "Sketch", "Extrude", "Fillet", "Chamfer", "Move", "Combine", "Pyramid", "Prism", "Taper", "Torus", "Sphere" };
+static const char *const KIND_NAME[F_KINDS] = { TRN ("Box"), TRN ("Cylinder"), TRN ("Sketch"), TRN ("Extrude"), TRN ("Fillet"), TRN ("Chamfer"), TRN ("Move"), TRN ("Combine"), TRN ("Pyramid"), TRN ("Prism"), TRN ("Taper"), TRN ("Torus"), TRN ("Sphere") };
 static const char *const KIND_KEY[F_KINDS] = { "box", "cyl", "sketch", "extrude", "fillet", "chamfer", "move", "combine", "pyramid", "prism", "taper", "torus", "sphere" };
-static const char *const OP_NAME[4] = { "New body", "Union", "Subtract", "Intersect" };
+static const char *const OP_NAME[4] = { TRN ("New body"), TRN ("Union"), TRN ("Subtract"), TRN ("Intersect") };
 
 // A sketch's element. chain: it starts where the one before ended; else at (x, y).
 struct SkEl
@@ -504,8 +514,8 @@ static bool corner_blend (const RMesh &r, const Chain &edge, int vi, const V3 &e
 // The solid for one edge: true and *add (an inner edge: it is added; else cut). why: what stops it.
 static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fillet, int segs, Manifold *out, bool *add, const char **why)
 {
-	*why = "This edge cannot be rounded: only straight edges, circles and arcs";
-	if (rad <= 1e-6) { *why = "The size must be more than 0"; return false; }
+	*why = TR ("This edge cannot be rounded: only straight edges, circles and arcs");
+	if (rad <= 1e-6) { *why = TR ("The size must be more than 0"); return false; }
 	int a = c.pts[0], b = c.pts[1];
 	V3 A = r.v[a], B = r.v[c.pts.back ()], p1, p2;
 	if (c.kind == 1)
@@ -562,7 +572,7 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		V2 o1 = to2 (nn), o2 = to2 (nw);
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
 		SimplePolygon poly = corner_profile (V2 (R, 0), to2 (d1), to2 (d2), o1, o2, rad, fillet, segs);
-		for (auto &q : poly) if (q.x < 0) { *why = "Too large for this edge"; return false; }
+		for (auto &q : poly) if (q.x < 0) { *why = TR ("Too large for this edge"); return false; }
 		double sweep = 360; V3 e1 = er;
 		if (c.kind == 3)				// an arc: from its first point, the way its middle goes
 		{
@@ -745,11 +755,11 @@ struct Doc
 		for (BodyProp &p : props) if (p.id == id) return p;
 		BodyProp p; p.id = id; p.colour = BODY_COLOURS[0]; p.visible = true;
 		int n = 0; for (BodyProp &q : props) { (void) q; n++; }
-		snprintf (p.name, sizeof p.name, "Body %d", n + 1);
+		snprintf (p.name, sizeof p.name, TR ("Body %d"), n + 1);
 		props.push_back (p); return props.back ();
 	}
 	int count (int kind, int before) const { int n = 0; for (int i = 0; i < before && i < (int) feats.size (); i++) if (feats[i].kind == kind) n++; return n; }
-	void name_new (Feature &f) const { snprintf (f.name, sizeof f.name, "%s %d", KIND_NAME[f.kind], count (f.kind, (int) feats.size ()) + 1); }
+	void name_new (Feature &f) const { snprintf (f.name, sizeof f.name, "%s %d", TR (KIND_NAME[f.kind]), count (f.kind, (int) feats.size ()) + 1); }
 	int tris () const { int n = 0; for (const Body &b : bodies) n += b.mesh.tris (); return n; }
 	bool used (int sketch) const { for (int i = 0; i < upto && i < (int) feats.size (); i++) if (feats[i].kind == F_EXTRUDE && feats[i].sketch == sketch) return true; return false; }
 
@@ -764,7 +774,7 @@ struct Doc
 		if (f.kind == F_BOX)
 		{
 			double w = fabs (f.w), d = fabs (f.d), h = fabs (f.h);
-			if (w < 1e-6 || d < 1e-6 || h < 1e-6) { *why = "The box has no size"; return false; }
+			if (w < 1e-6 || d < 1e-6 || h < 1e-6) { *why = TR ("The box has no size"); return false; }
 			double x0 = f.centred ? f.x - w / 2 : (f.w < 0 ? f.x + f.w : f.x), y0 = f.centred ? f.y - d / 2 : (f.d < 0 ? f.y + f.d : f.y);
 			double z0 = f.h < 0 ? f.h : 0, over = f.op == OP_SUB && f.h < 0 ? EPS : 0;
 			*out = placed (Manifold::Cube ({w, d, h + over}).Translate ({x0 - f.x, y0 - f.y, z0}).Rotate (0, 0, f.turn).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
@@ -773,7 +783,7 @@ struct Doc
 		if (f.kind == F_CYL)
 		{
 			double h = f.through && reach > 0 ? -reach : f.h;
-			if (f.w < 1e-6 || fabs (h) < 1e-6) { *why = "The cylinder has no size"; return false; }
+			if (f.w < 1e-6 || fabs (h) < 1e-6) { *why = TR ("The cylinder has no size"); return false; }
 			double over = f.op == OP_SUB && h < 0 ? EPS : 0;
 			*out = placed (Manifold::Cylinder (fabs (h) + over, f.w / 2, f.w / 2, segs).Translate ({f.x, f.y, h < 0 ? h : 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
@@ -784,7 +794,7 @@ struct Doc
 			// into a body it is turned over: its base stays on the face it starts on.
 			double h = f.through && reach > 0 && f.kind != F_PYRAMID ? -reach : f.h, lo = f.w, hi = f.kind == F_PYRAMID ? 0 : f.kind == F_PRISM ? lo : f.d;
 			int sides = f.n >= 2.5 ? (int) (f.n + 0.5) : segs;
-			if (lo < 1e-6 || fabs (h) < 1e-6) { *why = "The shape has no size"; return false; }
+			if (lo < 1e-6 || fabs (h) < 1e-6) { *why = TR ("The shape has no size"); return false; }
 			if (hi < 0) hi = 0;
 			double over = f.op == OP_SUB && h < 0 ? EPS : 0;
 			Manifold m = Manifold::Cylinder (fabs (h), lo, hi, sides);
@@ -795,15 +805,15 @@ struct Doc
 		}
 		if (f.kind == F_SPHERE)				// (its centre on the plane, where it was clicked)
 		{
-			if (f.w < 1e-6) { *why = "The sphere has no size"; return false; }
+			if (f.w < 1e-6) { *why = TR ("The sphere has no size"); return false; }
 			*out = placed (Manifold::Sphere (f.w, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
 			return true;
 		}
 		if (f.kind == F_TORUS)
 		{
 			// a circle of the tube's radius turned around the axis: it rests on the plane
-			if (f.d < 1e-6 || f.w < 1e-6) { *why = "The torus has no size"; return false; }
-			if (f.w <= f.d) { *why = "The ring must be larger than its tube"; return false; }
+			if (f.d < 1e-6 || f.w < 1e-6) { *why = TR ("The torus has no size"); return false; }
+			if (f.w <= f.d) { *why = TR ("The ring must be larger than its tube"); return false; }
 			int ts = segs / 2 < 12 ? 12 : segs / 2; SimplePolygon c;
 			for (int i = 0; i < ts; i++) { double a = 2 * PI * i / ts; c.push_back ({f.w + f.d * cos (a), f.d + f.d * sin (a)}); }
 			*out = placed (Manifold::Revolve (Polygons { c }, segs).Translate ({f.x, f.y, 0}), f.pl.u, f.pl.v, f.pl.n, f.pl.o + f.pl.n * f.z).AsOriginal ();
@@ -811,12 +821,12 @@ struct Doc
 		}
 		if (f.kind == F_EXTRUDE)
 		{
-			if (f.sketch < 0 || f.sketch >= (int) feats.size () || feats[f.sketch].kind != F_SKETCH) { *why = "Its sketch is missing"; return false; }
+			if (f.sketch < 0 || f.sketch >= (int) feats.size () || feats[f.sketch].kind != F_SKETCH) { *why = TR ("Its sketch is missing"); return false; }
 			const Feature &sk = feats[f.sketch];
 			SkEval ev; sketch_eval (sk.els, segs, ev);
-			if (ev.closed.empty ()) { *why = "The sketch has no closed outline"; return false; }
+			if (ev.closed.empty ()) { *why = TR ("The sketch has no closed outline"); return false; }
 			double h = f.through && reach > 0 ? -reach : f.h;
-			if (fabs (h) < 1e-6) { *why = "The extrusion has no height"; return false; }
+			if (fabs (h) < 1e-6) { *why = TR ("The extrusion has no height"); return false; }
 			double over = f.op == OP_SUB && h < 0 ? EPS : 0;
 			CrossSection cs (ev.closed, CrossSection::FillRule::EvenOdd);
 			*out = placed (Manifold::Extrude (cs.ToPolygons (), fabs (h) + over).Translate ({0, 0, h < 0 ? h : 0}), sk.pl.u, sk.pl.v, sk.pl.n, sk.pl.o).AsOriginal ();
@@ -828,13 +838,13 @@ struct Doc
 	bool corners (const Feature &f, std::vector<Manifold> *adds, std::vector<Manifold> *cuts, const char **why)
 	{
 		Body *b = body (f.target);
-		*why = "Its body is missing";
+		*why = TR ("Its body is missing");
 		if (!b) return false;
-		if (f.edges.empty ()) { *why = "No edge chosen"; return false; }
+		if (f.edges.empty ()) { *why = TR ("No edge chosen"); return false; }
 		for (const V3 &p : f.edges)
 		{
 			int ci = chain_near (b->mesh, p);
-			*why = "An edge is no longer there";
+			*why = TR ("An edge is no longer there");
 			if (ci < 0) return false;
 			Manifold s; bool add;
 			if (!corner_solid (b->mesh, b->mesh.chains[ci], f.r, f.kind == F_FILLET, segs, &s, &add, why)) return false;
@@ -856,7 +866,7 @@ struct Doc
 			Body *t = body (f.target);
 			if (f.op == OP_NEW || !t) { Body nb; nb.id = index; nb.m = s; bodies.push_back (nb); prop (index); return; }
 			Manifold res = f.op == OP_UNION ? t->m + s : f.op == OP_SUB ? t->m - s : (t->m ^ s);
-			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (res.IsEmpty () ? "Nothing would be left of the body" : "The operation failed"); return; }
+			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (res.IsEmpty () ? TR ("Nothing would be left of the body") : TR ("The operation failed")); return; }
 			t->m = res; build_mesh (t->m, t->mesh);
 			return;
 		}
@@ -867,21 +877,21 @@ struct Doc
 			Body *t = body (f.target); Manifold res = t->m;
 			for (Manifold &s : cuts) res -= s;
 			for (Manifold &s : adds) res += s;
-			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail ("The operation failed"); return; }
+			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (TR ("The operation failed")); return; }
 			t->m = res; build_mesh (t->m, t->mesh);
 			return;
 		}
 		if (f.kind == F_MOVE)
 		{
 			Body *t = body (f.target);
-			if (!t) { fail ("Its body is missing"); return; }
-			if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { fail ("A scale of 0 would leave nothing"); return; }
+			if (!t) { fail (TR ("Its body is missing")); return; }
+			if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { fail (TR ("A scale of 0 would leave nothing")); return; }
 			Manifold res = moved (*t, f);
-			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail ("The operation failed"); return; }
+			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (TR ("The operation failed")); return; }
 			if (f.clone)				// (the copy: a body of its own, named and coloured after the original at first)
 			{
 				bool known = false; for (BodyProp &p : props) if (p.id == index) known = true;
-				if (!known) { BodyProp from = prop (f.target); BodyProp &np = prop (index); np.colour = from.colour; snprintf (np.name, sizeof np.name, "%.17s copy", from.name); }
+				if (!known) { BodyProp from = prop (f.target); BodyProp &np = prop (index); np.colour = from.colour; snprintf (np.name, sizeof np.name, TR ("%.17s copy"), from.name); }
 				Body nb; nb.id = index; nb.m = res; bodies.push_back (nb);
 				return;
 			}
@@ -891,9 +901,9 @@ struct Doc
 		if (f.kind == F_COMBINE)
 		{
 			Body *t = body (f.target), *u = body (f.tool);
-			if (!t || !u || t == u) { fail ("A body is missing"); return; }
+			if (!t || !u || t == u) { fail (TR ("A body is missing")); return; }
 			Manifold res = f.op == OP_SUB ? t->m - u->m : f.op == OP_INT ? (t->m ^ u->m) : t->m + u->m;
-			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (res.IsEmpty () ? "Nothing would be left of the body" : "The operation failed"); return; }
+			if (res.Status () != Manifold::Error::NoError || res.IsEmpty ()) { fail (res.IsEmpty () ? TR ("Nothing would be left of the body") : TR ("The operation failed")); return; }
 			t->m = res; build_mesh (t->m, t->mesh);
 			int gone = f.tool;
 			for (size_t i = 0; i < bodies.size (); i++) if (bodies[i].id == gone) { bodies.erase (bodies.begin () + i); break; }
@@ -963,7 +973,7 @@ struct Doc
 			{
 				Canvas3 c; int v = 1, off = 0;
 				if (sscanf (line, "canvas %d %lf %lf %lf %lf %lf %lf %lf %d %n", &c.plane, &c.off, &c.x, &c.y, &c.w, &c.turn, &c.aspect, &c.opacity, &v, &off) >= 9 && canvases.size () < 32)
-				{ c.visible = v != 0; snprintf (c.name, sizeof c.name, "%s", off ? line + off : "Canvas"); if (c.plane < 0 || c.plane > 2) c.plane = 0; canvases.push_back (c); }
+				{ c.visible = v != 0; snprintf (c.name, sizeof c.name, "%s", off ? line + off : TR ("Canvas")); if (c.plane < 0 || c.plane > 2) c.plane = 0; canvases.push_back (c); }
 			}
 			else if (!strncmp (line, "canvasfile ", 11)) { if (!canvases.empty ()) snprintf (canvases.back ().path, sizeof canvases.back ().path, "%s", line + 11); }
 			else if (!strncmp (line, "body ", 5))
@@ -1072,26 +1082,26 @@ static void describe (const Doc &d, const Feature &f, char *out, int cap)
 {
 	auto num = [] (double v, char *b) { snprintf (b, 24, "%.4g", fabs (v) < 1e-9 ? 0.0 : v); };
 	char a[24], b[24], c[24];
-	const char *op = f.op == OP_SUB ? " \xC2\xB7 cut" : f.op == OP_INT ? " \xC2\xB7 intersect" : "";
+	const char *op = f.op == OP_SUB ? TR (" \xC2\xB7 cut") : f.op == OP_INT ? TR (" \xC2\xB7 intersect") : "";
 	switch (f.kind)
 	{
 	case F_BOX: num (fabs (f.w), a); num (fabs (f.d), b); num (fabs (f.h), c); snprintf (out, cap, "%s \xC3\x97 %s \xC3\x97 %s%s", a, b, c, op); break;
-	case F_CYL: num (f.w, a); num (fabs (f.h), b); if (f.through) snprintf (out, cap, "\xC3\x98 %s \xC2\xB7 through%s", a, op); else snprintf (out, cap, "\xC3\x98 %s \xC3\x97 %s%s", a, b, op); break;
+	case F_CYL: num (f.w, a); num (fabs (f.h), b); if (f.through) snprintf (out, cap, TR ("\xC3\x98 %s \xC2\xB7 through%s"), a, op); else snprintf (out, cap, "\xC3\x98 %s \xC3\x97 %s%s", a, b, op); break;
 	case F_PYRAMID: case F_PRISM: case F_TAPER:
 	{
-		char s[24]; num (f.w, a); num (fabs (f.h), b); if (f.n >= 2.5) snprintf (s, sizeof s, "%d sides", (int) (f.n + 0.5)); else snprintf (s, sizeof s, "round");
+		char s[24]; num (f.w, a); num (fabs (f.h), b); if (f.n >= 2.5) snprintf (s, sizeof s, TR ("%d sides"), (int) (f.n + 0.5)); else snprintf (s, sizeof s, TR ("round"));
 		if (f.kind == F_TAPER) { num (f.d, c); snprintf (out, cap, "R %s\xE2\x80\x93%s \xC3\x97 %s \xC2\xB7 %s%s", a, c, b, s, op); }
 		else snprintf (out, cap, "R %s \xC3\x97 %s \xC2\xB7 %s%s", a, b, s, op);
 		break;
 	}
-	case F_TORUS: num (f.w, a); num (f.d, b); snprintf (out, cap, "R %s \xC2\xB7 tube %s%s", a, b, op); break;
+	case F_TORUS: num (f.w, a); num (f.d, b); snprintf (out, cap, TR ("R %s \xC2\xB7 tube %s%s"), a, b, op); break;
 	case F_SPHERE: num (f.w, a); snprintf (out, cap, "R %s%s", a, op); break;
-	case F_SKETCH: { SkEval ev; sketch_eval (f.els, 24, ev); snprintf (out, cap, "%d outline%s%s", ev.nclosed, ev.nclosed == 1 ? "" : "s", ev.nopen ? " \xC2\xB7 open" : ""); break; }
-	case F_EXTRUDE: num (fabs (f.h), a); if (f.through) snprintf (out, cap, "through%s", op); else snprintf (out, cap, "%s%s", a, op); break;
-	case F_FILLET: num (f.r, a); snprintf (out, cap, "R %s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
-	case F_CHAMFER: num (f.r, a); snprintf (out, cap, "%s \xC2\xB7 %d edge%s", a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
-	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? " \xC2\xB7 turned" : "", f.scaled () ? " \xC2\xB7 scaled" : ""); if (f.clone) { size_t k = strlen (out); snprintf (out + k, cap - k, " \xC2\xB7 a copy"); } break;
-	case F_COMBINE: snprintf (out, cap, "%s", OP_NAME[f.op]); break;
+	case F_SKETCH: { SkEval ev; sketch_eval (f.els, 24, ev); snprintf (out, cap, TR ("%d outline%s%s"), ev.nclosed, ev.nclosed == 1 ? "" : "s", ev.nopen ? TR (" \xC2\xB7 open") : ""); break; }
+	case F_EXTRUDE: num (fabs (f.h), a); if (f.through) snprintf (out, cap, TR ("through%s"), op); else snprintf (out, cap, "%s%s", a, op); break;
+	case F_FILLET: num (f.r, a); snprintf (out, cap, TR ("R %s \xC2\xB7 %d edge%s"), a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
+	case F_CHAMFER: num (f.r, a); snprintf (out, cap, TR ("%s \xC2\xB7 %d edge%s"), a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
+	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? TR (" \xC2\xB7 turned") : "", f.scaled () ? TR (" \xC2\xB7 scaled") : ""); if (f.clone) { size_t k = strlen (out); snprintf (out + k, cap - k, TR (" \xC2\xB7 a copy")); } break;
+	case F_COMBINE: snprintf (out, cap, "%s", TR (OP_NAME[f.op])); break;
 	default: out[0] = 0;
 	}
 	(void) d;

@@ -1,0 +1,59 @@
+# 3DForge for Windows: the words only the Windows version says, in French ("English<TAB>French", \t \n \ escaped).
+# The core's words are 3DForge's own catalogue (sdcard/apps/3dforge.app/lang/fr.txt), shipped beside this one:
+# pc/dist/3DForge/lang/fr.txt (the core's) and lang/fr-win.txt (this file). Formats: {0}, {1} (C#) or %s, %d (the core).
+Straight edges, circles and arcs can be rounded; the others show in grey.	Les arêtes droites, les cercles et les arcs peuvent être arrondis ; les autres sont en gris.
+Place	Position
+Play draws the layer as the printer would, then the next.	Lecture trace la couche comme l'imprimante, puis la suivante.
+The file for a printer comes later: the path is what is shown.	Le fichier pour une imprimante viendra plus tard : on voit le trajet.
+Enter, or the last point clicked again, ends it.	Entrée, ou le dernier point recliqué, la termine.
+A mark to snap to: it is part of no outline.	Un repère où s'accrocher : il n'est dans aucun contour.
+Each element starts from a point and keeps its own values. Change one: what was drawn after it follows.	Chaque élément part d'un point et garde ses propres valeurs. Changez-en un : ce qui a été tracé après suit.
+Click a flat face of a body, or draw on a plane of the axes:	Cliquez une face plane d'un corps, ou dessinez sur un plan des axes :
+XY: the ground, seen from above; the offset is its height (Z).	XY : le sol, vu de dessus ; le décalage est sa hauteur (Z).
+XZ: upright, seen from the front; the offset is along Y.	XZ : debout, vu de face ; le décalage est selon Y.
+YZ: upright, seen from the right; the offset is along X.	YZ : debout, vu de droite ; le décalage est selon X.
+Drag it in the view to move it, a corner to size it.	Glissez-le dans la vue pour le déplacer, un coin pour sa taille.
+Box: click, move away, click, move up, click.	Boîte : cliquez, éloignez-vous, cliquez, montez, cliquez.
+Sketch: draw an outline on a face, then Extrude it.	Esquisse : tracez un contour sur une face, puis extrudez-le.
+Each step stays in the history: click it to change its values.	Chaque étape reste dans l'historique : cliquez-la pour changer ses valeurs.
+That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, TIFF).	Ce fichier n'est pas une image que 3DForge sait lire (PNG, JPEG, BMP, GIF, TIFF).
+STL meshes	Maillages STL
+OBJ meshes	Maillages OBJ
+DXF drawings	Dessins DXF
+SVG drawings	Dessins SVG
+PDF drawings	Dessins PDF
+PNG pictures	Images PNG
+{0} sides to a circle	{0} côtés par cercle
+{0} × {1} pixels · {2}	{0} × {1} pixels · {2}
+Exported: {0}.	Exporté : {0}.
+Save...	Enregistrer...
+G-code (*.nc)|*.nc|G-code (*.gcode)|*.gcode	G-code (*.nc)|*.nc|G-code (*.gcode)|*.gcode
+Untitled	Sans titre
+New (Ctrl+N)	Nouveau (Ctrl+N)
+Open (Ctrl+O)	Ouvrir (Ctrl+O)
+Save (Ctrl+S)	Enregistrer (Ctrl+S)
+Undo (Ctrl+Z)	Annuler (Ctrl+Z)
+Redo (Ctrl+Y)	Rétablir (Ctrl+Y)
+Show or hide the grid	Afficher ou masquer la grille
+Snap to 1 mm, to points and angles	Accrocher au mm, aux points et aux angles
+{0} triangles	{0} triangles
+Drawn by {0} threads	Dessiné par {0} fils
+3DForge 1.0 for Windows\n\nA small parametric CAD: shapes, sketches and extrusions, unions, cuts, fillets and chamfers, every step kept in a history; 	3DForge 1.0 pour Windows\n\nUne petite CAO paramétrique : formes, esquisses et extrusions, unions, découpes, congés et chanfreins, chaque étape gardée dans un historique ; 
+G-code for a router, the layers for a resin printer, the nozzle's path for a filament printer.\n\n	G-code pour une fraiseuse, les couches pour une imprimante résine, le trajet de la buse pour une imprimante à filament.\n\n
+The same program as Onyx's 3DForge, built for Windows. MIT licence.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).	Le même programme que le 3DForge d'Onyx, construit pour Windows. Licence MIT.\nGéométrie : Manifold (Apache-2.0), Clipper2 (BSL-1.0).
+Save the changes to {0}?	Enregistrer les modifications de {0} ?
+3DForge parts (*.3df)|*.3df|All files|*.*	Pièces 3DForge (*.3df)|*.3df|Tous les fichiers|*.*
+3DForge parts (*.3df)|*.3df	Pièces 3DForge (*.3df)|*.3df
+part.3df	pièce.3df
+Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|All files|*.*	Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff|Tous les fichiers|*.*
+{0} closed outline	{0} contour fermé
+{0} closed outlines	{0} contours fermés
+{0} still open	{0} encore ouvert(s)
+{0} step	{0} étape
+{0} steps	{0} étapes
+Exit	Quitter
+Snap	Accroche
+{0} MB	{0} Mo
+{0} KB	{0} Ko
+{0} lines · {1} × {2} mm · {3}	{0} lignes · {1} × {2} mm · {3}
+{0} triangles · {1} · {2}	{0} triangles · {1} · {2}

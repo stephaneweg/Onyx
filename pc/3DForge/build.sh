@@ -7,7 +7,7 @@
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-OBJ="$HERE/build"; DIST="$ROOT/pc/dist/3DForge"
+OBJ="$HERE/build"; DIST=${FORGE_DIST:-"$ROOT/pc/dist/3DForge"}		# (FORGE_DIST: elsewhere -- the one in pc/dist is running)
 mkdir -p "$OBJ/mf" "$DIST"
 CXX=$(command -v x86_64-w64-mingw32-g++ || echo g++)
 AR=$(command -v x86_64-w64-mingw32-ar || echo ar)
@@ -37,6 +37,7 @@ DOTNET=${DOTNET:-$(command -v dotnet || echo "$HOME/.dotnet/dotnet")}
 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 "$DOTNET" build "$HERE/3DForge.csproj" -c Release -o "$HERE/bin/out" -v quiet -nologo
 cp "$HERE/bin/out/3DForge.exe" "$HERE/bin/out/3DForge.exe.config" "$DIST/"
 cp "$HERE/printers.ini" "$HERE/README.txt" "$DIST/"
+mkdir -p "$DIST/lang"; cp "$ROOT/sdcard/apps/3dforge.app/lang/fr.txt" "$DIST/lang/fr.txt"; cp "$HERE/lang/fr.txt" "$DIST/lang/fr-win.txt"	# (in French when Windows is)
 mkdir -p "$DIST/samples" "$DIST/licences"; cp "$ROOT/sdcard/docs/3d/"*.3df "$DIST/samples/"
 cp "$MF/LICENSE" "$DIST/licences/Manifold-LICENSE.txt"; cp "$CL/../../LICENSE" "$DIST/licences/Clipper2-LICENSE.txt"
 echo "built: $DIST"

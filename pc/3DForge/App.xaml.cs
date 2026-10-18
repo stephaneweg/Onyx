@@ -33,7 +33,7 @@ namespace Forge
 			try { Directory.CreateDirectory (ConfigDir); } catch { }
 			string printers = Path.Combine (ConfigDir, "printers.ini");
 			if (!File.Exists (printers)) printers = Path.Combine (ExeDir, "printers.ini");
-			try { Core.Init (ConfigDir, printers); }
+			try { Lang.Load (ExeDir); Core.Init (ConfigDir, printers); }
 			catch (DllNotFoundException)
 			{
 				MessageBox.Show ("forgecore.dll is missing: keep it beside 3DForge.exe.", "3DForge", MessageBoxButton.OK, MessageBoxImage.Error);

@@ -28,6 +28,15 @@ int kapi_get_modifiers ();			// MOD_* held now (the host says: fc_view_mouse)
 int kapi_gpu_info (char *out, int cap);		// 1: a GPU (forgecore.cpp's OpenGL)
 int kapi_gpu_render (const struct kapi_gpu_frame *f, const struct kapi_gpu_vertex3 *v, unsigned nv, const struct kapi_gpu_batch *b, unsigned nb);
 
+// ---- the words in the user's language (uikit/lang.h): the catalogues are Onyx's own files ("English<TAB>French"),
+// loaded by forge_lang_load (forgecore.cpp's fc_lang: Windows' language chosen by the host) -------------------------------------
+const char *uk_tr (const char *en);
+const char *uk_trc (const char *ctx, const char *en);
+#define TR(s)		uk_tr (s)
+#define TRC(c, s)	uk_trc (c, s)
+#define TRN(s)		(s)
+bool forge_lang_load (const char *path);		// one more catalogue (false: it cannot be read)
+
 // ---- UIKit ----------------------------------------------------------------------------------------------------------------
 namespace uikit {
 

@@ -104,7 +104,7 @@ static void cmd_save ()
 	if (!A.path[0]) { cmd_save_as (); return; }
 	std::string s = A.doc.save () + cam_save (A.job) + print_save (A.print) + (A.gen == 1 ? "manufacture resin\n" : A.gen == 2 ? "manufacture filament\n" + fdm_save (A.fdm, A.fmach) : std::string ());
 	if (kapi_save_file (A.path, s.data (), (unsigned) s.size ()) >= 0) A.saved = A.doc.changes;
-	else uk_messagebox ("Save", "The file could not be written.", MB_OK);
+	else uk_messagebox (TR ("Save"), TR ("The file could not be written."), MB_OK);
 	ui (0);
 }
 static void cmd_save_as ()
@@ -115,7 +115,7 @@ static void cmd_save_as ()
 	if (!ends_with (path, ".3df")) { size_t k = strlen (path); snprintf (path + k, sizeof path - k, ".3df"); }
 	snprintf (A.path, sizeof A.path, "%s", path); cmd_save ();
 }
-static bool guard () { return doc_confirm (A.path[0] ? base_name (A.path) : "this part", changed_doc (), cmd_save); }
+static bool guard () { return doc_confirm (A.path[0] ? base_name (A.path) : TR ("this part"), changed_doc (), cmd_save); }
 static void cmd_new ()
 {
 	if (!guard ()) return;
@@ -129,12 +129,12 @@ static void cmd_open ()
 	char path[200];
 	if (!guard ()) return;
 	if (A.sketching) sketch_end (false);
-	if (uk_file_open (path, sizeof path, DOCS) && !load_path (path)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
+	if (uk_file_open (path, sizeof path, DOCS) && !load_path (path)) uk_messagebox (TR ("Open"), TR ("That file is not a 3DForge part (.3df)."), MB_OK);
 	A.caption[0] = 0; ui (R_ALL);
 }
 
 // ---- a canvas: a picture laid on a plane, to draw over ---------------------------------------------------------------------
-static const char *PICTURES = "Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|All files|*";
+static const char *PICTURES = TRN ("Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|All files|*");
 static bool is_picture (const char *p) { for (const char *e : { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp" }) if (ends_with (p, e)) return true; return false; }
 // On the plane being drawn on (a sketch's, or the one chosen for a sketch), else on the ground; its middle on the
 // plane's origin, 100 mm wide: it is then moved and sized.
@@ -142,8 +142,8 @@ static bool canvas_add (const char *path)
 {
 	if (A.camMode) return false;
 	const App::CanvasPic *pic = canvas_pic (path);
-	if (!pic || !pic->px || pic->w < 1 || pic->h < 1) { uk_messagebox ("Canvas", "That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, WebP).", MB_OK); return false; }
-	if (A.doc.canvases.size () >= 32) { uk_messagebox ("Canvas", "A part holds 32 canvases at most.", MB_OK); return false; }
+	if (!pic || !pic->px || pic->w < 1 || pic->h < 1) { uk_messagebox (TR ("Canvas"), TR ("That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, WebP)."), MB_OK); return false; }
+	if (A.doc.canvases.size () >= 32) { uk_messagebox (TR ("Canvas"), TR ("A part holds 32 canvases at most."), MB_OK); return false; }
 	Canvas3 c; snprintf (c.path, sizeof c.path, "%s", path); snprintf (c.name, sizeof c.name, "%.22s", base_name (path)); char *dot = strrchr (c.name, '.'); if (dot && dot != c.name) *dot = 0;
 	c.aspect = (double) pic->h / pic->w;
 	if (A.sketching)
@@ -153,15 +153,15 @@ static bool canvas_add (const char *path)
 	}
 	else { undo_push (); if (A.tool == T_SKETCH) { c.plane = A.skPlane; c.off = A.skOffset; } }
 	A.doc.canvases.push_back (c); A.doc.changes++;
-	if (!A.sketching) { tool_set (T_SELECT); A.selCanvas = (int) A.doc.canvases.size () - 1; A.selBody = A.selFeat = -1; set_hint ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right."); }
+	if (!A.sketching) { tool_set (T_SELECT); A.selCanvas = (int) A.doc.canvases.size () - 1; A.selBody = A.selFeat = -1; set_hint (TR ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right.")); }
 	ui (R_ALL); if (g_view) g_view->invalidate (true);
 	return true;
 }
 static void cmd_canvas_import ()
 {
 	char path[200];
-	if (A.camMode) { set_hint ("A canvas belongs to Design."); ui (0); return; }
-	if (uk_file_open (path, sizeof path, "SD:/docs/pictures", PICTURES)) canvas_add (path);
+	if (A.camMode) { set_hint (TR ("A canvas belongs to Design.")); ui (0); return; }
+	if (uk_file_open (path, sizeof path, "SD:/docs/pictures", TR (PICTURES))) canvas_add (path);
 }
 
 // ---- Export: the meshes (STL, OBJ), a flat drawing from a side (DXF, SVG, PDF), a picture (PNG) ----------------------------
@@ -176,21 +176,21 @@ public:
 	static void button (Widget &w) { ((ExportDialog *) w.parent)->onButton (w.tag); }
 	ExportDialog () : Modal (460, 440), tris (0), nlines (0), pw (0), ph (0), bytes (0), closed (true), dw (0), dh (0)
 	{
-		static const char *const F[] = { "STL", "OBJ", "DXF", "SVG", "PDF", "PNG" }, *const WH[] = { "Whole part", "Selected body" }, *const C[] = { "Draft", "Fine", "Very fine" };
-		static const char *const V[] = { "Front", "Back", "Left", "Right", "Top", "Bottom", "As on screen" };
+		static const char *const F[] = { "STL", "OBJ", "DXF", "SVG", "PDF", "PNG" }, *const WH[] = { TR ("Whole part"), TR ("Selected body") }, *const C[] = { TR ("Draft"), TR ("Fine"), TR ("Very fine") };
+		static const char *const V[] = { TR ("Front"), TR ("Back"), TR ("Left"), TR ("Right"), TR ("Top"), TR ("Bottom"), TR ("As on screen") };
 		int x = 20, w = width - 40;
 		fmtS = new SegmentedControl (x + 110, titleH () + 18, w - 110, 28, F, 6, 0, changed); addChild (fmtS);
 		whatS = new SegmentedControl (x + 110, 0, w - 110, 28, WH, 2, 0, changed); addChild (whatS);
 		if (!A.doc.body (A.selBody)) whatS->setEnabled (1, false);
 		curveS = new SegmentedControl (x + 110, 0, w - 110, 28, C, 3, A.doc.segs <= 48 ? 0 : A.doc.segs <= 96 ? 1 : 2, changed); addChild (curveS);
-		bin = new Checkbox (x + 110, 0, w - 110, 20, "Binary file (smaller)", true, changed, C_FACE); addChild (bin);
-		hid = new Checkbox (x + 110, 0, w - 110, 20, "Hidden edges too, dashed", false, changed, C_FACE); addChild (hid);
-		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : "part"); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
+		bin = new Checkbox (x + 110, 0, w - 110, 20, TR ("Binary file (smaller)"), true, changed, C_FACE); addChild (bin);
+		hid = new Checkbox (x + 110, 0, w - 110, 20, TR ("Hidden edges too, dashed"), false, changed, C_FACE); addChild (hid);
+		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : TR ("part")); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
 		name = new Textbox (x + 110, 0, w - 110, 28, def); addChild (name);
 		folder = new Textbox (x + 110, 0, w - 110 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
-		browse = new Button (x + w - 78, 0, 78, 28, "Browse...", button); browse->tag = 2; addChild (browse);
-		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, "Cancel", 0); c->bg = C_FACE; addChild (c);
-		ABtn *o = new ABtn (width - 118, height - 44, 98, 28, "Export", 1, true); o->bg = C_FACE; addChild (o);
+		browse = new Button (x + w - 78, 0, 78, 28, TR ("Browse..."), button); browse->tag = 2; addChild (browse);
+		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, TR ("Cancel"), 0); c->bg = C_FACE; addChild (c);
+		ABtn *o = new ABtn (width - 118, height - 44, 98, 28, TR ("Export"), 1, true); o->bg = C_FACE; addChild (o);
 		viewD = new Dropdown (x + 110, 0, 180, 28, V, 7, 0, changed); addChild (viewD);		// (last: its list opens over the rest)
 		recompute ();
 	}
@@ -242,31 +242,31 @@ public:
 		if (fmtS->selected == PDF) recompute ();			// (its title: the name as it is now)
 		kapi_mkdir (folder->text);
 		snprintf (path, sizeof path, "%s/%s%s", folder->text, name->text, ends_with (name->text, ext) ? "" : ext);
-		if (!bytes) { uk_messagebox ("Export", "There is nothing to export yet.", MB_OK); return; }
+		if (!bytes) { uk_messagebox (TR ("Export"), TR ("There is nothing to export yet."), MB_OK); return; }
 		if (kapi_save_file (path, data.data (), bytes) < 0) { uk_messagebox ("Export", "The file could not be written.", MB_OK); return; }
 		close (1);
 	}
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { onButton (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Export"); int x = 20, w = width - 40, f = fmtS->selected; char t[120], sz[32];
+		drawBox (TR ("Export")); int x = 20, w = width - 40, f = fmtS->selected; char t[120], sz[32];
 		auto lab = [&] (const char *s, int yy) { uk_text (canvas, x, yy + (28 - uk_fh ()) / 2, s, C_TEXT); };
-		lab ("Format", titleH () + 18); lab ("What", yWhat); lab ("Curves", yCurve);
-		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, "%d sides to a circle", segs ()); uk_text (canvas, x + 110, yCurve + 34, t, dim_col ()); }
+		lab (TR ("Format"), titleH () + 18); lab (TR ("What"), yWhat); lab (TR ("Curves"), yCurve);
+		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, TR ("%d sides to a circle"), segs ()); uk_text (canvas, x + 110, yCurve + 34, t, dim_col ()); }
 		if (yView >= 0)
 		{
-			lab ("Seen from", yView);
-			UkFaceScope fs (g_small); uk_text (canvas, x + 110 + 190, yView + (28 - uk_fh ()) / 2, f == PNG ? "1024 pixels" : "at its size, in mm", dim_col ());
+			lab (TR ("Seen from"), yView);
+			UkFaceScope fs (g_small); uk_text (canvas, x + 110 + 190, yView + (28 - uk_fh ()) / 2, f == PNG ? TR ("1024 pixels") : TR ("at its size, in mm"), dim_col ());
 		}
-		lab ("Name", yName); lab ("Folder", yFolder);
+		lab (TR ("Name"), yName); lab (TR ("Folder"), yFolder);
 		unsigned pc = panel_col (); uk_rbox (canvas, x, ySum, w, 34, 6, pc, pc); uk_rline (canvas, x, ySum, w, 34, 6, uk_tone (C_BG, 96));
 		bool ok = bytes && (flat () || closed);
 		icon (canvas, ok ? I_CHECK : I_WARN, x + 10, ySum + 8, 18, ok ? C_GREEN : 0x4A3A10, C_ACCENT, pc);
-		if (bytes >= 1024 * 1024) snprintf (sz, sizeof sz, "%.1f MB", bytes / 1048576.0); else snprintf (sz, sizeof sz, "%u KB", (bytes + 1023) / 1024);
-		if (!bytes) snprintf (t, sizeof t, "Nothing to export yet");
-		else if (f == PNG) snprintf (t, sizeof t, "%d \xC3\x97 %d pixels \xC2\xB7 %s", pw, ph, sz);
-		else if (flat ()) snprintf (t, sizeof t, "%d lines \xC2\xB7 %.1f \xC3\x97 %.1f mm \xC2\xB7 %s", nlines, dw, dh, sz);
-		else snprintf (t, sizeof t, "%d triangles \xC2\xB7 %s \xC2\xB7 %s", tris, sz, closed ? "closed solid" : "not closed");
+		if (bytes >= 1024 * 1024) snprintf (sz, sizeof sz, TR ("%.1f MB"), bytes / 1048576.0); else snprintf (sz, sizeof sz, TR ("%u KB"), (bytes + 1023) / 1024);
+		if (!bytes) snprintf (t, sizeof t, TR ("Nothing to export yet"));
+		else if (f == PNG) snprintf (t, sizeof t, TR ("%d \xC3\x97 %d pixels \xC2\xB7 %s"), pw, ph, sz);
+		else if (flat ()) snprintf (t, sizeof t, TR ("%d lines \xC2\xB7 %.1f \xC3\x97 %.1f mm \xC2\xB7 %s"), nlines, dw, dh, sz);
+		else snprintf (t, sizeof t, TR ("%d triangles \xC2\xB7 %s \xC2\xB7 %s"), tris, sz, closed ? TR ("closed solid") : TR ("not closed"));
 		uk_text (canvas, x + 36, ySum + (34 - uk_fh ()) / 2, t, C_TEXT);
 	}
 };
@@ -277,7 +277,7 @@ static void cmd_export ()
 	if (A.sketching || A.camMode) return;
 	ExportDialog d; Root *rt = Root::current (); d.left = (rt->width - d.width) / 2; d.top = (rt->height - d.height) / 2;
 	g_export = &d; int r = d.run (); g_export = 0;
-	if (r == 1) set_hint ("Exported."); ui (R_ALL);
+	if (r == 1) set_hint (TR ("Exported.")); ui (R_ALL);
 }
 
 // ---- G-code: what was checked, how it starts, where it goes -----------------------------------------------------------------
@@ -290,14 +290,14 @@ public:
 	GcodeDialog () : Modal (560, 452), lines (0)
 	{
 		int x = 20, w = width - 40;
-		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : "part"); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
+		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : TR ("part")); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
 		code = cam_gcode (A.job, A.paths, A.path[0] ? base_name (A.path) : "part", &lines);
 		bad = A.paths.hitFast || A.paths.gouge || A.paths.moves.empty ();
 		name = new Textbox (x + 70, height - 122, 200, 28, def); addChild (name);
 		folder = new Textbox (x + 70, height - 88, w - 70 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
-		browse = new Button (x + w - 78, height - 88, 78, 28, "Browse...", button); browse->tag = 2; addChild (browse);
-		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, "Cancel", 0); c->bg = C_FACE; addChild (c);
-		save = new ABtn (width - 118, height - 44, 98, 28, "Save", 1, true); save->bg = C_FACE; addChild (save);
+		browse = new Button (x + w - 78, height - 88, 78, 28, TR ("Browse..."), button); browse->tag = 2; addChild (browse);
+		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, TR ("Cancel"), 0); c->bg = C_FACE; addChild (c);
+		save = new ABtn (width - 118, height - 44, 98, 28, TR ("Save"), 1, true); save->bg = C_FACE; addChild (save);
 		if (bad) save->hidden = true;
 	}
 	void onButton (int tag) override
@@ -312,7 +312,7 @@ public:
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { onButton (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("G-code"); int x = 20, w = width - 40, y = titleH () + 14; char t[160], a[24], b[24], c[24];
+		drawBox (TR ("G-code")); int x = 20, w = width - 40, y = titleH () + 14; char t[160], a[24], b[24], c[24];
 		const CamPaths &p = A.paths; const CamSetup &s = A.job;
 		V3 o = cam_origin (s, p.lo, p.hi);
 		auto row = [&] (int state, const char *txt)		// 0 right, 1 to look at, 2 wrong: nothing is written
@@ -320,19 +320,19 @@ public:
 			icon (canvas, state ? I_WARN : I_CHECK, x + 2, y, 17, state == 2 ? 0xB03A30 : state ? 0x4A3A10 : C_GREEN, C_ACCENT, C_FACE);
 			uk_text (canvas, x + 28, y + (17 - uk_fh ()) / 2, txt, state == 2 ? 0xB03A30 : C_TEXT, state == 2 ? 2 : 0); y += 23;
 		};
-		if (p.moves.empty ()) row (2, "There is no operation to write yet.");
+		if (p.moves.empty ()) row (2, TR ("There is no operation to write yet."));
 		else
 		{
-			row (p.hitFast ? 2 : 0, p.hitFast ? "A fast move goes through matter." : "No fast move goes through matter.");
-			row (p.gouge ? 2 : 0, p.gouge ? "The tool cuts into the body." : "The body is never cut into.");
+			row (p.hitFast ? 2 : 0, p.hitFast ? TR ("A fast move goes through matter.") : TR ("No fast move goes through matter."));
+			row (p.gouge ? 2 : 0, p.gouge ? TR ("The tool cuts into the body.") : TR ("The body is never cut into."));
 			fmt (p.lowestZ - o.z, a, 12); fmt (p.lowestZ - p.lo.z, b, 12);
-			if (p.lowestZ < p.lo.z - 1e-6) { fmt (p.lo.z - p.lowestZ, b, 12); snprintf (t, sizeof t, "The lowest point is Z %s: %s mm under the stock (a spoil board).", a, b); }
-			else snprintf (t, sizeof t, "The lowest point is Z %s: %s mm above the stock's underside.", a, b);
+			if (p.lowestZ < p.lo.z - 1e-6) { fmt (p.lo.z - p.lowestZ, b, 12); snprintf (t, sizeof t, TR ("The lowest point is Z %s: %s mm under the stock (a spoil board)."), a, b); }
+			else snprintf (t, sizeof t, TR ("The lowest point is Z %s: %s mm above the stock's underside."), a, b);
 			row (p.lowestZ < p.lo.z - 1e-6 ? 1 : 0, t);
 			fmt (s.machine.tx, a, 12); fmt (s.machine.ty, b, 12); fmt (s.machine.tz, c, 12);
-			snprintf (t, sizeof t, p.outside ? "Larger than the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm)." : "Within the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm).", a, b, c); row (p.outside ? 1 : 0, t);
+			snprintf (t, sizeof t, p.outside ? TR ("Larger than the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm).") : TR ("Within the machine's travel (%s \xC3\x97 %s \xC3\x97 %s mm)."), a, b, c); row (p.outside ? 1 : 0, t);
 			fmt (s.tool.flute, a, 12);
-			snprintf (t, sizeof t, p.tooDeep ? "Deeper than the tool's cutting length (%s mm)." : "Within the tool's cutting length (%s mm).", a); row (p.tooDeep ? 1 : 0, t);
+			snprintf (t, sizeof t, p.tooDeep ? TR ("Deeper than the tool's cutting length (%s mm).") : TR ("Within the tool's cutting length (%s mm)."), a); row (p.tooDeep ? 1 : 0, t);
 		}
 		y += 4; int bh = height - 136 - y - 30;
 		uk_sunken (canvas, x, y, w, bh, 5, C_FIELD);
@@ -348,12 +348,12 @@ public:
 		y += bh + 8;
 		{
 			UkFaceScope fs (g_small); int h = (int) (p.minutes / 60), m = (int) (p.minutes + 0.5) % 60;
-			if (h) snprintf (a, sizeof a, "%d h %02d", h, m); else snprintf (a, sizeof a, "%d min", m);
-			snprintf (t, sizeof t, "%d lines \xC2\xB7 %u KB \xC2\xB7 %.1f m cut \xC2\xB7 about %s \xC2\xB7 %s, %d rpm", lines, (unsigned) (code.size () + 1023) / 1024, p.length / 1000, a, s.tool.name, (int) s.tool.rpm);
+			if (h) snprintf (a, sizeof a, "%d h %02d", h, m); else snprintf (a, sizeof a, TR ("%d min"), m);
+			snprintf (t, sizeof t, TR ("%d lines \xC2\xB7 %u KB \xC2\xB7 %.1f m cut \xC2\xB7 about %s \xC2\xB7 %s, %d rpm"), lines, (unsigned) (code.size () + 1023) / 1024, p.length / 1000, a, s.tool.name, (int) s.tool.rpm);
 			uk_text (canvas, x, y, t, dim_col ());
 		}
-		uk_text (canvas, x, height - 122 + (28 - uk_fh ()) / 2, "Name", C_TEXT); uk_text (canvas, x, height - 88 + (28 - uk_fh ()) / 2, "Folder", C_TEXT);
-		{ UkFaceScope fs (g_small); uk_text (canvas, x + 280, height - 122 + (28 - uk_fh ()) / 2, bad ? "Nothing is written until this is put right." : ".nc \xC2\xB7 GRBL, millimetres \xC2\xB7 try it in the air first", bad ? 0xB03A30 : dim_col ()); }
+		uk_text (canvas, x, height - 122 + (28 - uk_fh ()) / 2, TR ("Name"), C_TEXT); uk_text (canvas, x, height - 88 + (28 - uk_fh ()) / 2, TR ("Folder"), C_TEXT);
+		{ UkFaceScope fs (g_small); uk_text (canvas, x + 280, height - 122 + (28 - uk_fh ()) / 2, bad ? TR ("Nothing is written until this is put right.") : TR (".nc \xC2\xB7 GRBL, millimetres \xC2\xB7 try it in the air first"), bad ? 0xB03A30 : dim_col ()); }
 	}
 };
 static void cmd_gcode ()
@@ -362,7 +362,7 @@ static void cmd_gcode ()
 	if (A.camDirty) cam_refresh ();
 	GcodeDialog d; Root *rt = Root::current (); d.left = (rt->width - d.width) / 2; d.top = (rt->height - d.height) / 2;
 	g_export = &d; int r = d.run (); g_export = 0;
-	if (r == 1) set_hint ("G-code written. Run it in the air first, the spindle well above the stock."); ui (R_ALL);
+	if (r == 1) set_hint (TR ("G-code written. Run it in the air first, the spindle well above the stock.")); ui (R_ALL);
 }
 // ---- the print file: what was checked, where it goes ------------------------------------------------------------------------
 class PrintDialog : public Modal
@@ -373,13 +373,13 @@ public:
 	PrintDialog () : Modal (520, 330)
 	{
 		int x = 20, w = width - 40;
-		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : "part"); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
+		char def[80]; snprintf (def, sizeof def, "%s", A.path[0] ? base_name (A.path) : TR ("part")); char *dot = strrchr (def, '.'); if (dot) *dot = 0;
 		bad = A.pjob.tooLarge || !A.pjob.onPlate || A.pjob.file.layers.empty ();
 		name = new Textbox (x + 70, height - 122, 200, 28, def); addChild (name);
 		folder = new Textbox (x + 70, height - 88, w - 70 - 86, 28, DOCS); folder->maxLen = 180; addChild (folder);
-		browse = new Button (x + w - 78, height - 88, 78, 28, "Browse...", button); browse->tag = 2; addChild (browse);
-		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, "Cancel", 0); c->bg = C_FACE; addChild (c);
-		save = new ABtn (width - 118, height - 44, 98, 28, "Save", 1, true); save->bg = C_FACE; addChild (save);
+		browse = new Button (x + w - 78, height - 88, 78, 28, TR ("Browse..."), button); browse->tag = 2; addChild (browse);
+		ABtn *c = new ABtn (width - 220, height - 44, 92, 28, TR ("Cancel"), 0); c->bg = C_FACE; addChild (c);
+		save = new ABtn (width - 118, height - 44, 98, 28, TR ("Save"), 1, true); save->bg = C_FACE; addChild (save);
 		if (bad) save->hidden = true;
 	}
 	void onButton (int tag) override
@@ -395,32 +395,32 @@ public:
 	bool onKey (long k) override { if (k == 27) { close (0); return true; } if (k == KEY_ENTER) { onButton (1); return true; } return false; }
 	void onDraw () override
 	{
-		drawBox ("Print file"); int x = 20, y = titleH () + 14; char t[160], a[24]; const PrintJob &j = A.pjob;
+		drawBox (TR ("Print file")); int x = 20, y = titleH () + 14; char t[160], a[24]; const PrintJob &j = A.pjob;
 		auto row = [&] (int state, const char *txt)
 		{
 			icon (canvas, state ? I_WARN : I_CHECK, x + 2, y, 17, state == 2 ? 0xB03A30 : state ? 0x4A3A10 : C_GREEN, C_ACCENT, C_FACE);
 			uk_text (canvas, x + 28, y + (17 - uk_fh ()) / 2, txt, state == 2 ? 0xB03A30 : C_TEXT, state == 2 ? 2 : 0); y += 23;
 		};
-		row (j.tooLarge ? 2 : 0, j.tooLarge ? "It does not fit the printer." : "It fits the plate and the room.");
-		row (j.onPlate ? 0 : 2, j.onPlate ? "The first layers lie on the plate." : "Nothing lies on the plate: lower the body, or give it supports.");
-		if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, "%d part%s in mid-air, the first at %s mm: it needs a support.", j.islands, j.islands > 1 ? "s start" : " starts", a); row (1, t); }
-		else row (0, "Each layer rests on the one before.");
+		row (j.tooLarge ? 2 : 0, j.tooLarge ? TR ("It does not fit the printer.") : TR ("It fits the plate and the room."));
+		row (j.onPlate ? 0 : 2, j.onPlate ? TR ("The first layers lie on the plate.") : TR ("Nothing lies on the plate: lower the body, or give it supports."));
+		if (j.islands) { fmt (j.islandAt, a, 12); snprintf (t, sizeof t, j.islands > 1 ? TR ("%d parts start in mid-air, the first at %s mm: they need a support.") : TR ("%d part starts in mid-air, at %s mm: it needs a support."), j.islands, a); row (1, t); }
+		else row (0, TR ("Each layer rests on the one before."));
 		y += 6;
 		{
-			UkFaceScope fs (g_small); int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (a, sizeof a, "%d h %02d", mn / 60, mn % 60); else snprintf (a, sizeof a, "%d min", mn);
-			snprintf (t, sizeof t, "%d layers of %.3g mm \xC2\xB7 %.1f ml of resin \xC2\xB7 about %s", (int) j.file.layers.size (), A.print.resin.layer, j.volume, a); uk_text (canvas, x, y, t, dim_col ()); y += 17;
-			snprintf (t, sizeof t, "%s \xC2\xB7 %s \xC2\xB7 %.3g s a layer, %.3g s the first %d", A.print.machine.name, A.print.resin.name, A.print.resin.exposure, A.print.resin.bottomExposure, (int) (A.print.resin.bottomLayers + 0.5));
+			UkFaceScope fs (g_small); int mn = (int) (j.minutes + 0.5); if (mn >= 60) snprintf (a, sizeof a, "%d h %02d", mn / 60, mn % 60); else snprintf (a, sizeof a, TR ("%d min"), mn);
+			snprintf (t, sizeof t, TR ("%d layers of %.3g mm \xC2\xB7 %.1f ml of resin \xC2\xB7 about %s"), (int) j.file.layers.size (), A.print.resin.layer, j.volume, a); uk_text (canvas, x, y, t, dim_col ()); y += 17;
+			snprintf (t, sizeof t, TR ("%s \xC2\xB7 %s \xC2\xB7 %.3g s a layer, %.3g s the first %d"), A.print.machine.name, A.print.resin.name, A.print.resin.exposure, A.print.resin.bottomExposure, (int) (A.print.resin.bottomLayers + 0.5));
 			uk_text (canvas, x, y, t, dim_col ());
 		}
-		uk_text (canvas, x, height - 122 + (28 - uk_fh ()) / 2, "Name", C_TEXT); uk_text (canvas, x, height - 88 + (28 - uk_fh ()) / 2, "Folder", C_TEXT);
-		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, bad ? "Nothing is written until this is put right." : ".%s", A.print.machine.ext); uk_text (canvas, x + 280, height - 122 + (28 - uk_fh ()) / 2, t, bad ? 0xB03A30 : dim_col ()); }
+		uk_text (canvas, x, height - 122 + (28 - uk_fh ()) / 2, TR ("Name"), C_TEXT); uk_text (canvas, x, height - 88 + (28 - uk_fh ()) / 2, TR ("Folder"), C_TEXT);
+		{ UkFaceScope fs (g_small); snprintf (t, sizeof t, bad ? TR ("Nothing is written until this is put right.") : ".%s", A.print.machine.ext); uk_text (canvas, x + 280, height - 122 + (28 - uk_fh ()) / 2, t, bad ? 0xB03A30 : dim_col ()); }
 	}
 };
 static void print_file_dialog ()
 {
 	PrintDialog d; Root *rt = Root::current (); d.left = (rt->width - d.width) / 2; d.top = (rt->height - d.height) / 2;
 	g_export = &d; int r = d.run (); g_export = 0;
-	if (r == 1) set_hint ("The print file is written."); ui (R_ALL);
+	if (r == 1) set_hint (TR ("The print file is written.")); ui (R_ALL);
 }
 // The file asked: once the layers are cut.
 static void cmd_print_file ()
@@ -428,7 +428,7 @@ static void cmd_print_file ()
 	if (!resin ()) return;
 	if (A.printDirty) print_refresh ();
 	if (A.sliced) { print_file_dialog (); return; }
-	A.wantFile = true; print_slice_start (); set_hint ("Cutting the layers..."); ui (0);
+	A.wantFile = true; print_slice_start (); set_hint (TR ("Cutting the layers...")); ui (0);
 }
 // What Manufacture makes: a router's G-code, or the layers of one of the resin printers.
 static void cmd_gen ()
@@ -436,9 +436,9 @@ static void cmd_gen ()
 	if (!A.camMode) return;
 	std::string ini; read_text (PRINTERS_INI, ini); std::vector<PrintMachine> ms = print_machines (ini.c_str ());
 	PopupMenu pm (g_props->left + 110, g_props->top + 112); char t[80];
-	pm.add ("Milling \xC2\xB7 G-code for a router (GRBL)", 2000);
-	pm.add ("Filament printing \xC2\xB7 the nozzle's path", 1999);
-	for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, "Resin printing \xC2\xB7 %s", ms[i].name); pm.add (t, 2001 + (int) i); }
+	pm.add (TR ("Milling \xC2\xB7 G-code for a router (GRBL)"), 2000);
+	pm.add (TR ("Filament printing \xC2\xB7 the nozzle's path"), 1999);
+	for (size_t i = 0; i < ms.size () && i < 30; i++) { snprintf (t, sizeof t, TR ("Resin printing \xC2\xB7 %s"), ms[i].name); pm.add (t, 2001 + (int) i); }
 	int c = pm.run ();
 	if (c == 2000) gen_set (0);
 	else if (c == 1999) gen_set (2);
@@ -521,7 +521,7 @@ static void cmd (int id)
 		if (!resin ()) break;
 		if (A.printDirty) print_refresh ();
 		print_supports_auto (A.placed, A.print, A.print.tips); A.doc.changes++; print_refresh ();
-		if (A.print.tips.empty ()) set_hint ("Nothing hangs: no support is needed as the body is.");
+		if (A.print.tips.empty ()) set_hint (TR ("Nothing hangs: no support is needed as the body is."));
 		ui (R_ALL); break;
 	case CMD_PR_CLEAR: if (resin ()) { A.print.tips.clear (); A.doc.changes++; print_refresh (); ui (R_ALL); } break;
 	case CMD_PR_PRESET: if (resin ()) cmd_print_preset (); break;
@@ -540,9 +540,9 @@ static void cmd (int id)
 	case CMD_CAM_SIM:
 		if (!A.camMode) break;
 		if (A.camDirty) cam_refresh ();
-		if (A.paths.hm.empty ()) { set_hint ("Add a clearing or a contour first: there is nothing to simulate."); ui (0); break; }
+		if (A.paths.hm.empty ()) { set_hint (TR ("Add a clearing or a contour first: there is nothing to simulate.")); ui (0); break; }
 		A.camSim = !A.camSim; A.simPlay = false; if (A.camSim) sim_to (A.paths.moves.size ());
-		set_hint (A.camSim ? "What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves." : ""); if (!A.camSim) cam_hint ();
+		set_hint (A.camSim ? TR ("What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves.") : ""); if (!A.camSim) cam_hint ();
 		ui (R_ALL); break;
 	case CMD_GCODE: if (A.gen == 1) cmd_print_file (); else if (A.gen == 0) cmd_gcode (); break;
 	case CMD_CAM_BODY: if (A.camMode) cmd_cam_body (); break;
@@ -641,13 +641,14 @@ public:
 		if (type != DND_FILES || !doc_first_path (data, path, sizeof path)) return;
 		if (is_picture (path)) { canvas_add (path); return; }		// (a picture dropped: a canvas)
 		if (!guard ()) return;
-		if (!load_path (path)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
+		if (!load_path (path)) uk_messagebox (TR ("Open"), TR ("That file is not a 3DForge part (.3df)."), MB_OK);
 	}
 };
 
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
+	uk_lang_init ();				// (the words in the system's language: sdcard/apps/3dforge.app/lang/)
 	FtTextFace *sm = new FtTextFace; sm->open ("DejaVu Sans", 11); g_small = sm;
 	FtTextFace *bg = new FtTextFace; bg->open ("DejaVu Sans", 15); g_big = bg;
 	FtTextFace *ti = new FtTextFace; ti->open ("DejaVu Sans", 9); g_tiny = ti;
@@ -676,82 +677,82 @@ int main (void)
 	root.setResizable (true); root.setMinSize (820, 560);
 
 	static Menu menu;
-	menu.menu ("File");
-	menu.item ("New", "^N", UK_CTRL ('N'), cmd_new);
-	menu.item ("Open...", "^O", UK_CTRL ('O'), cmd_open);
+	menu.menu (TR ("File"));
+	menu.item (TR ("New"), "^N", UK_CTRL ('N'), cmd_new);
+	menu.item (TR ("Open..."), "^O", UK_CTRL ('O'), cmd_open);
 	menu.separator ();
-	menu.item ("Save", "^S", UK_CTRL ('S'), cmd_save);
-	menu.item ("Save As...", "", 0, cmd_save_as);
+	menu.item (TR ("Save"), "^S", UK_CTRL ('S'), cmd_save);
+	menu.item (TR ("Save As..."), "", 0, cmd_save_as);
 	menu.separator ();
-	menu.item ("Export...", "^E", UK_CTRL ('E'), cmd_export);
-	menu.item ("Import Canvas...", "", 0, cmd_canvas_import);
-	menu.menu ("Edit");
-	menu.item ("Undo", "^Z", UK_CTRL ('Z'), [] { cmd (CMD_UNDO); });
-	menu.item ("Redo", "^Y", UK_CTRL ('Y'), [] { cmd (CMD_REDO); });
+	menu.item (TR ("Export..."), "^E", UK_CTRL ('E'), cmd_export);
+	menu.item (TR ("Import Canvas..."), "", 0, cmd_canvas_import);
+	menu.menu (TR ("Edit"));
+	menu.item (TR ("Undo"), "^Z", UK_CTRL ('Z'), [] { cmd (CMD_UNDO); });
+	menu.item (TR ("Redo"), "^Y", UK_CTRL ('Y'), [] { cmd (CMD_REDO); });
 	menu.separator ();
-	menu.item ("Delete Step", "Del", 0, [] { cmd (CMD_DELETE); });
-	menu.item ("Roll Back to the Step", "", 0, [] { cmd (CMD_ROLL_HERE); });
-	menu.item ("Roll to the End", "", 0, [] { cmd (CMD_ROLL_END); });
-	menu.menu ("View");
-	menu.item ("Home", "", 0, [] { g_view->home (); });
-	menu.item ("Fit", "", 0, [] { g_view->fit (); });
+	menu.item (TR ("Delete Step"), TR ("Del"), 0, [] { cmd (CMD_DELETE); });
+	menu.item (TR ("Roll Back to the Step"), "", 0, [] { cmd (CMD_ROLL_HERE); });
+	menu.item (TR ("Roll to the End"), "", 0, [] { cmd (CMD_ROLL_END); });
+	menu.menu (TR ("View"));
+	menu.item (TR ("Home"), "", 0, [] { g_view->home (); });
+	menu.item (TR ("Fit"), "", 0, [] { g_view->fit (); });
 	menu.separator ();
-	menu.item ("Top", "", 0, [] { g_view->lookAlong (-90, 90); });
-	menu.item ("Front", "", 0, [] { g_view->lookAlong (-90, 0); });
-	menu.item ("Right", "", 0, [] { g_view->lookAlong (0, 0); });
+	menu.item (TR ("Top"), "", 0, [] { g_view->lookAlong (-90, 90); });
+	menu.item (TR ("Front"), "", 0, [] { g_view->lookAlong (-90, 0); });
+	menu.item (TR ("Right"), "", 0, [] { g_view->lookAlong (0, 0); });
 	menu.separator ();
-	menu.item ("Edges", "", 0, [] { A.showEdges = !A.showEdges; ui (R_ALL); });
-	menu.item ("Grid", "", 0, [] { A.showGrid = !A.showGrid; ui (R_ALL); });
-	menu.item ("See Through", "", 0, [] { A.seeThrough = !A.seeThrough; ui (R_ALL); });
-	menu.item ("Draw with the Processor", "", 0, [] { g_gpuOff = !g_gpuOff; ui (R_ALL); });
-	menu.menu ("Create");
-	menu.item ("Box", "", 0, [] { tool_set (T_BOX); });
-	menu.item ("Cylinder", "", 0, [] { tool_set (T_CYL); });
-	menu.item ("Pyramid", "", 0, [] { tool_set (T_PYRAMID); });
-	menu.item ("Prism", "", 0, [] { tool_set (T_PRISM); });
-	menu.item ("Tapered Prism", "", 0, [] { tool_set (T_TAPER); });
-	menu.item ("Torus", "", 0, [] { tool_set (T_TORUS); });
-	menu.item ("Sphere", "", 0, [] { tool_set (T_SPHERE); });
+	menu.item (TR ("Edges"), "", 0, [] { A.showEdges = !A.showEdges; ui (R_ALL); });
+	menu.item (TR ("Grid"), "", 0, [] { A.showGrid = !A.showGrid; ui (R_ALL); });
+	menu.item (TR ("See Through"), "", 0, [] { A.seeThrough = !A.seeThrough; ui (R_ALL); });
+	menu.item (TR ("Draw with the Processor"), "", 0, [] { g_gpuOff = !g_gpuOff; ui (R_ALL); });
+	menu.menu (TR ("Create"));
+	menu.item (TR ("Box"), "", 0, [] { tool_set (T_BOX); });
+	menu.item (TR ("Cylinder"), "", 0, [] { tool_set (T_CYL); });
+	menu.item (TR ("Pyramid"), "", 0, [] { tool_set (T_PYRAMID); });
+	menu.item (TR ("Prism"), "", 0, [] { tool_set (T_PRISM); });
+	menu.item (TR ("Tapered Prism"), "", 0, [] { tool_set (T_TAPER); });
+	menu.item (TR ("Torus"), "", 0, [] { tool_set (T_TORUS); });
+	menu.item (TR ("Sphere"), "", 0, [] { tool_set (T_SPHERE); });
 	menu.separator ();
-	menu.item ("Sketch", "", 0, [] { tool_set (T_SKETCH); });
-	menu.item ("Extrude", "", 0, [] { tool_set (T_EXTRUDE); });
-	menu.menu ("Modify");
-	menu.item ("Fillet", "", 0, [] { tool_set (T_FILLET); });
-	menu.item ("Chamfer", "", 0, [] { tool_set (T_CHAMFER); });
-	menu.item ("Move", "", 0, [] { tool_set (T_MOVE); });
+	menu.item (TR ("Sketch"), "", 0, [] { tool_set (T_SKETCH); });
+	menu.item (TR ("Extrude"), "", 0, [] { tool_set (T_EXTRUDE); });
+	menu.menu (TR ("Modify"));
+	menu.item (TR ("Fillet"), "", 0, [] { tool_set (T_FILLET); });
+	menu.item (TR ("Chamfer"), "", 0, [] { tool_set (T_CHAMFER); });
+	menu.item (TR ("Move"), "", 0, [] { tool_set (T_MOVE); });
 	menu.separator ();
-	menu.item ("Union", "", 0, [] { tool_set (T_UNION); });
-	menu.item ("Subtract", "", 0, [] { tool_set (T_SUB); });
-	menu.item ("Intersect", "", 0, [] { tool_set (T_INT); });
+	menu.item (TR ("Union"), "", 0, [] { tool_set (T_UNION); });
+	menu.item (TR ("Subtract"), "", 0, [] { tool_set (T_SUB); });
+	menu.item (TR ("Intersect"), "", 0, [] { tool_set (T_INT); });
 	menu.separator ();
-	menu.item ("Measure", "", 0, [] { tool_set (T_MEASURE); });
-	menu.menu ("Manufacture");
-	menu.item ("Design", "", 0, [] { cmd (CMD_MODE_DESIGN); });
-	menu.item ("Manufacture", "", 0, [] { cmd (CMD_MODE_CAM); });
+	menu.item (TR ("Measure"), "", 0, [] { tool_set (T_MEASURE); });
+	menu.menu (TR ("Manufacture"));
+	menu.item (TR ("Design"), "", 0, [] { cmd (CMD_MODE_DESIGN); });
+	menu.item (TR ("Manufacture"), "", 0, [] { cmd (CMD_MODE_CAM); });
 	menu.separator ();
-	menu.item ("Setup", "", 0, [] { cmd (CMD_CAM_SETUP); });
-	menu.item ("Tool and Machine", "", 0, [] { cmd (CMD_CAM_TOOL); });
+	menu.item (TR ("Setup"), "", 0, [] { cmd (CMD_CAM_SETUP); });
+	menu.item (TR ("Tool and Machine"), "", 0, [] { cmd (CMD_CAM_TOOL); });
 	menu.separator ();
-	menu.item ("New Clearing", "", 0, [] { cmd (CMD_CAM_CLEAR); });
-	menu.item ("New Contour", "", 0, [] { cmd (CMD_CAM_CONTOUR); });
+	menu.item (TR ("New Clearing"), "", 0, [] { cmd (CMD_CAM_CLEAR); });
+	menu.item (TR ("New Contour"), "", 0, [] { cmd (CMD_CAM_CONTOUR); });
 	menu.separator ();
-	menu.item ("Simulate", "", 0, [] { cmd (CMD_CAM_SIM); });
-	menu.item ("G-code / Print File...", "^G", UK_CTRL ('G'), [] { cmd (CMD_GCODE); });
+	menu.item (TR ("Simulate"), "", 0, [] { cmd (CMD_CAM_SIM); });
+	menu.item (TR ("G-code / Print File..."), "^G", UK_CTRL ('G'), [] { cmd (CMD_GCODE); });
 	menu.separator ();
-	menu.item ("Process: Milling", "", 0, [] { gen_set (0); if (A.camMode) g_view->fit (); });
-	menu.item ("Process: Resin Printing", "", 0, [] { gen_set (1); if (A.camMode) g_view->fit (); });
-	menu.item ("Supports", "", 0, [] { cmd (CMD_PR_SUPPORTS); });
-	menu.item ("Generate Supports", "", 0, [] { cmd (CMD_PR_GENERATE); });
-	menu.item ("Layers", "", 0, [] { cmd (CMD_PR_LAYERS); });
-	menu.item ("Process: Filament Printing", "", 0, [] { gen_set (2); if (A.camMode) g_view->fit (); });
-	menu.item ("Filament", "", 0, [] { cmd (CMD_PR_RESIN); });
-	menu.menu ("Help");
-	menu.item ("About 3DForge", "", 0, [] { uk_messagebox ("3DForge", "A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).", MB_OK); });
+	menu.item (TR ("Process: Milling"), "", 0, [] { gen_set (0); if (A.camMode) g_view->fit (); });
+	menu.item (TR ("Process: Resin Printing"), "", 0, [] { gen_set (1); if (A.camMode) g_view->fit (); });
+	menu.item (TR ("Supports"), "", 0, [] { cmd (CMD_PR_SUPPORTS); });
+	menu.item (TR ("Generate Supports"), "", 0, [] { cmd (CMD_PR_GENERATE); });
+	menu.item (TR ("Layers"), "", 0, [] { cmd (CMD_PR_LAYERS); });
+	menu.item (TR ("Process: Filament Printing"), "", 0, [] { gen_set (2); if (A.camMode) g_view->fit (); });
+	menu.item (TR ("Filament"), "", 0, [] { cmd (CMD_PR_RESIN); });
+	menu.menu (TR ("Help"));
+	menu.item (TR ("About 3DForge"), "", 0, [] { uk_messagebox (TR ("3DForge"), TR ("A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0)."), MB_OK); });
 	menu.publish ();
 
 	job_reset (); tool_set (T_SELECT);
 	char args[200]; int n = kapi_get_args (args, sizeof args);
-	if (n > 0 && args[0] && !load_path (args)) uk_messagebox ("Open", "That file is not a 3DForge part (.3df).", MB_OK);
+	if (n > 0 && args[0] && !load_path (args)) uk_messagebox (TR ("Open"), TR ("That file is not a 3DForge part (.3df)."), MB_OK);
 	root.fitWorkArea ();
 	root.run ();
 	return 0;
