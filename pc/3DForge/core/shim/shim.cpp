@@ -68,16 +68,54 @@ static void rr_points (std::vector<int> &xy, int x, int y, int w, int h, int r, 
 		}
 	}
 }
+// A rectangle of c at opacity alpha, clipped.
+static void blend_rect (Canvas &cv, int x, int y, int w, int h, unsigned c, int alpha)
+{
+	if (alpha >= 255) { cv.fillRect (x, y, w, h, c & 0xFFFFFF); return; }
+	int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y, x1 = x + w > cv.w ? cv.w : x + w, y1 = y + h > cv.h ? cv.h : y + h, t = alpha + (alpha >> 7);
+	for (int j = y0; j < y1; j++) { unsigned *row = cv.px + (size_t) j * cv.stride; for (int i = x0; i < x1; i++) row[i] = uk_mix (row[i] & 0xFFFFFF, c & 0xFFFFFF, t); }
+}
+// (a large box -- the view's frame, a panel -- is mostly straight: its straight parts are filled as they are, only its
+//  four corners go through the painter, which works over a shape's whole bounding box)
 void uk_rbox (Canvas &cv, int x, int y, int w, int h, int r, unsigned top, unsigned bottom, int alpha, int corners)
 {
 	if (w <= 0 || h <= 0) return;
+	unsigned c = top == bottom ? top : uk_mix (top, bottom, 128);
+	int R = r; if (R * 2 > w) R = w / 2; if (R * 2 > h) R = h / 2;
+	if (corners == UK_ALL && w * h > 4096 && R > 0)
+	{
+		blend_rect (cv, x, y + R, w, h - 2 * R, c, alpha);
+		blend_rect (cv, x + R, y, w - 2 * R, R, c, alpha); blend_rect (cv, x + R, y + h - R, w - 2 * R, R, c, alpha);
+		const int cx[4] = { x + R, x + w - R, x + R, x + w - R }, cy[4] = { y + R, y + R, y + h - R, y + h - R }, a0[4] = { 90, 0, 180, 270 };
+		for (int k = 0; k < 4; k++)
+		{
+			int xy[2 * 11]; xy[0] = cx[k] * 16; xy[1] = cy[k] * 16;
+			for (int s = 0; s <= 9; s++) { int d = a0[k] + s * 10; xy[2 + s * 2] = cx[k] * 16 + R * 16 * uk_cos (d) / 16384; xy[3 + s * 2] = cy[k] * 16 - R * 16 * uk_sin (d) / 16384; }
+			VPath p; p.poly (xy, 11); p.fill (cv, c, alpha);
+		}
+		return;
+	}
 	std::vector<int> xy; rr_points (xy, x, y, w, h, r, 0, corners);
 	VPath p; p.poly (&xy[0], (int) xy.size () / 2);
-	p.fill (cv, top == bottom ? top : uk_mix (top, bottom, 128), alpha);
+	p.fill (cv, c, alpha);
 }
 void uk_rline (Canvas &cv, int x, int y, int w, int h, int r, unsigned c, int alpha, int corners)
 {
 	if (w <= 0 || h <= 0) return;
+	int R = r; if (R * 2 > w) R = w / 2; if (R * 2 > h) R = h / 2;
+	if (corners == UK_ALL && w * h > 4096 && R > 0)
+	{
+		blend_rect (cv, x + R, y, w - 2 * R, 1, c, alpha); blend_rect (cv, x + R, y + h - 1, w - 2 * R, 1, c, alpha);
+		blend_rect (cv, x, y + R, 1, h - 2 * R, c, alpha); blend_rect (cv, x + w - 1, y + R, 1, h - 2 * R, c, alpha);
+		const int cx[4] = { x + R, x + w - R, x + R, x + w - R }, cy[4] = { y + R, y + R, y + h - R, y + h - R }, a0[4] = { 90, 0, 180, 270 };
+		for (int k = 0; k < 4; k++)
+		{
+			int xy[2 * 10];
+			for (int s = 0; s <= 9; s++) { int d = a0[k] + s * 10; xy[s * 2] = cx[k] * 16 + (R * 16 - 8) * uk_cos (d) / 16384; xy[s * 2 + 1] = cy[k] * 16 - (R * 16 - 8) * uk_sin (d) / 16384; }
+			VPath p; p.polyline (xy, 10, 16); p.fill (cv, c, alpha);
+		}
+		return;
+	}
 	std::vector<int> xy; rr_points (xy, x, y, w, h, r, 8, corners);
 	VPath p; p.polyline (&xy[0], (int) xy.size () / 2, 16, true); p.fill (cv, c, alpha);
 }

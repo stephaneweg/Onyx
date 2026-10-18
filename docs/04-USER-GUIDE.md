@@ -3370,7 +3370,7 @@ Windows window. Keep `3DForge.exe`, `3DForge.exe.config`, `forgecore.dll` and `p
   the shortcuts **Ctrl+N / O / S / Shift+S / E / G / Z / Y**, Esc, Enter, Delete; Open, Save, Export, the G-code
   and the print file go through Windows' own file dialogs. A tool of the bar clicked again is put down.
 - The view: drag turns it, the right button (or Shift + drag) pans, the wheel zooms; the cube, Home, Fit and
-  See-through as on Onyx. It is drawn by the processor on all its cores (the status bar says how many).
+  See-through as on Onyx. It is drawn by the graphics card (OpenGL), else by the processor on all its cores: the status bar says which.
 - The timeline's right button: Edit sketch, Roll back to here, Roll to the end, Delete.
 - The router's tool and machine, the resin, the filament are remembered in `%APPDATA%\3DForge` (`cam.ini`,
   `print.ini`, `filament.ini`); more resin printers: `printers.ini` beside the program, or a copy of it there.

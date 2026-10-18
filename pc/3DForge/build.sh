@@ -26,9 +26,10 @@ fi
 # the core: 3DForge's own code (the view's painter: UIKit's vpaint.cpp, the rest the shim's)
 $CXX -std=gnu++17 -O2 -c $INC "$ROOT/user/Kits/uikit/vpaint.cpp" -o "$OBJ/vpaint.o" &
 $CXX -std=gnu++17 -O2 -c $INC "$HERE/core/shim/shim.cpp" -o "$OBJ/shim.o" &
+$CXX -std=gnu++17 -O2 -c $INC "$HERE/core/glview.cpp" -o "$OBJ/glview.o" &
 $CXX -std=gnu++17 -O2 -Wall -Wno-misleading-indentation -Wno-unused-function -Wno-unused-variable $DEFS $INC -c "$HERE/core/forgecore.cpp" -o "$OBJ/forgecore.o" &
 wait
-$CXX -shared -static -static-libgcc -static-libstdc++ -o "$DIST/forgecore.dll" "$OBJ/forgecore.o" "$OBJ/shim.o" "$OBJ/vpaint.o" "$OBJ/libmanifold.a" -lgdiplus -lgdi32 -lole32
+$CXX -shared -static -static-libgcc -static-libstdc++ -o "$DIST/forgecore.dll" "$OBJ/forgecore.o" "$OBJ/shim.o" "$OBJ/glview.o" "$OBJ/vpaint.o" "$OBJ/libmanifold.a" -lgdiplus -lopengl32 -lgdi32 -lole32
 "$STRIP" "$DIST/forgecore.dll"
 [ -n "$FORGE_CORE_ONLY" ] && { echo "built: $DIST/forgecore.dll"; exit 0; }
 

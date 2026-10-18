@@ -260,6 +260,12 @@ static void soft_render (Scene &sc, unsigned clear)
 	}
 }
 
+// (the kernel's limits; a host whose kapi_gpu_render has none -- 3DForge for Windows -- defines its own: pc/3DForge/core/shim)
+#ifndef FORGE_GPU_MAX_TARGET
+#define FORGE_GPU_MAX_TARGET	2048
+#define FORGE_GPU_MAX_VERTS	KAPI_GPU_MAX_VERTS
+#define FORGE_GPU_MAX_BATCHES	KAPI_GPU_MAX_BATCHES
+#endif
 static int g_gpu = -1;			// 1: the GPU draws; 0: the processor (none, or it failed once)
 static bool g_gpuOff = false;		// (the user's choice: View > Draw with the processor)
 
@@ -267,10 +273,15 @@ static bool g_gpuOff = false;		// (the user's choice: View > Draw with the proce
 static bool scene_show (Scene &sc, unsigned clear, unsigned *dst, int stride)
 {
 	sc.end ();
+#ifdef FORGE_HOST_SHOW
+	// (a host that draws the frame itself, at the view's size -- 3DForge for Windows: OpenGL, its own anti-aliasing --
+	//  writes dst; false: it cannot, the frame is drawn here)
+	if (!g_gpuOff && FORGE_HOST_SHOW (sc.v.empty () ? 0 : &sc.v[0], (unsigned) sc.v.size (), sc.b.empty () ? 0 : &sc.b[0], (unsigned) sc.b.size (), sc.cam->w, sc.cam->h, clear, dst, stride)) return true;
+#endif
 	if (g_gpu < 0) { char info[96]; g_gpu = kapi_gpu_info (info, sizeof info) == 1 ? 1 : 0; }
 	bool gpu = false;
 	// (the kernel's limits: 65 536 triangles a frame, a target of 2048 at most -- past them, the processor draws)
-	if (g_gpu == 1 && !g_gpuOff && !sc.v.empty () && sc.v.size () <= KAPI_GPU_MAX_VERTS && sc.b.size () <= KAPI_GPU_MAX_BATCHES && sc.W <= 2048 && sc.H <= 2048)
+	if (g_gpu == 1 && !g_gpuOff && !sc.v.empty () && sc.v.size () <= FORGE_GPU_MAX_VERTS && sc.b.size () <= FORGE_GPU_MAX_BATCHES && sc.W <= FORGE_GPU_MAX_TARGET && sc.H <= FORGE_GPU_MAX_TARGET)
 	{
 		kapi_gpu_frame f; f.pixels = &sc.rt[0]; f.w = sc.W; f.h = sc.H; f.stride = sc.W; f.clear = clear; f.flags = 0;
 		if (kapi_gpu_render (&f, &sc.v[0], (unsigned) sc.v.size (), &sc.b[0], (unsigned) sc.b.size ()) == 0) gpu = true;

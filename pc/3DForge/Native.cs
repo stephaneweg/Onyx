@@ -19,6 +19,7 @@ namespace Forge
 		[DllImport (D, CallingConvention = C)] static extern void fc_init (byte[] cfg, byte[] printers);
 		[DllImport (D, CallingConvention = C)] public static extern int fc_lang (byte[] path);
 		[DllImport (D, CallingConvention = C)] public static extern int fc_poll ();
+		[DllImport (D, CallingConvention = C)] public static extern int fc_gl ();
 		[DllImport (D, CallingConvention = C)] public static extern void fc_set_accent (uint rgb);
 		[DllImport (D, CallingConvention = C)] public static extern void fc_view_draw (IntPtr px, int w, int h, int stride);
 		[DllImport (D, CallingConvention = C)] public static extern int fc_view_mouse (int x, int y, int buttons, int wheel, int mods);

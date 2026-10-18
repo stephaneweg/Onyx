@@ -256,7 +256,7 @@ namespace Forge
 			hint.Text = Core.Hint;
 			sTris.Text = string.Format (Tr ("{0} triangles"), st.Tris.ToString ("N0", System.Globalization.CultureInfo.CurrentCulture));
 			sGrid.Text = st.Grid ? Tr ("Grid 10 mm") : Tr ("Grid off"); sSnap.Text = st.Snap ? Tr ("Snap 1 mm") : Tr ("Snap off");
-			sDraw.Text = string.Format (Tr ("Drawn by {0} threads"), st.Threads);
+			sDraw.Text = Core.fc_gl () == 1 ? Tr ("Drawn by the graphics card") : string.Format (Tr ("Drawn by {0} threads"), st.Threads);
 		}
 
 		// ---- the menus --------------------------------------------------------------------------------------------------------

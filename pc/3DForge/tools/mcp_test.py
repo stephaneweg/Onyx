@@ -13,7 +13,9 @@ EXE = os.path.join (ROOT, 'pc', 'dist', '3DForge', '3DForge.exe')
 OUT = os.path.abspath (sys.argv[1] if len (sys.argv) > 1 else os.path.join (ROOT, 'pc', '3DForge', 'build', 'mcp'))
 os.makedirs (OUT, exist_ok = True)
 env = dict (os.environ, FORGE_OFFSCREEN = '1')
-if b'3DForge.exe' in subprocess.run (['tasklist'], capture_output = True).stdout: raise SystemExit ('A 3DForge window is open: the test would drive it. Close it first.')
+# (a 3DForge window open would be the one driven: refused; an MCP server alone -- no window -- does no harm)
+_ps = "Get-Process 3DForge -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Measure-Object | Select-Object -ExpandProperty Count"
+if subprocess.run (['powershell', '-NoProfile', '-Command', _ps], capture_output = True, text = True).stdout.strip () not in ('', '0'): raise SystemExit ('A 3DForge window is open: the test would drive it. Close it first.')
 p = subprocess.Popen ([EXE, '--mcp'], stdin = subprocess.PIPE, stdout = subprocess.PIPE, env = env)
 n = 0
 def rpc (method, params = None):

@@ -4702,9 +4702,17 @@ barwidth = 40
   over `core/shim/` (`appkit/appkit.h`, `uikit/*.h` lead to `forgeshim.h`: UIKit's `vpaint.cpp` itself, the rest —
   `Canvas`, `uk_rbox`, `uk_tone`, the text by GDI+ in Segoe UI, `ui::icon_load` by GDI+, `kapi_get_ticks` — the
   shim's). What UIKit drew on Onyx is told to the host: the view draws into the WriteableBitmap's pixels
-  (`fc_view_draw`, `fc_view_mouse`); its frames go through `kapi_gpu_render`, here frender.h's z-buffer cut in
-  bands of rows, one thread a band (and a row's span from its edges: a grid line's quad is not tested over its
-  box) — ~10 ms a frame; fui.h's right panel is a list of items (`fc_form`: head, labels, fields bound to the
+  (`fc_view_draw`, `fc_view_mouse`); its frames are drawn by the **graphics card**: frender.h's `scene_show` hands
+  the batches built for the Pi's GPU to `FORGE_HOST_SHOW` (`core/glview.cpp`: OpenGL on a hidden window's context,
+  a multisampled framebuffer the view's size — 8 samples, else 4, the smoothness the CPU gets from drawing twice as
+  large —, resolved, read back into the view's pixels, y turned over by the projection); without OpenGL 3
+  framebuffers (an old driver, a remote desktop, Windows' "GDI Generic") or with `FORGE_SOFT=1`, `kapi_gpu_render`:
+  frender.h's z-buffer cut in bands of rows, one thread a band (a row's span from its edges: a grid line's quad is
+  not tested over its box). frender.h's limits for its GPU path (2048 px, the kernel's vertex count) are
+  `FORGE_GPU_MAX_*`, raised by the shim — past them it used to fall back on one thread: 1.2 s a frame for a
+  maximised window. A view of 1600 × 900: ~15 ms a frame (the CPU's threads: ~30 ms); the shim's `uk_rbox` /
+  `uk_rline` fill a large box's straight parts directly (the painter works over a shape's whole box: the view's
+  frame cost 10 ms); fui.h's right panel is a list of items (`fc_form`: head, labels, fields bound to the
   values, check boxes, segmented choices, drop-downs, buttons, the operation, the colours, the origin's 27 points,
   summaries; `forgecore.cpp` lists them) that `FormPanel.cs` makes once for a layout and fills again in place (a
   field being typed keeps its text while its number is the same); the timeline (`fc_tl_*`, `Timeline.cs`), the

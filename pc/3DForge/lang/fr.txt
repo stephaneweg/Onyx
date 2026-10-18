@@ -38,6 +38,7 @@ Show or hide the grid	Afficher ou masquer la grille
 Snap to 1 mm, to points and angles	Accrocher au mm, aux points et aux angles
 {0} triangles	{0} triangles
 Drawn by {0} threads	Dessiné par {0} fils
+Drawn by the graphics card	Dessiné par la carte graphique
 3DForge 1.0 for Windows\n\nA small parametric CAD: shapes, sketches and extrusions, unions, cuts, fillets and chamfers, every step kept in a history; 	3DForge 1.0 pour Windows\n\nUne petite CAO paramétrique : formes, esquisses et extrusions, unions, découpes, congés et chanfreins, chaque étape gardée dans un historique ; 
 G-code for a router, the layers for a resin printer, the nozzle's path for a filament printer.\n\n	G-code pour une fraiseuse, les couches pour une imprimante résine, le trajet de la buse pour une imprimante à filament.\n\n
 The same program as Onyx's 3DForge, built for Windows. MIT licence.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).	Le même programme que le 3DForge d'Onyx, construit pour Windows. Licence MIT.\nGéométrie : Manifold (Apache-2.0), Clipper2 (BSL-1.0).

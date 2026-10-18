@@ -15,6 +15,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "kern/kapi_abi.h"		// (the GPU's vertex, batch and frame: frender.h builds its frames with them)
+// (its kapi_gpu_render -- forgecore.cpp's, the processor's cores -- takes any frame: frender.h's limits are the Pi's)
+#define FORGE_GPU_MAX_TARGET	16384
+#define FORGE_GPU_MAX_VERTS	0x7FFFFFFF
+#define FORGE_GPU_MAX_BATCHES	0x7FFFFFFF
+// (the view's frame drawn by OpenGL at its own size, anti-aliased by the graphics card: core/glview.cpp; false: no
+//  OpenGL here, the processor draws it)
+bool forge_gl_show (const struct kapi_gpu_vertex3 *v, unsigned nv, const struct kapi_gpu_batch *b, unsigned nb, int w, int h, unsigned clear, unsigned *dst, int stride);
+#define FORGE_HOST_SHOW forge_gl_show
 
 // ---- AppKit ---------------------------------------------------------------------------------------------------------------
 #undef MOD_CTRL				// (windows.h's imm.h has others)
