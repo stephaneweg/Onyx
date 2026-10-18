@@ -99,6 +99,17 @@ int main (int argc, char **argv)
 		// an arc's angle: + clockwise -- from (0, 0), its centre at the right, a quarter: it ends above
 		els.clear (); q = SkEl (); q.kind = SK_ARC; q.r = 5; q.ca = 0; q.sweep = 90; els.push_back (q); sketch_eval (els, 96, e2);
 		check (fabs (e2.shapes[0].end.x - 5) < 1e-9 && fabs (e2.shapes[0].end.y - 5) < 1e-9, "an arc's angle: clockwise when positive");
+		// three lines in a run (a U open at the left), then an arc started on its own from the U's end back to its start:
+		// one outline, closed (the user, 2026-10-18); then the same with every element apart, one drawn backwards
+		els.clear ();
+		auto line = [&] (double x, double y, double a, double l, bool chain) { q = SkEl (); q.kind = SK_LINE; q.x = x; q.y = y; q.a = a; q.len = l; q.chain = chain; els.push_back (q); };
+		line (0, 0, 0, 40, false); line (0, 0, 90, 30, true); line (0, 0, 180, 40, true);
+		q = SkEl (); q.kind = SK_ARC; q.x = 0; q.y = 30; q.r = 15; q.ca = -90; q.sweep = -180; els.push_back (q);	// (bulging out, at the left)
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - (1200 + PI * 225 / 2)) < 2, "an arc drawn apart closes a run of lines");
+		els.clear (); line (40, 0, 180, 40, false); line (40, 0, 90, 30, false); line (0, 30, 0, 40, false); line (0, 30, -90, 30, false);
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 1200) < 1e-6, "four lines drawn apart, one backwards: one outline");
 	}
 	int sk = (int) d.feats.size () - 1;
 	f = &add (d, F_EXTRUDE); f->target = 0; f->op = OP_SUB; f->sketch = sk; f->through = true; f->h = -8;	// Extrude 1

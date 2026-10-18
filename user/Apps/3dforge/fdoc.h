@@ -608,10 +608,12 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 {
 	ev.shapes.clear (); ev.closed.clear (); ev.nclosed = ev.nopen = 0; ev.has = false; ev.dir = 0; ev.cur = V2 ();
 	SimplePolygon run; std::vector<int> runEls; V2 first;
+	struct Open { SimplePolygon pts; std::vector<int> els; };
+	std::vector<Open> opens;				// (the runs left open: joined at the end where their ends meet)
 	auto flush = [&] (bool closed)
 	{
 		if (run.size () >= 3 && closed) { for (int i : runEls) ev.shapes[i].outline = ev.nclosed; ev.closed.push_back (run); ev.nclosed++; }
-		else if (!runEls.empty ()) ev.nopen++;
+		else if (!runEls.empty ()) { Open o; o.pts = run; o.els = runEls; opens.push_back (o); }
 		run.clear (); runEls.clear ();
 	};
 	for (int i = 0; i < (int) els.size (); i++)
@@ -692,6 +694,37 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 		if (run.size () >= 4 && hypot (ev.cur.x - first.x, ev.cur.y - first.y) < 1e-6) { run.pop_back (); flush (true); ev.has = false; }
 	}
 	flush (false);
+	// Runs drawn apart whose ends meet (three lines, then an arc started on its own at the last one's end) are one
+	// outline: joined end to end -- either way round --, closed where the joined run comes back to its start.
+	auto same = [] (const auto &a, const auto &b) { return hypot (a.x - b.x, a.y - b.y) < 1e-5; };
+	for (bool joined = true; joined; )
+	{
+		joined = false;
+		for (size_t i = 0; i < opens.size () && !joined; i++)
+			for (size_t j = 0; j < opens.size () && !joined; j++)
+			{
+				if (i == j) continue;
+				Open &a = opens[i], &b = opens[j];
+				if (a.pts.size () < 2 || b.pts.size () < 2) continue;
+				SimplePolygon bp = b.pts;
+				if (!same (a.pts.back (), bp.front ()) && !same (a.pts.back (), bp.back ()) && (same (a.pts.front (), bp.front ()) || same (a.pts.front (), bp.back ())))
+				{ std::reverse (a.pts.begin (), a.pts.end ()); std::reverse (a.els.begin (), a.els.end ()); }	// (they meet at a's start)
+				if (same (a.pts.back (), bp.back ())) std::reverse (bp.begin (), bp.end ());
+				if (!same (a.pts.back (), bp.front ())) continue;
+				a.pts.insert (a.pts.end (), bp.begin () + 1, bp.end ()); a.els.insert (a.els.end (), b.els.begin (), b.els.end ());
+				opens.erase (opens.begin () + j); joined = true;
+			}
+	}
+	for (Open &o : opens)
+	{
+		if (o.pts.size () >= 4 && same (o.pts.front (), o.pts.back ()))
+		{
+			o.pts.pop_back ();
+			for (int i : o.els) ev.shapes[i].outline = ev.nclosed;
+			ev.closed.push_back (o.pts); ev.nclosed++;
+		}
+		else ev.nopen++;
+	}
 }
 
 // ---- the bodies, the document ---------------------------------------------------------------------------------------
