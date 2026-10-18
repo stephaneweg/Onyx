@@ -743,6 +743,8 @@ public:
 		case 7: if (p->el) { p->el->rel = c.checked; } break;
 		case 8: if (f) { f->clone = c.checked; } break;
 		case 19: if (p->el) { p->el->cons = c.checked; if (p->el == &A.cur) A.cons = c.checked; } break;
+		case 17: if (f) { f->r2 = c.checked ? (f->r2 > 0 ? f->r2 : f->r) : 0; ui (R_PANELS); } break;	// (asymmetric: the second size starts as the first)
+		case 18: if (f) { f->swap = c.checked; } break;
 		case 34: if (p->canvasPage ()) { A.doc.canvases[A.selCanvas].visible = c.checked; A.doc.changes++; if (g_view) g_view->invalidate (true); ui (0); } return;
 		case 30: A.print.mirror = c.checked; break;
 		case 31: A.print.supLow = c.checked; break;
@@ -844,7 +846,15 @@ public:
 		{
 			static const char *const FC[] = { TR ("Fillet"), TR ("Chamfer") };
 			if (making) { SegmentedControl *s = new SegmentedControl (12, y, width - 24, 28, FC, 2, f.kind == F_FILLET ? 0 : 1, onSeg); s->tag = 1; addChild (s); y += 40; }
-			Textbox *r = field (y, f.kind == F_FILLET ? TR ("Radius") : TR ("Size"), &f.r, TR ("mm"), 0); y += 42; if (making) r->setFocus ();
+			Textbox *r = field (y, f.kind == F_FILLET ? TR ("Radius") : TR ("Size"), &f.r, TR ("mm"), 0); y += 32; if (making) r->setFocus ();
+			// (asymmetric: a second size, on the second face -- the first is on the upper face, a hole's rim's flat face)
+			check (y, TR ("Two sizes"), f.r2 > 0, 17); y += 26;
+			if (f.r2 > 0)
+			{
+				field (y, f.kind == F_FILLET ? TR ("Radius 2") : TR ("Size 2"), &f.r2, TR ("mm"), -1); y += 30;
+				check (y, TR ("Swap the faces"), f.swap, 18); y += 26;
+			}
+			y += 10;
 			char t[48]; label (12, y, TR ("Edges"), UK_AUTO, 2); snprintf (t, sizeof t, TR ("%d chosen"), (int) f.edges.size ()); label (width - 12 - 70, y + 2, t, dim_col (), 0, true); y += 24;
 			if (f.edges.empty ()) label (12, y, TR ("Click an edge of a body"), dim_col (), 0, true);
 			else { Body *b = A.doc.body (f.target); snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); label (12, y, t, dim_col (), 0, true); (void) b; }

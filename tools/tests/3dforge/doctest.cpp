@@ -216,6 +216,27 @@ int main (int argc, char **argv)
 		printf ("     rim: %s volume %.2f, a torus' quarter would leave %.2f\n", t.feats[2].failed ? t.feats[2].err : "made,", t.bodies[0].m.Volume (), torus);
 		check (!t.feats[2].failed && fabs (t.bodies[0].m.Volume () - torus) < 1.5 && t.bodies[0].m.Genus () == 0, "the top's edges and the arc between them rounded: a torus' quarter");
 	}
+	// asymmetric: a chamfer 2 on the top face and 5 down the front one, a fillet the same (a quarter of an ellipse), swapped
+	{
+		auto has = [] (const Doc &d, double y, double z) { for (const V3 &v : d.bodies[0].mesh.v) if (fabs (v.y - y) < 1e-6 && fabs (v.z - z) < 1e-6) return true; return false; };
+		Doc c; Feature *g = &add (c, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (c, F_CHAMFER); g->target = 0; g->r = 2; g->r2 = 5; g->edges.push_back (V3 (20, 0, 10)); c.rebuild ();
+		check (!c.feats[1].failed && fabs (c.bodies[0].m.Volume () - (12000 - 2 * 5 / 2.0 * 40)) < 0.02 && has (c, 2, 10) && has (c, 0, 5), "an asymmetric chamfer: 2 on the top, 5 down the front");
+		c.feats[1].swap = true; c.touch (); c.rebuild ();
+		check (!c.feats[1].failed && has (c, 5, 10) && has (c, 0, 8), "... swapped: 5 on the top, 2 down the front");
+		Doc l; l.load (c.save ().c_str ()); l.rebuild ();
+		check (l.feats.size () == 2 && l.feats[1].r2 == 5 && l.feats[1].swap && fabs (l.bodies[0].m.Volume () - c.bodies[0].m.Volume ()) < 1e-6, "... kept in the file");
+		Doc f; g = &add (f, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (f, F_FILLET); g->target = 0; g->r = 2; g->r2 = 5; g->edges.push_back (V3 (20, 0, 10)); f.rebuild ();
+		double cut = (1 - PI / 4) * 2 * 5 * 40;
+		printf ("     asymmetric fillet: %s volume %.3f, a quarter ellipse's would leave %.3f\n", f.feats[1].failed ? f.feats[1].err : "made,", f.bodies[0].m.Volume (), 12000 - cut);
+		check (!f.feats[1].failed && fabs (f.bodies[0].m.Volume () - (12000 - cut)) < 0.5 && has (f, 2, 10) && has (f, 0, 5), "an asymmetric fillet: a quarter of an ellipse, tangent to both faces");
+		Doc s; g = &add (s, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (s, F_FILLET); g->target = 0; g->r = 4; g->r2 = 4; g->edges.push_back (V3 (20, 0, 10)); s.rebuild ();
+		Doc o; g = &add (o, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (o, F_FILLET); g->target = 0; g->r = 4; g->edges.push_back (V3 (20, 0, 10)); o.rebuild ();
+		check (fabs (s.bodies[0].m.Volume () - o.bodies[0].m.Volume ()) < 1e-6, "two equal sizes: the same round as one");
+	}
 	// a body turned and scaled about its centre, then moved
 	{
 		Doc s; Feature *g = &add (s, F_BOX); g->centred = false; g->w = 10; g->d = 20; g->h = 30; s.rebuild ();

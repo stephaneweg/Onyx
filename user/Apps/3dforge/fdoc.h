@@ -129,6 +129,8 @@ struct Feature
 	int sketch;			// extrude: its sketch's step
 	std::vector<V3> edges;		// fillet, chamfer: a point on each edge
 	double r;			// ... the radius, the chamfer's size
+	double r2 = 0;			// ... asymmetric: the size on the second face (0: the same as r)
+	bool swap = false;		// ... the two sizes the other way round (r on the second face)
 	V3 mv; int tool;		// move: by how much -- combine: the body used (it is consumed)
 	V3 rot, sc;			// move: turned around X, Y, Z (degrees, about the body's centre), scaled along each (1: as it is)
 	bool clone;			// move: the body stays as it is, a copy of it is what moves (a new body)
@@ -407,16 +409,27 @@ static Manifold placed (const Manifold &m, const V3 &ex, const V3 &ey, const V3 
 }
 // The profile between the corner E and the arc (or the cut) joining the two faces at r from it, in the plane across
 // the edge: d1, d2 the faces' directions away from the edge, o1, o2 their normals away from the profile's side.
-static SimplePolygon corner_profile (V2 E, V2 d1, V2 d2, V2 o1, V2 o2, double r, bool fillet, int segs)
+// Asymmetric (r2 != r): a chamfer cut r along the first face, r2 along the second; a fillet that leaves the faces as
+// far as a round of r (of r2) would -- the arc then a conic tangent to both, the circle itself when they are equal.
+static SimplePolygon corner_profile (V2 E, V2 d1, V2 d2, V2 o1, V2 o2, double r, double r2, bool fillet, int segs)
 {
 	double cs = d1.x * d2.x + d1.y * d2.y; if (cs > 1) cs = 1; if (cs < -1) cs = -1;
-	double phi = acos (cs), t = fillet ? r / tan (phi / 2) : r;
-	V2 T1 (E.x + d1.x * t, E.y + d1.y * t), T2 (E.x + d2.x * t, E.y + d2.y * t);
+	double phi = acos (cs), t = fillet ? r / tan (phi / 2) : r, t2 = fillet ? r2 / tan (phi / 2) : r2;
+	V2 T1 (E.x + d1.x * t, E.y + d1.y * t), T2 (E.x + d2.x * t2, E.y + d2.y * t2);
 	SimplePolygon p;
 	p.push_back ({T1.x, T1.y}); p.push_back ({T1.x + o1.x * EPS, T1.y + o1.y * EPS});
 	p.push_back ({E.x + (o1.x + o2.x) * EPS, E.y + (o1.y + o2.y) * EPS});
 	p.push_back ({T2.x + o2.x * EPS, T2.y + o2.y * EPS}); p.push_back ({T2.x, T2.y});
-	if (fillet)
+	if (fillet && fabs (r - r2) > 1e-9)		// (a rational quadratic arc T2 -> T1, its control the corner E, weight sin (phi / 2):
+	{						//  tangent to both faces; with r == r2 the very circle below)
+		double w = sin (phi / 2); int n = (int) ceil (segs * (PI - phi) / (2 * PI)); if (n < 2) n = 2;
+		for (int i = 1; i < n; i++)
+		{
+			double u = 1 - (double) i / n, a = (1 - u) * (1 - u), b = 2 * w * u * (1 - u), c = u * u, k = 1 / (a + b + c);
+			p.push_back ({(a * T1.x + b * E.x + c * T2.x) * k, (a * T1.y + b * E.y + c * T2.y) * k});
+		}
+	}
+	else if (fillet)
 	{
 		double bl = sqrt ((d1.x + d2.x) * (d1.x + d2.x) + (d1.y + d2.y) * (d1.y + d2.y)), k = r / sin (phi / 2) / (bl > 1e-9 ? bl : 1);
 		V2 C (E.x + (d1.x + d2.x) * k, E.y + (d1.y + d2.y) * k);
@@ -506,17 +519,27 @@ static bool corner_blend (const RMesh &r, const Chain &edge, int vi, const V3 &e
 	}
 	if (rr[0] < 0.01 || fabs (rr[0] - rr[1]) > 1e-3 || R < rr[0] - 1e-6) return false;		// (the two rounds may be one face: mitred, they run into each other)
 	double q = rr[0];
-	SimplePolygon poly = corner_profile (V2 (R, q), V2 (-1, 0), V2 (0, -1), V2 (0, 1), V2 (1, 0), q, true, segs);
+	SimplePolygon poly = corner_profile (V2 (R, q), V2 (-1, 0), V2 (0, -1), V2 (0, 1), V2 (1, 0), q, q, true, segs);
 	for (auto &p : poly) if (p.x < 0) p.x = 0;
 	bool right = dot (cross (n1, n2), out) > 0; V3 e1 = right ? n1 : n2, e2 = right ? n2 : n1;
 	*res = placed (Manifold::Revolve (Polygons { poly }, segs, 90), e1, e2, out, end - (n1 + n2) * R).AsOriginal ();
 	return true;
 }
-// The solid for one edge: true and *add (an inner edge: it is added; else cut). why: what stops it.
-static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fillet, int segs, Manifold *out, bool *add, const char **why)
+// Which of a straight edge's two faces takes an asymmetric step's first size: the one turned the most up (then toward
+// +Y, then +X) -- on a circle's edge, its flat face. true: n1's.
+static bool first_face (const V3 &n1, const V3 &n2)
+{
+	if (fabs (n1.z - n2.z) > 1e-6) return n1.z > n2.z;
+	if (fabs (n1.y - n2.y) > 1e-6) return n1.y > n2.y;
+	return n1.x >= n2.x;
+}
+// The solid for one edge: true and *add (an inner edge: it is added; else cut). why: what stops it. rad2: the size on
+// the second face (asymmetric; rad: the same), swap: the two sizes the other way round.
+static bool corner_solid (const RMesh &r, const Chain &c, double rad, double rad2, bool swap, bool fillet, int segs, Manifold *out, bool *add, const char **why)
 {
 	*why = TR ("This edge cannot be rounded: only straight edges, circles and arcs");
-	if (rad <= 1e-6) { *why = TR ("The size must be more than 0"); return false; }
+	if (rad <= 1e-6 || rad2 <= 1e-6) { *why = TR ("The size must be more than 0"); return false; }
+	bool sym = fabs (rad - rad2) < 1e-9; double most = std::max (rad, rad2);
 	int a = c.pts[0], b = c.pts[1];
 	V3 A = r.v[a], B = r.v[c.pts.back ()], p1, p2;
 	if (c.kind == 1)
@@ -532,15 +555,16 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		auto to2 = [&] (const V3 &q) { return V2 (dot (q, ex), dot (q, ey)); };
 		V2 o1 = to2 (n1), o2 = to2 (n2);
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
-		SimplePolygon poly = corner_profile (V2 (0, 0), V2 (1, 0), to2 (d2), o1, o2, rad, fillet, segs);
+		bool f1 = first_face (n1, n2) != swap;		// (d1 lies on the face of n1)
+		SimplePolygon poly = corner_profile (V2 (0, 0), V2 (1, 0), to2 (d2), o1, o2, f1 ? rad : rad2, f1 ? rad2 : rad, fillet, segs);
 		// (an outer edge's cut sticks out of its ends, and goes on to the corner where a neighbour was cut before)
 		bool wallA = false, wallB = false;
-		double pastA = convex ? corner_reach (r, A, -dir, n1, n2, rad, &wallA) : 0, pastB = convex ? corner_reach (r, B, dir, n1, n2, rad, &wallB) : 0;
+		double pastA = convex ? corner_reach (r, A, -dir, n1, n2, most, &wallA) : 0, pastB = convex ? corner_reach (r, B, dir, n1, n2, most, &wallB) : 0;
 		if (convex) { pastA += wallA ? 0 : EPS; pastB += wallB ? 0 : EPS; }
 		bool fromA = dot (ez, dir) > 0;
 		Manifold s = Manifold::Extrude (Polygons { poly }, L + pastA + pastB).Translate ({0, 0, -(fromA ? pastA : pastB)});
 		s = placed (s, ex, ey, ez, fromA ? A : B).AsOriginal ();
-		if (convex && fillet)				// ... and the rounds it ends on are turned around the corner
+		if (convex && fillet && sym)			// ... and the rounds it ends on are turned around the corner (equal sizes only)
 		{
 			Manifold bl;
 			if (corner_blend (r, c, c.pts[0], A, -dir, n1, n2, rad, segs, &bl)) s += bl;
@@ -572,7 +596,7 @@ static bool corner_solid (const RMesh &r, const Chain &c, double rad, bool fille
 		auto to2 = [&] (const V3 &q) { return V2 (dot (q, er), dot (q, nn)); };
 		V2 o1 = to2 (nn), o2 = to2 (nw);
 		if (!convex) { o1 = V2 (-o1.x, -o1.y); o2 = V2 (-o2.x, -o2.y); }
-		SimplePolygon poly = corner_profile (V2 (R, 0), to2 (d1), to2 (d2), o1, o2, rad, fillet, segs);
+		SimplePolygon poly = corner_profile (V2 (R, 0), to2 (d1), to2 (d2), o1, o2, swap ? rad2 : rad, swap ? rad : rad2, fillet, segs);	// (the flat face first)
 		for (auto &q : poly) if (q.x < 0) { *why = TR ("Too large for this edge"); return false; }
 		double sweep = 360; V3 e1 = er;
 		if (c.kind == 3)				// an arc: from its first point, the way its middle goes
@@ -888,7 +912,7 @@ struct Doc
 			*why = TR ("An edge is no longer there");
 			if (ci < 0) return false;
 			Manifold s; bool add;
-			if (!corner_solid (b->mesh, b->mesh.chains[ci], f.r, f.kind == F_FILLET, segs, &s, &add, why)) return false;
+			if (!corner_solid (b->mesh, b->mesh.chains[ci], f.r, f.r2 > 0 ? f.r2 : f.r, f.swap, f.kind == F_FILLET, segs, &s, &add, why)) return false;
 			(add ? adds : cuts)->push_back (s);
 		}
 		return true;
@@ -986,6 +1010,7 @@ struct Doc
 			if (f.z != 0) { snprintf (b, sizeof b, "lift %.9g\n", f.z); s += b; }
 			if (f.turn != 0) { snprintf (b, sizeof b, "turned %.9g\n", f.turn); s += b; }
 			if (f.kind == F_MOVE && f.clone) s += "clone 1\n";
+			if ((f.kind == F_FILLET || f.kind == F_CHAMFER) && f.r2 > 0) { snprintf (b, sizeof b, "r2 %.9g %d\n", f.r2, f.swap ? 1 : 0); s += b; }	// (asymmetric)
 			if (f.kind == F_MOVE && (f.turned () || f.scaled ())) { snprintf (b, sizeof b, "turn %.9g %.9g %.9g scale %.9g %.9g %.9g\n", f.rot.x, f.rot.y, f.rot.z, f.sc.x, f.sc.y, f.sc.z); s += b; }
 			snprintf (b, sizeof b, "plane %.9g %.9g %.9g  %.9g %.9g %.9g  %.9g %.9g %.9g\n", f.pl.o.x, f.pl.o.y, f.pl.o.z, f.pl.u.x, f.pl.u.y, f.pl.u.z, f.pl.n.x, f.pl.n.y, f.pl.n.z); s += b;
 			for (const SkEl &e : f.els)
@@ -1037,6 +1062,7 @@ struct Doc
 			else if (!strncmp (line, "lift ", 5) && !feats.empty ()) feats.back ().z = atof (line + 5);
 			else if (!strncmp (line, "turned ", 7) && !feats.empty ()) feats.back ().turn = atof (line + 7);
 			else if (!strncmp (line, "clone ", 6) && !feats.empty ()) feats.back ().clone = atoi (line + 6) != 0;
+			else if (!strncmp (line, "r2 ", 3) && !feats.empty ()) { int w = 0; sscanf (line + 3, "%lf %d", &feats.back ().r2, &w); feats.back ().swap = w != 0; }
 			else if (!strncmp (line, "turn ", 5) && !feats.empty ())
 			{ Feature &g = feats.back (); sscanf (line + 5, "%lf %lf %lf scale %lf %lf %lf", &g.rot.x, &g.rot.y, &g.rot.z, &g.sc.x, &g.sc.y, &g.sc.z); }
 			else if (!strncmp (line, "plane ", 6) && !feats.empty ())
@@ -1141,8 +1167,14 @@ static void describe (const Doc &d, const Feature &f, char *out, int cap)
 	case F_SPHERE: num (f.w, a); snprintf (out, cap, "R %s%s", a, op); break;
 	case F_SKETCH: { SkEval ev; sketch_eval (f.els, 24, ev); snprintf (out, cap, TR ("%d outline%s%s"), ev.nclosed, ev.nclosed == 1 ? "" : "s", ev.nopen ? TR (" \xC2\xB7 open") : ""); break; }
 	case F_EXTRUDE: num (fabs (f.h), a); if (f.through) snprintf (out, cap, TR ("through%s"), op); else snprintf (out, cap, "%s%s", a, op); break;
-	case F_FILLET: num (f.r, a); snprintf (out, cap, TR ("R %s \xC2\xB7 %d edge%s"), a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
-	case F_CHAMFER: num (f.r, a); snprintf (out, cap, TR ("%s \xC2\xB7 %d edge%s"), a, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s"); break;
+	case F_FILLET: case F_CHAMFER:
+	{
+		const char *edges = f.edges.size () == 1 ? "" : "s"; int ne = (int) f.edges.size ();
+		num (f.swap && f.r2 > 0 ? f.r2 : f.r, a); num (f.swap ? f.r : f.r2, b);	// (asymmetric: the first face's size, then the second's)
+		if (f.r2 > 0) snprintf (out, cap, f.kind == F_FILLET ? TR ("R %s / %s \xC2\xB7 %d edge%s") : TR ("%s / %s \xC2\xB7 %d edge%s"), a, b, ne, edges);
+		else snprintf (out, cap, f.kind == F_FILLET ? TR ("R %s \xC2\xB7 %d edge%s") : TR ("%s \xC2\xB7 %d edge%s"), a, ne, edges);
+		break;
+	}
 	case F_MOVE: num (f.mv.x, a); num (f.mv.y, b); num (f.mv.z, c); snprintf (out, cap, "%s, %s, %s%s%s", a, b, c, f.turned () ? TR (" \xC2\xB7 turned") : "", f.scaled () ? TR (" \xC2\xB7 scaled") : ""); if (f.clone) { size_t k = strlen (out); snprintf (out + k, cap - k, TR (" \xC2\xB7 a copy")); } break;
 	case F_COMBINE: snprintf (out, cap, "%s", TR (OP_NAME[f.op])); break;
 	default: out[0] = 0;

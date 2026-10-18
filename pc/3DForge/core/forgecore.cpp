@@ -445,6 +445,8 @@ static void featureFields (Feature &f, bool making)
 	case F_FILLET: case F_CHAMFER:
 		if (making) seg (1, "", f.kind == F_FILLET ? 0 : 1, { TR ("Fillet"), TR ("Chamfer") });
 		field (f.kind == F_FILLET ? TR ("Radius") : TR ("Size"), &f.r, TR ("mm"), 0, false, making);
+		check (TR ("Two sizes"), f.r2 > 0, 17);		// (asymmetric: the first on the upper face -- a hole's rim's flat face --, the second on the other)
+		if (f.r2 > 0) { field (f.kind == F_FILLET ? TR ("Radius 2") : TR ("Size 2"), &f.r2, TR ("mm"), -1); check (TR ("Swap the faces"), f.swap, 18); }
 		snprintf (t, sizeof t, TR ("%d chosen"), (int) f.edges.size ()); kv (TR ("Edges"), t, "");
 		if (f.edges.empty ()) note (TR ("Click an edge of a body"));
 		else { snprintf (t, sizeof t, TR ("on %s"), body_name (f.target)); note (t); }
@@ -1068,6 +1070,8 @@ FC void fc_form_check (int tag, int on)
 	case 7: if (g_el) g_el->rel = c; break;
 	case 8: if (f) f->clone = c; break;
 	case 19: if (g_el) { g_el->cons = c; if (g_el == &A.cur) A.cons = c; } break;
+	case 17: if (f) f->r2 = c ? (f->r2 > 0 ? f->r2 : f->r) : 0; break;		// (asymmetric: the second size starts as the first)
+	case 18: if (f) f->swap = c; break;
 	case 34: if (canvasPage ()) { A.doc.canvases[A.selCanvas].visible = c; A.doc.changes++; view_dirty (); ui (0); } return;
 	case 30: A.print.mirror = c; break;
 	case 31: A.print.supLow = c; break;

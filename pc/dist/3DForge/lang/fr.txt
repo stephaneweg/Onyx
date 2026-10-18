@@ -611,6 +611,12 @@ A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL
 %d part starts in mid-air, at %s mm: it needs a support.	%d partie commence dans le vide, à %s mm : il faut un support.
 A new part	Une nouvelle pièce
 Nothing selected	Rien de sélectionné
+R %s / %s · %d edge%s	R %s / %s · %d arête%s
+%s / %s · %d edge%s	%s / %s · %d arête%s
+Two sizes	Deux tailles
+Radius 2	Rayon 2
+Size 2	Taille 2
+Swap the faces	Inverser les faces
 Midpoint line	Ligne centrée
 Middle X	Milieu X
 Midpoint line: click its middle.	Ligne centrée : cliquez son milieu.

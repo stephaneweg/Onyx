@@ -3186,6 +3186,13 @@ whose two top edges are rounded, or the top's edges and the arc of a box whose u
 around it: a piece of a sphere when the radii are the same, of a torus otherwise. An edge that stops against a
 wall is rounded up to the wall, which is left whole.
 
+**Two sizes (asymmetric).** *Two sizes* in the panel gives the second face its own size: a chamfer cut 3 mm into the
+top and 10 mm down the side, a fillet that leaves the faces as far as a round of each size would (its curve then a
+quarter of an ellipse, tangent to both). The first size is on the **upper face** (on a hole's rim, its flat face);
+*Swap the faces* turns them round. The sizes are kept in the part (`r2` in the `.3df`: a 3DForge without it reads
+the step with its first size only). Where an asymmetric fillet meets another round at a corner, the corner is
+mitred, not turned into a piece of a sphere.
+
 ![A fillet](../screenshots/3dforge-fillet.png)
 
 **Move** — click a body, move it over the ground and click (or type the three distances). The same step also
