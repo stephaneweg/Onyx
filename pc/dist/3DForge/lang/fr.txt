@@ -626,3 +626,15 @@ Construction	Construction
 Construction (part of no outline)	Construction (hors des contours)
 Construction: what you draw now is a guide, part of no outline. Construction again to stop.	Construction : ce que vous tracez est un repère, hors des contours. Construction à nouveau pour arrêter.
 Construction off: what you draw makes outlines again.	Construction arrêtée : ce que vous tracez forme à nouveau des contours.
+Loft	Lissage
+From	De
+To	Vers
+The largest closed outline of each	Le plus grand contour fermé de chaque
+sketch, joined by straight lines.	esquisse, reliés par des droites.
+Loft: the solid from one sketch's outline to another's. Choose the two sketches at the right, then OK.	Lissage : le solide d'un contour d'esquisse à un autre. Choisissez les deux esquisses à droite, puis OK.
+A loft needs two sketches with a closed outline: draw them first (Sketch: a plane and its offset).	Un lissage demande deux esquisses à contour fermé : tracez-les d'abord (Esquisse : un plan et son décalage).
+A sketch of the loft has no closed outline	Une esquisse du lissage n'a pas de contour fermé
+An outline of the loft cannot be filled	Un contour du lissage ne peut pas être rempli
+The loft cannot be made: do the outlines or the sides cross?	Le lissage est impossible : les contours ou les côtés se croisent-ils ?
+A sketch of the loft is missing	Une esquisse du lissage manque
+A loft joins two different sketches	Un lissage relie deux esquisses différentes
