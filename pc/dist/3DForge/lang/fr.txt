@@ -611,3 +611,12 @@ A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL
 %d part starts in mid-air, at %s mm: it needs a support.	%d partie commence dans le vide, à %s mm : il faut un support.
 A new part	Une nouvelle pièce
 Nothing selected	Rien de sélectionné
+Midpoint line	Ligne centrée
+Middle X	Milieu X
+Midpoint line: click its middle.	Ligne centrée : cliquez son milieu.
+Midpoint line: click where one end goes — the other goes as far the other way. Or type its length and angle.	Ligne centrée : cliquez où va une extrémité — l'autre va aussi loin de l'autre côté. Ou tapez sa longueur et son angle.
+Construction	Construction
+ · construction	 · construction
+Construction (part of no outline)	Construction (hors des contours)
+Construction: what you draw now is a guide, part of no outline. Construction again to stop.	Construction : ce que vous tracez est un repère, hors des contours. Construction à nouveau pour arrêter.
+Construction off: what you draw makes outlines again.	Construction arrêtée : ce que vous tracez forme à nouveau des contours.
