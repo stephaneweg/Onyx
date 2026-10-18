@@ -213,7 +213,7 @@ namespace Forge
 		static readonly Dictionary<string, int> CMDS = new Dictionary<string, int>
 		{
 			["undo"] = Cmd.UNDO, ["redo"] = Cmd.REDO, ["ok"] = Cmd.OK, ["cancel"] = Cmd.CANCEL, ["delete"] = Cmd.DELETE, ["edit_sketch"] = Cmd.EDIT_SKETCH,
-			["roll_back_here"] = Cmd.ROLL_HERE, ["roll_to_end"] = Cmd.ROLL_END, ["delete_element"] = Cmd.DEL_ELEMENT, ["start_sketch"] = Cmd.SK_START,
+			["roll_back_here"] = Cmd.ROLL_HERE, ["roll_to_end"] = Cmd.ROLL_END, ["delete_element"] = Cmd.DEL_ELEMENT, ["toggle_construction"] = Cmd.SK_CONS, ["start_sketch"] = Cmd.SK_START,
 			["finish_sketch"] = Cmd.SK_FINISH, ["cancel_sketch"] = Cmd.SK_CANCEL, ["close_outline"] = Cmd.SK_CLOSE,
 			["design"] = Cmd.MODE_DESIGN, ["manufacture"] = Cmd.MODE_CAM, ["setup"] = Cmd.CAM_SETUP, ["tool_and_machine"] = Cmd.CAM_TOOL,
 			["add_clearing"] = Cmd.CAM_CLEAR, ["add_contour"] = Cmd.CAM_CONTOUR, ["simulate"] = Cmd.CAM_SIM, ["validate"] = Cmd.CAM_VALIDATE, ["revert"] = Cmd.CAM_REVERT,

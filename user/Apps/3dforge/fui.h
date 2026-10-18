@@ -16,7 +16,7 @@ namespace forge {
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
        CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START,
        CMD_MODE_DESIGN, CMD_MODE_CAM, CMD_CAM_SETUP, CMD_CAM_TOOL, CMD_CAM_CLEAR, CMD_CAM_CONTOUR, CMD_CAM_SIM, CMD_GCODE, CMD_CAM_BODY, CMD_CAM_DELETE,
-       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_CANVAS_IMPORT, CMD_CANVAS_DELETE, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN };
+       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_CANVAS_IMPORT, CMD_CANVAS_DELETE, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN, CMD_SK_CONS };
 static void cam_presets_save ();			// (main.cpp)
 static void print_presets_save ();
 static void fdm_presets_save ();
@@ -108,7 +108,7 @@ static const ToolDef FDMTOOLS[] = {
 	{ -20, I_PR_PLATE, TRN ("Setup") }, { -21, I_PR_FIL, TRN ("Filament") }, { -1, 0, 0 }, { -23, I_PR_LAYERS, TRN ("Layers") }, { -2, 0, 0 } };
 static const ToolDef SKTOOLS[] = {
 	{ T_LINE, I_LINE, TRN ("Line") }, { T_MIDLINE, I_MIDLINE, TRN ("Midpoint line") }, { T_RECT, I_RECT, TRN ("Rectangle") }, { T_CIRCLE, I_CIRCLE, TRN ("Circle") }, { T_ARC, I_ARC, TRN ("Arc") }, { T_ARC3, I_ARC3, TRN ("3-pt arc") },
-	{ T_SPLINE, I_SPLINE, TRN ("Spline") }, { T_POINT, I_POINT, TRN ("Point") }, { -3, I_CLOSE, TRN ("Close") }, { -2, 0, 0 } };
+	{ T_SPLINE, I_SPLINE, TRN ("Spline") }, { T_POINT, I_POINT, TRN ("Point") }, { -3, I_CLOSE, TRN ("Close") }, { -1, 0, 0 }, { -5, I_CONS, TRN ("Construction") }, { -2, 0, 0 } };
 
 class Ribbon : public Widget
 {
@@ -171,7 +171,7 @@ public:
 			bool camTile = tl <= -10;
 			bool on = tl <= -20 ? A.camPage == -20 - tl : camTile ? (tl == -10 ? A.camPage == 0 && !A.camSim : tl == -11 ? A.camPage == 1 && !A.camSim : tl == -14 ? A.camSim
 						     : A.camPage == 2 && cam_op () && cam_op ()->kind == (tl == -12 ? CAM_CLEAR : CAM_CONTOUR) && !A.camSim)
-					  : tl == A.tool || (more && shape_tool (A.tool));
+					  : tl == -5 ? (A.selEl >= 0 && A.selEl < (int) A.sk.els.size () ? A.sk.els[A.selEl].cons : A.cons) : tl == A.tool || (more && shape_tool (A.tool));
 			bool isHot = nz == hot;
 			unsigned bg = C_BG;
 			if (on) { bg = soft_col (C_BG); uk_rbox (canvas, x, 4, bw, 54, 6, bg, bg); uk_rline (canvas, x, 4, bw, 54, 6, C_ACCENT); }
@@ -179,7 +179,7 @@ public:
 			icon (canvas, ic, x + bw / 2 - 13, 8, 26, ink, C_ACCENT, bg);
 			int tx = x + (bw - uk_tw (nm) - (more ? 10 : 0)) / 2; uk_text (canvas, tx, 38, nm, C_TEXT);
 			if (more) uk_glyph (canvas, WKG_CHEV_DOWN, tx + uk_tw (nm) + 6, 46, 7, C_TEXT);
-			zone (x, 4, bw, 54, tl <= -20 ? CMD_PR_SETUP + (-20 - tl) : camTile ? CMD_CAM_SETUP + (-10 - tl) : more ? CMD_SHAPES : list[i].tool == -3 ? CMD_SK_CLOSE : tl, !camTile && !more && list[i].tool != -3); x += bw + 2;
+			zone (x, 4, bw, 54, tl <= -20 ? CMD_PR_SETUP + (-20 - tl) : camTile ? CMD_CAM_SETUP + (-10 - tl) : more ? CMD_SHAPES : list[i].tool == -3 ? CMD_SK_CLOSE : list[i].tool == -5 ? CMD_SK_CONS : tl, !camTile && !more && list[i].tool != -3 && list[i].tool != -5); x += bw + 2;
 		}
 		uk_etch_h (canvas, 0, H - 2, width, C_BG);
 	}
@@ -252,7 +252,7 @@ public:
 		else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, TR ("\xC3\x98 %s \xC2\xB7 at %s, %s"), a, b, c); }
 		else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC3\x97 %s \xC2\xB7 from its centre") : "%s \xC3\x97 %s", a, b); }
 		else snprintf (t, sizeof t, TR ("back to the start"));
-		snprintf (out, cap, "%s %d  \xC2\xB7  %s", EN[e.kind], k, t);
+		snprintf (out, cap, "%s %d  \xC2\xB7  %s%s", EN[e.kind], k, t, e.cons ? TR (" \xC2\xB7 construction") : "");
 	}
 	// the cells' room: [x0, x1), the arrows shown when they do not all fit
 	void room (int *x0, int *x1, bool *arrows) const
@@ -742,6 +742,7 @@ public:
 		case 6: A.seeThrough = c.checked; break;
 		case 7: if (p->el) { p->el->rel = c.checked; } break;
 		case 8: if (f) { f->clone = c.checked; } break;
+		case 19: if (p->el) { p->el->cons = c.checked; if (p->el == &A.cur) A.cons = c.checked; } break;
 		case 34: if (p->canvasPage ()) { A.doc.canvases[A.selCanvas].visible = c.checked; A.doc.changes++; if (g_view) g_view->invalidate (true); ui (0); } return;
 		case 30: A.print.mirror = c.checked; break;
 		case 31: A.print.supLow = c.checked; break;
@@ -935,6 +936,7 @@ public:
 				label (12, y + 5, TR ("From its")); SegmentedControl *s = new SegmentedControl (width - 12 - 132, y, 132, 26, RC, 2, e.rel ? 1 : 0, onSeg); s->tag = 14; addChild (s); y += 40;
 			}
 			if (first && !edit && A.curStep > 0) first->setFocus ();
+			if (e.kind != SK_CLOSE && e.kind != SK_POINT) { check (y, TR ("Construction (part of no outline)"), e.cons, 19); y += 28; }
 			check (y, TR ("Snap to points and angles"), A.snap, 3); y += 38;
 			infoY = y; info[0] = TR ("Each element starts from a"); info[1] = TR ("point and keeps its own values."); info[2] = TR ("Change one: what was drawn"); info[3] = TR ("after it follows.");
 			if (edit) { ABtn *d = new ABtn (12, height - 40, width - 24, 28, TR ("Delete this element"), CMD_DEL_ELEMENT); d->bg = panel_col (); d->anchor = ANCHOR_LEFT | ANCHOR_BOTTOM; addChild (d); }

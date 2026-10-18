@@ -122,7 +122,7 @@ namespace Forge
 		public bool SeeThrough => s[12] != 0; public bool Snap => s[13] != 0; public int Tris => s[14]; public bool Changed => s[15] != 0;
 		public int CamOpKind => s[16]; public int LastShape => s[17]; public bool HasPend => s[18] != 0; public int Bodies => s[19];
 		public int Feats => s[20]; public int Upto => s[21]; public int SelFeat => s[22]; public int SelBody => s[23]; public int Step => s[24];
-		public int SelCanvas => s[25]; public int Threads => s[26]; public bool Sliced => s[27] != 0; public int SelEl => s[28];
+		public int SelCanvas => s[25]; public int Threads => s[26]; public bool Sliced => s[27] != 0; public int SelEl => s[28]; public bool Construction => s[29] != 0;
 		public bool Resin => CamMode && Gen == 1; public bool Filament => CamMode && Gen == 2; public bool Printer => CamMode && Gen >= 1;
 		public string Mode => Sketching ? "sketch" : CamMode ? "cam" + Gen : "design";
 	}
@@ -140,7 +140,7 @@ namespace Forge
 			LINE = 13, RECT = 14, CIRCLE = 15, ARC = 16, CLOSE = 17, HOME = 18, FIT = 19, SHADED = 20, CHECK = 21, INFO = 22, EYE = 23, WARN = 24, COMBINE = 25,
 			PYRAMID = 26, PRISM = 27, TAPER = 28, TORUS = 29, SPHERE = 30, SHAPES = 31,
 			CAM_SETUP = 32, CAM_TOOL = 33, CAM_CLEAR = 34, CAM_CONTOUR = 35, GCODE = 36, PLAY = 37, ARC3 = 38, SPLINE = 39, POINT = 40,
-			PR_PLATE = 41, PR_RESIN = 42, PR_SUP = 43, PR_LAYERS = 44, PR_FIL = 45, MIDLINE = 46;
+			PR_PLATE = 41, PR_RESIN = 42, PR_SUP = 43, PR_LAYERS = 44, PR_FIL = 45, MIDLINE = 46, CONS = 47;
 	}
 	static class Cmd
 	{
@@ -148,7 +148,7 @@ namespace Forge
 			DELETE = 111, EDIT_SKETCH = 112, ROLL_HERE = 113, ROLL_END = 114, DEL_ELEMENT = 115, SHAPES = 116, SK_START = 117,
 			MODE_DESIGN = 118, MODE_CAM = 119, CAM_SETUP = 120, CAM_TOOL = 121, CAM_CLEAR = 122, CAM_CONTOUR = 123, CAM_SIM = 124, GCODE = 125, CAM_BODY = 126, CAM_DELETE = 127,
 			CAM_VALIDATE = 128, CAM_REVERT = 129, CANVAS_IMPORT = 130, CANVAS_DELETE = 131, PR_SETUP = 132, PR_RESIN = 133, PR_SUPPORTS = 134, PR_LAYERS = 135, PR_FILE = 136,
-			PR_GENERATE = 137, PR_CLEAR = 138, PR_PRESET = 139, GEN = 140,
+			PR_GENERATE = 137, PR_CLEAR = 138, PR_PRESET = 139, GEN = 140, SK_CONS = 141,
 			HOME = 200, FIT = 201, TOP = 202, FRONT = 203, RIGHT = 204, EDGES = 205, GRID = 206, SEETHROUGH = 207, SNAP = 208, PROC_MILL = 209, PROC_RESIN = 210, PROC_FDM = 211;
 	}
 }

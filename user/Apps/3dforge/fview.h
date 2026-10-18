@@ -55,6 +55,7 @@ struct App
 	int skPlane; double skOffset;		// the Sketch tool's plane, chosen at the right: 0 XY, 1 XZ, 2 YZ; moved by
 	SkEl cur; int curStep; bool chain; double sweep0;
 	bool snapOn = false; V2 snapP;		// (the sketch's pointer is held by a point: shown)
+	bool cons = false;			// (the sketch's elements drawn now are construction: part of no outline)
 	bool ghost = false;			// (a shape not yet clicked: shown once one of its values was typed)
 	V2 arcC, arcM; bool rectCentre = false;	// (an arc being placed: its centre, or its end and its middle; rectangles from their centre)
 	// what is selected, what the pointer is on
@@ -223,7 +224,7 @@ static void sk_arm ()
 	A.cur.kind = A.tool == T_ARC || A.tool == T_ARC3 ? SK_ARC : A.tool == T_RECT ? SK_RECT : A.tool == T_CIRCLE ? SK_CIRCLE : A.tool == T_SPLINE ? SK_SPLINE
 		     : A.tool == T_POINT ? SK_POINT : SK_LINE;
 	bool chained = A.chain && A.ev.has && (A.tool == T_LINE || A.tool == T_ARC || A.tool == T_ARC3 || A.tool == T_SPLINE);
-	A.cur.chain = chained; A.curStep = chained ? 1 : 0; A.cur.rel = A.tool == T_RECT && A.rectCentre;
+	A.cur.chain = chained; A.curStep = chained ? 1 : 0; A.cur.rel = A.tool == T_RECT && A.rectCentre; A.cur.cons = A.cons;
 	if (chained) { A.cur.x = A.ev.cur.x; A.cur.y = A.ev.cur.y; A.arcC = A.arcM = A.ev.cur; if (A.tool == T_SPLINE) A.cur.pts.assign (1, A.ev.cur); }
 }
 static void extrude_begin ()
@@ -484,6 +485,15 @@ static void sk_point (V2 p, bool click)
 		if (click && fabs (e.sweep) > 1e-6) { sk_add (e); return; }
 	}
 	if (click) ui (R_FIELDS);
+}
+// Construction (the bar's tile, X): the element selected turned into construction or back -- none selected: the
+// elements drawn from now on.
+static void sk_cons ()
+{
+	if (!A.sketching) return;
+	if (A.selEl >= 0 && A.selEl < (int) A.sk.els.size ()) { SkEl &e = A.sk.els[A.selEl]; e.cons = !e.cons; sk_eval (); }
+	else { A.cons = !A.cons; A.cur.cons = A.cons; set_hint (A.cons ? TR ("Construction: what you draw now is a guide, part of no outline. Construction again to stop.") : TR ("Construction off: what you draw makes outlines again.")); }
+	ui (R_ALL);
 }
 static void sk_close ()
 {
@@ -1687,11 +1697,12 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 	for (size_t i = 0; i < ev.shapes.size (); i++)
 	{
 		const SkShape &s = ev.shapes[i]; bool sel = editing && (int) i == A.selEl;
-		unsigned col = sel ? C_AMBER : s.outline >= 0 || !editing ? C_LINE : 0x5A6E8C;
+		bool cons = i < sk.els.size () && sk.els[i].cons;		// (construction: dashed, of its own colour)
+		unsigned col = sel ? C_AMBER : cons ? 0x8C78BE : s.outline >= 0 || !editing ? C_LINE : 0x5A6E8C;
 		for (size_t k = 0; k + 1 < s.pts.size (); k++)
 		{
 			double x0, y0, x1, y1; P (s.pts[k], &x0, &y0); P (s.pts[k + 1], &x1, &y1);
-			ov_line (canvas, x0, y0, x1, y1, sel ? 2.4 : 1.7, col);
+			if (cons) ov_dash (canvas, x0, y0, x1, y1, sel ? 2 : 1.3, col, 6, 4); else ov_line (canvas, x0, y0, x1, y1, sel ? 2.4 : 1.7, col);
 		}
 	}
 	if (!editing) return;
@@ -1724,7 +1735,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		{
 			const SkShape &s = e1.shapes[0];
 			if (!(e.kind == SK_ARC && A.curStep == 1))
-				for (size_t k = 0; k + 1 < s.pts.size (); k++) { P (s.pts[k], &x, &y); P (s.pts[k + 1], &x1, &y1); ov_line (canvas, x, y, x1, y1, 2.4, C_AMBER); }
+				for (size_t k = 0; k + 1 < s.pts.size (); k++) { P (s.pts[k], &x, &y); P (s.pts[k + 1], &x1, &y1); if (e.cons) ov_dash (canvas, x, y, x1, y1, 2, C_AMBER, 6, 4); else ov_line (canvas, x, y, x1, y1, 2.4, C_AMBER); }
 			if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) { P (q, &x, &y); ov_dot (canvas, x, y, 3, 0xFFFFFF, C_AMBER, 1.6); }
 			else if (e.kind == SK_ARC && A.tool == T_ARC3)		// the chord, the line its middle slides on
 			{

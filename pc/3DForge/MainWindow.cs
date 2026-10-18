@@ -161,6 +161,8 @@ namespace Forge
 				Tile (I.SPLINE, Tr ("Spline"), s => s.Tool == T.SPLINE, () => Core.fc_tool (T.SPLINE, 0));
 				Tile (I.POINT, Tr ("Point"), s => s.Tool == T.POINT, () => Core.fc_tool (T.POINT, 0));
 				Tile (I.CLOSE, Tr ("Close"), s => false, () => Core.fc_cmd (Cmd.SK_CLOSE));
+				Sep ();
+				Tile (I.CONS, Tr ("Construction"), s => s.Construction, () => Core.fc_cmd (Cmd.SK_CONS));
 			}
 			else if (st.CamMode && st.Gen == 0)
 			{
@@ -365,6 +367,7 @@ namespace Forge
 			if (k == Key.Escape) { Core.fc_key (27); if (inText) Keyboard.ClearFocus (); Sync (); e.Handled = true; }
 			else if (k == Key.Enter && !inText) { Core.fc_key (13); Sync (); e.Handled = true; }
 			else if (k == Key.Delete && !inText) { Core.fc_key (46); Sync (); e.Handled = true; }
+			else if (k == Key.X && !inText && Core.State ().Sketching) { Core.fc_cmd (Cmd.SK_CONS); Sync (); e.Handled = true; }	// (construction, as in other CADs)
 		}
 
 		// ---- the files --------------------------------------------------------------------------------------------------------------

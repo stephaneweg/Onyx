@@ -109,7 +109,8 @@ struct SkEl
 	double w, h;			// a rectangle's sizes (rel: (x, y) is its centre, not a corner); w: a circle's diameter
 	std::vector<V2> pts;		// a spline: the points it goes through after its start
 					// (a point: a mark to snap to, part of no outline)
-	SkEl () : kind (SK_LINE), chain (false), rel (false), x (0), y (0), a (0), len (0), r (0), ca (0), sweep (0), w (0), h (0) {}
+	bool cons;			// construction: drawn (dashed), snapped to, part of no outline (the file: "cons 1" after it)
+	SkEl () : kind (SK_LINE), chain (false), rel (false), x (0), y (0), a (0), len (0), r (0), ca (0), sweep (0), w (0), h (0), cons (false) {}
 };
 
 struct Feature
@@ -622,7 +623,7 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 		if (e.kind == SK_POINT) { s.start = s.end = s.centre = V2 (e.x, e.y); s.pts.push_back (s.start); ev.shapes.push_back (s); continue; }
 		if (e.kind == SK_CIRCLE || e.kind == SK_RECT)
 		{
-			flush (false); ev.has = false;
+			if (!e.cons) { flush (false); ev.has = false; }		// (a construction one breaks no run)
 			SimplePolygon p;
 			if (e.kind == SK_CIRCLE)
 			{
@@ -637,7 +638,7 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			}
 			for (auto &q : p) s.pts.push_back (V2 (q.x, q.y));
 			s.pts.push_back (s.pts[0]);
-			if ((e.kind == SK_CIRCLE && e.w > 1e-6) || (e.kind == SK_RECT && fabs (e.w) > 1e-6 && fabs (e.h) > 1e-6)) { s.outline = ev.nclosed++; ev.closed.push_back (p); }
+			if (!e.cons && ((e.kind == SK_CIRCLE && e.w > 1e-6) || (e.kind == SK_RECT && fabs (e.w) > 1e-6 && fabs (e.h) > 1e-6))) { s.outline = ev.nclosed++; ev.closed.push_back (p); }
 			ev.shapes.push_back (s); continue;
 		}
 		if (e.kind == SK_CLOSE)
@@ -646,7 +647,12 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			ev.shapes.push_back (s); runEls.push_back (i); flush (true); ev.has = false; continue;
 		}
 		bool chained = e.chain && ev.has;
-		if (!chained) { flush (false); ev.cur = V2 (e.x, e.y); first = ev.cur; run.push_back ({ev.cur.x, ev.cur.y}); }
+		// (construction: drawn, chained on as any element, but its points go into no outline -- R is a scrap; an element
+		//  of the outline that goes on from its end starts a run of its own there)
+		SimplePolygon scrap; SimplePolygon &R = e.cons ? scrap : run;
+		if (e.cons) { if (!chained) ev.cur = V2 (e.x, e.y); }
+		else if (!chained) { flush (false); ev.cur = V2 (e.x, e.y); first = ev.cur; run.push_back ({ev.cur.x, ev.cur.y}); }
+		else if (run.empty () || hypot (run.back ().x - ev.cur.x, run.back ().y - ev.cur.y) > 1e-9) { flush (false); first = ev.cur; run.push_back ({ev.cur.x, ev.cur.y}); }
 		s.start = ev.cur;
 		if (e.kind == SK_LINE)
 		{
@@ -654,7 +660,7 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			ev.dir = ang * 180 / PI;
 			ev.cur = V2 (ev.cur.x + e.len * cos (ang), ev.cur.y + e.len * sin (ang));
 			s.pts.push_back (s.start); s.pts.push_back (ev.cur);
-			run.push_back ({ev.cur.x, ev.cur.y});
+			R.push_back ({ev.cur.x, ev.cur.y});
 		}
 		else if (e.kind == SK_SPLINE)			// a smooth curve through its points (Catmull-Rom)
 		{
@@ -671,7 +677,7 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 					V2 q (0.5 * (2 * p1.x + (p2.x - p0.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (3 * p1.x - p0.x - 3 * p2.x + p3.x) * t3),
 					      0.5 * (2 * p1.y + (p2.y - p0.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (3 * p1.y - p0.y - 3 * p2.y + p3.y) * t3));
 					if (j == per) q = p2;
-					s.pts.push_back (q); run.push_back ({q.x, q.y});
+					s.pts.push_back (q); R.push_back ({q.x, q.y});
 				}
 			}
 			if (s.pts.size () > 1) { const V2 &a = s.pts[s.pts.size () - 2], &b = s.pts.back (); ev.dir = atan2 (b.y - a.y, b.x - a.x) * 180 / PI; ev.cur = b; }
@@ -685,12 +691,14 @@ static void sketch_eval (const std::vector<SkEl> &els, int segs, SkEval &ev)
 			for (int k = 1; k <= n; k++)
 			{
 				double a = a0 + sw * k / n; V2 q (C.x + e.r * cos (a), C.y + e.r * sin (a));
-				s.pts.push_back (q); run.push_back ({q.x, q.y});
+				s.pts.push_back (q); R.push_back ({q.x, q.y});
 			}
 			ev.cur = s.pts.back (); ev.dir = (a0 + sw) * 180 / PI + (sw >= 0 ? 90 : -90);
 		}
 		s.end = ev.cur; ev.has = true;
-		ev.shapes.push_back (s); runEls.push_back (i);
+		ev.shapes.push_back (s);
+		if (e.cons) continue;
+		runEls.push_back (i);
 		if (run.size () >= 4 && hypot (ev.cur.x - first.x, ev.cur.y - first.y) < 1e-6) { run.pop_back (); flush (true); ev.has = false; }
 	}
 	flush (false);
@@ -984,6 +992,7 @@ struct Doc
 			{
 				snprintf (b, sizeof b, "el %d %d %d %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", e.kind, e.chain ? 1 : 0, e.rel ? 1 : 0, e.x, e.y, e.a, e.len, e.r, e.ca, e.sweep ? -e.sweep : 0, e.w, e.h); s += b;
 				for (const V2 &q : e.pts) { snprintf (b, sizeof b, "sp %.9g %.9g\n", q.x, q.y); s += b; }
+				if (e.cons) s += "cons 1\n";
 			}
 			for (const V3 &p : f.edges) { snprintf (b, sizeof b, "edge %.9g %.9g %.9g\n", p.x, p.y, p.z); s += b; }
 		}
@@ -1042,6 +1051,7 @@ struct Doc
 				sscanf (line + 3, "%d %d %d %lf %lf %lf %lf %lf %lf %lf %lf %lf", &el.kind, &c, &r, &el.x, &el.y, &el.a, &el.len, &el.r, &el.ca, &el.sweep, &el.w, &el.h);
 				el.chain = c != 0; el.rel = r != 0; el.sweep = -el.sweep; feats.back ().els.push_back (el);
 			}
+			else if (!strncmp (line, "cons ", 5) && !feats.empty () && !feats.back ().els.empty ()) feats.back ().els.back ().cons = atoi (line + 5) != 0;
 			else if (!strncmp (line, "sp ", 3) && !feats.empty () && !feats.back ().els.empty ())
 			{
 				V2 q; sscanf (line + 3, "%lf %lf", &q.x, &q.y); feats.back ().els.back ().pts.push_back (q);

@@ -110,6 +110,21 @@ int main (int argc, char **argv)
 		els.clear (); line (40, 0, 180, 40, false); line (40, 0, 90, 30, false); line (0, 30, 0, 40, false); line (0, 30, -90, 30, false);
 		sketch_eval (els, 96, e2);
 		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 1200) < 1e-6, "four lines drawn apart, one backwards: one outline");
+		// construction (the user, 2026-10-18): a run of four lines with a construction line in the middle of it (from the
+		// second's end, a diagonal), a construction circle: one outline still, the rectangle's; nothing open; saved, loaded
+		els.clear (); line (0, 0, 0, 40, false); line (0, 0, 90, 30, true);
+		line (0, 0, 216.87, 50, true); els.back ().cons = true;					// (back to (0, 0): a guide)
+		line (40, 30, 180, 40, true); line (0, 0, -90, 30, true);					// (on from the run's end, not the guide's: apart)
+		els[3].chain = false; els[3].x = 40; els[3].y = 30;
+		q = SkEl (); q.kind = SK_CIRCLE; q.x = 20; q.y = 15; q.w = 10; q.cons = true; els.push_back (q);
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 1200) < 1e-6 && e2.shapes[2].outline < 0 && e2.shapes[5].outline < 0,
+		       "construction: a guide line and circle, part of no outline");
+		{
+			Doc dc; Feature sk; sk.kind = F_SKETCH; sk.els = els; dc.feats.push_back (sk); dc.upto = 1; Doc back;
+			bool ld = back.load (dc.save ().c_str ());
+			check (ld && back.feats[0].els.size () == els.size () && back.feats[0].els[2].cons && back.feats[0].els[5].cons && !back.feats[0].els[0].cons, "construction: saved and loaded");
+		}
 	}
 	int sk = (int) d.feats.size () - 1;
 	f = &add (d, F_EXTRUDE); f->target = 0; f->op = OP_SUB; f->sketch = sk; f->through = true; f->h = -8;	// Extrude 1

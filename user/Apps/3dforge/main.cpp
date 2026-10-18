@@ -551,6 +551,7 @@ static void cmd (int id)
 	case CMD_SK_CANCEL: sketch_end (false); break;
 	case CMD_SK_FINISH: sketch_end (true); break;
 	case CMD_SK_CLOSE: sk_close (); break;
+	case CMD_SK_CONS: sk_cons (); break;
 	case CMD_SK_START:				// a sketch on a plane of the axes, moved along its normal
 	{
 		double o = A.skOffset;
@@ -633,6 +634,7 @@ public:
 		if (k == 27) { cancel (); return true; }
 		if (k == KEY_ENTER) { confirm (); return true; }
 		if (k == KEY_DEL) { cmd (A.sketching ? CMD_DEL_ELEMENT : CMD_DELETE); return true; }
+		if ((k == 'x' || k == 'X') && A.sketching) { cmd (CMD_SK_CONS); return true; }		// (construction, as in other CADs)
 		return false;
 	}
 	void onDrop (int, int, int type, const char *data, int, unsigned) override

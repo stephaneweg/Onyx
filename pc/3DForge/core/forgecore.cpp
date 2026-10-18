@@ -209,7 +209,7 @@ static void job_reset ()
 enum { CMD_NEW = 100, CMD_OPEN, CMD_SAVE, CMD_UNDO, CMD_REDO, CMD_EXPORT, CMD_SK_CANCEL, CMD_SK_FINISH, CMD_SK_CLOSE, CMD_OK, CMD_CANCEL,
        CMD_DELETE, CMD_EDIT_SKETCH, CMD_ROLL_HERE, CMD_ROLL_END, CMD_DEL_ELEMENT, CMD_SHAPES, CMD_SK_START,
        CMD_MODE_DESIGN, CMD_MODE_CAM, CMD_CAM_SETUP, CMD_CAM_TOOL, CMD_CAM_CLEAR, CMD_CAM_CONTOUR, CMD_CAM_SIM, CMD_GCODE, CMD_CAM_BODY, CMD_CAM_DELETE,
-       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_CANVAS_IMPORT, CMD_CANVAS_DELETE, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN,
+       CMD_CAM_VALIDATE, CMD_CAM_REVERT, CMD_CANVAS_IMPORT, CMD_CANVAS_DELETE, CMD_PR_SETUP, CMD_PR_RESIN, CMD_PR_SUPPORTS, CMD_PR_LAYERS, CMD_PR_FILE, CMD_PR_GENERATE, CMD_PR_CLEAR, CMD_PR_PRESET, CMD_GEN, CMD_SK_CONS,
        // (the Windows version's own: the View menu's)
        CMD_HOME = 200, CMD_FIT, CMD_TOP, CMD_FRONT, CMD_RIGHT, CMD_EDGES, CMD_GRID, CMD_SEETHROUGH, CMD_SNAP, CMD_PROC_MILL, CMD_PROC_RESIN, CMD_PROC_FDM };
 enum { REQ_NONE, REQ_GCODE, REQ_PRINTFILE };	// what fc_cmd asks the host to show
@@ -299,6 +299,7 @@ static int command (int id)
 	case CMD_SK_CANCEL: sketch_end (false); break;
 	case CMD_SK_FINISH: sketch_end (true); break;
 	case CMD_SK_CLOSE: sk_close (); break;
+	case CMD_SK_CONS: sk_cons (); break;
 	case CMD_SK_START:
 	{
 		double o = A.skOffset;
@@ -727,6 +728,7 @@ static void form_build ()
 			field (TR ("Width"), &e.w, TR ("mm"), 0, false, fresh); field (TR ("Height"), &e.h, TR ("mm"), 1);
 			seg (14, TR ("From its"), e.rel ? 1 : 0, { TR ("Corner"), TR ("Centre") });
 		}
+		if (e.kind != SK_CLOSE && e.kind != SK_POINT) check (TR ("Construction (part of no outline)"), e.cons, 19);
 		check (TR ("Snap to points and angles"), A.snap, 3);
 		info ({ TR ("Each element starts from a point and keeps its own values. Change one: what was drawn after it follows.") });
 		if (edit) button (CMD_DEL_ELEMENT, TR ("Delete this element"), false, true);
@@ -887,7 +889,7 @@ static void tl_text (int i, char *out, int cap)
 	else if (e.kind == SK_CIRCLE) { fmt (e.w, a); fmt (e.x, b); fmt (e.y, c); snprintf (t, sizeof t, TR ("\xC3\x98 %s \xC2\xB7 at %s, %s"), a, b, c); }
 	else if (e.kind == SK_RECT) { fmt (fabs (e.w), a); fmt (fabs (e.h), b); snprintf (t, sizeof t, e.rel ? TR ("%s \xC3\x97 %s \xC2\xB7 from its centre") : "%s \xC3\x97 %s", a, b); }
 	else snprintf (t, sizeof t, TR ("back to the start"));
-	snprintf (out, cap, "%s %d  \xC2\xB7  %s", EN[e.kind], k, t);
+	snprintf (out, cap, "%s %d  \xC2\xB7  %s%s", EN[e.kind], k, t, e.cons ? TR (" \xC2\xB7 construction") : "");
 }
 
 // ================================================================================================================================
@@ -1005,6 +1007,7 @@ FC void fc_state (int *s, int n)
 	v[14] = A.doc.tris (); v[15] = A.doc.changes != A.saved; v[16] = cam_op () ? cam_op ()->kind : -1; v[17] = A.lastShape; v[18] = A.hasPend;
 	v[19] = (int) A.doc.bodies.size (); v[20] = (int) A.doc.feats.size (); v[21] = A.doc.upto; v[22] = A.selFeat; v[23] = A.selBody; v[24] = A.step;
 	v[25] = A.selCanvas; v[26] = g_threads; v[27] = A.sliced; v[28] = A.selEl;
+	v[29] = A.selEl >= 0 && A.selEl < (int) A.sk.els.size () ? A.sk.els[A.selEl].cons : A.cons;		// (construction: the element selected's, else the mode)
 	for (int i = 0; i < n && i < 32; i++) s[i] = v[i];
 }
 // 0 the hint, 1 the file's path, 2 the sketch's outlines (closed, open), 3 the build's name
@@ -1064,6 +1067,7 @@ FC void fc_form_check (int tag, int on)
 	case 6: A.seeThrough = c; break;
 	case 7: if (g_el) g_el->rel = c; break;
 	case 8: if (f) f->clone = c; break;
+	case 19: if (g_el) { g_el->cons = c; if (g_el == &A.cur) A.cons = c; } break;
 	case 34: if (canvasPage ()) { A.doc.canvases[A.selCanvas].visible = c; A.doc.changes++; view_dirty (); ui (0); } return;
 	case 30: A.print.mirror = c; break;
 	case 31: A.print.supLow = c; break;

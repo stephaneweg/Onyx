@@ -3147,6 +3147,7 @@ its centre, its radius and its angle — and they are replayed in the order they
 |---|---|
 | **Line** | Click where it starts, click where it ends (or type its length and its angle); the next one starts there. |
 | **Midpoint line** | Click its middle, then where one end goes: the other end goes as far the other way (or type its length and its angle; its middle's X and Y move it). It is saved as a plain line. |
+| **Construction** | A guide: what is drawn while it is on (the tile, or **X**) is dashed, snapped to (its ends, its middle, its centre), but part of no outline — a diagonal to find a centre, a circle to place holes on. With an element selected, it turns that one into construction or back; the panel's *Construction* box does the same. Saved in the part (`cons 1`). |
 | **Rectangle** | *From its corner*: click a corner, click the opposite one. *From its centre* (the choice at the right): click the centre, then a corner. Or type the width and the height. |
 | **Circle** | Click the centre, click to set the diameter. |
 | **Arc** | Click the **centre**, click where it **starts** (which sets the radius), click where it **ends**: the angle — **positive clockwise, negative anticlockwise**; it can be typed. After a line, the arc starts at the line's end: click the centre, then the end. |
