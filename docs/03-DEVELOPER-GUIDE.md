@@ -4654,6 +4654,25 @@ barwidth = 40
   cards: a .NET program cannot export `NvOptimusEnablement`.
   Test: `sh tools/tests/run_nemu_test.sh` (the C API on Linux: each core a few frames, a picture,
   the library pictures; `NEMU_ROMS=<folder>` of ROMs).
+- **3DForge for Windows** (`pc/3DForge`, 2026-10-18): Onyx's 3DForge as a native Windows program, a WPF window
+  (.NET Framework 4.8) over `forgecore.dll` (MinGW-w64, `sh pc/3DForge/build.sh` → `pc/dist/3DForge/`). The DLL
+  is `core/forgecore.cpp` + `user/Apps/3dforge`'s headers **unchanged** (fdoc, fcam, fprint, ffdm, frender,
+  ficons, **fview** — the tools, their gestures, the view's drawing — and fdraw) + Manifold / Clipper2, compiled
+  over `core/shim/` (`appkit/appkit.h`, `uikit/*.h` lead to `forgeshim.h`: UIKit's `vpaint.cpp` itself, the rest —
+  `Canvas`, `uk_rbox`, `uk_tone`, the text by GDI+ in Segoe UI, `ui::icon_load` by GDI+, `kapi_get_ticks` — the
+  shim's). What UIKit drew on Onyx is told to the host: the view draws into the WriteableBitmap's pixels
+  (`fc_view_draw`, `fc_view_mouse`); its frames go through `kapi_gpu_render`, here frender.h's z-buffer cut in
+  bands of rows, one thread a band (and a row's span from its edges: a grid line's quad is not tested over its
+  box) — ~10 ms a frame; fui.h's right panel is a list of items (`fc_form`: head, labels, fields bound to the
+  values, check boxes, segmented choices, drop-downs, buttons, the operation, the colours, the origin's 27 points,
+  summaries; `forgecore.cpp` lists them) that `FormPanel.cs` makes once for a layout and fills again in place (a
+  field being typed keeps its text while its number is the same); the timeline (`fc_tl_*`, `Timeline.cs`), the
+  bar (`fc_state`), main.cpp's commands (`fc_cmd`) and dialogs (Export, G-code, the print file: computed by the
+  core, `Dialogs.cs`). The icons are ficons.h's, drawn twice by the core (over black, over white) for their alpha.
+  `3DForge.exe --shot out.png [--size WxH] [--do "tool:1;click:x,y;..."]` draws the window **off the screen**,
+  plays the steps (`Shot.cs`), saves its picture and ends — `sh pc/3DForge/tools/shots.sh` makes
+  `screenshots/3dforge-win*.png` so (never a capture of the screen). A change to `user/Apps/3dforge` comes to
+  Windows by rebuilding; a new panel control kind needs its item in `forgecore.cpp` and its class in `FormPanel.cs`.
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them); then

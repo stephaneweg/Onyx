@@ -98,6 +98,9 @@ pc/OnyxRemote/bin/
 pc/OnyxRemote/obj/
 pc/NintendoEMU/bin/
 pc/NintendoEMU/obj/
+pc/3DForge/bin/
+pc/3DForge/obj/
+pc/3DForge/build/
 tools/basc/basc
 
 # Game Boy ROMs, saves and the Game Library's thumbnails: the user's own, never committed

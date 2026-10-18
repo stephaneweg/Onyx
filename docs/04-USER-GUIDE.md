@@ -3340,6 +3340,30 @@ Files: `SD:/docs/3d/*.3df` (yours), `SD:/docs/3d/bracket.3df` (the sample); expo
 where you choose; `SD:/apps/3dforge.app/filament.ini` (a filament printer's values, remembered); `SD:/apps/3dforge.app/cam.ini` (the tool and the machine, remembered), `print.ini` (the resin and
 the printer, remembered), `printers.ini` (more printers, yours to write).
 
+#### 3DForge on a Windows PC
+
+`pc/dist/3DForge/` holds **3DForge for Windows** (Windows 10 / 11, 64-bit; .NET Framework 4.8, already there): the
+same program — the same shapes, sketch, history, fillets, Manufacture (milling, resin, filament), exports — in a
+Windows window. Keep `3DForge.exe`, `3DForge.exe.config`, `forgecore.dll` and `printers.ini` together and start
+`3DForge.exe` (a `.3df` given to it, or dropped on its window, is opened; a picture dropped is laid as a canvas).
+`samples\bracket.3df` is the sample part.
+
+- Everything said above holds, with Windows' ways: the menus (File, Edit, View, Create, Modify, Manufacture),
+  the shortcuts **Ctrl+N / O / S / Shift+S / E / G / Z / Y**, Esc, Enter, Delete; Open, Save, Export, the G-code
+  and the print file go through Windows' own file dialogs. A tool of the bar clicked again is put down.
+- The view: drag turns it, the right button (or Shift + drag) pans, the wheel zooms; the cube, Home, Fit and
+  See-through as on Onyx. It is drawn by the processor on all its cores (the status bar says how many).
+- The timeline's right button: Edit sketch, Roll back to here, Roll to the end, Delete.
+- The router's tool and machine, the resin, the filament are remembered in `%APPDATA%\3DForge` (`cam.ini`,
+  `print.ini`, `filament.ini`); more resin printers: `printers.ini` beside the program, or a copy of it there.
+- The `.3df` files are the same on both: a part drawn on the PC opens on the Pi, and back.
+
+![3DForge for Windows](../screenshots/3dforge-win.png)
+*3DForge for Windows, the sample bracket.*
+
+![3DForge for Windows: Manufacture](../screenshots/3dforge-win-cam.png)
+*A clearing's moves, in Manufacture.*
+
 ### Screenshot, the screen capture tool (`screenshot`)
 
 ![Screenshot](../screenshots/screenshot.png)
