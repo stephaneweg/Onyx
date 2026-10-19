@@ -24,7 +24,7 @@ DAV1D := $(TP)/dav1d-1.5.1
 OPUS  := $(TP)/opus-1.5.2
 
 # ---- libvpx ------------------------------------------------------------------------------
-VPX_ALL := $(shell find $(VPX) -name '*.c' -not -path '*/onyx/*' | sort)
+VPX_ALL := $(shell find $(VPX) -name '*.c' -not -path '$(VPX)/onyx/*' | sort)
 VPX_ARM := $(filter %_neon.c %/arm/loopfilter_arm.c %/aarch64_cpudetect.c,$(VPX_ALL))
 ifeq ($(AV_ARCH),aarch64)
 VPX_SRC := $(VPX_ALL) $(VPX)/onyx/arm64/vpx_config.c
