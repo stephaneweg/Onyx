@@ -2,4 +2,4 @@
 name   = Sound
 icon   = SD:/apps/soundconf.app/icon.bmp
 target = soundconf
-text   = The volume, mute, a test sound
+text   = Where the sound plays, the microphone, the volume
