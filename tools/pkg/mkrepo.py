@@ -44,8 +44,11 @@ def kapi_version ():
 	t = open (os.path.join (ROOT, "kernel", "include", "kern", "kapi_abi.h")).read ()
 	return int (re.search (r"#define\s+KAPI_ABI_VERSION\s+(\d+)", t).group (1))
 
-# the user's own files a card may hold, never packaged (the Wi-Fi network and its key)
-PRIVATE = { "etc/wpa_supplicant.conf" }
+# the user's own files a card may hold, never packaged (the Wi-Fi network and its key; PocketQI's API keys, what Pocket
+# remembers, its tasks and stories, its drafts, the shopping list)
+PRIVATE = { "etc/wpa_supplicant.conf", "apps/pocketqi.app/config.ini", "apps/pocketqi.app/etc/memoire.txt",
+	    "apps/pocketqi.app/etc/cron.txt", "apps/pocketqi.app/etc/histoires.txt", "apps/pocketqi.app/tmp/mail-draft.txt",
+	    "apps/pocketqi.app/apps/courses/liste.txt" }
 
 def card_files (sd):
 	"""Every file of the card, '/'-separated, relative (var/ left out: the card's own state)."""

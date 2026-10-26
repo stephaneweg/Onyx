@@ -1,0 +1,9 @@
+# Pocket application -- la liste de courses (fichier liste.txt du dossier : article <tab> quantite).
+name = Courses
+category = Maison
+description = la liste de courses de la famille
+llm.add = texte [texte] : ajouter un article (l'article, puis la quantite si elle est dite : lait, 2 litres) ; des que la personne doit acheter quelque chose, meme sans parler de liste ; un appel par article
+llm.remove = texte : retirer un article (achete ou plus voulu) ; un appel par article
+llm.change = texte texte : changer la quantite (l'article, puis la quantite, ou +2 / -1 : deux oeufs de plus -> oeufs, +2)
+llm.list = : dire la liste
+llm.clear = : vider la liste, seulement sur demande claire

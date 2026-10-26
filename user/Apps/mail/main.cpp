@@ -15,7 +15,9 @@
 // talked to by a worker thread (sync.h) while the window stays live. HTML messages are drawn by WebKit -- the browser
 // Web run as an applet in the reading pane (webview.h; no scripts, nothing from the internet until asked) -- when Web
 // is on the card, else by Mail's own renderer (user/Libs/mail/html.h: HTML 4, CSS 2; the remote pictures held back too).
-// "mail SD:/x.eml" shows a message file (fileassoc.ini: eml = mail).
+// "mail SD:/x.eml" shows a message file (fileassoc.ini: eml = mail); "mail --attach <list>" a new message with files
+// (Photos), "mail --compose <draft>" one filled from a draft -- To:, Cc:, Subject:, a blank line, the text -- to check
+// and send (PocketQI).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
 //
@@ -998,6 +1000,39 @@ static void compose_with_files (const char *list)
 		}
 	free (b);
 }
+// "mail --compose <file>": a new message filled from a draft -- "To: ...", "Cc: ...", "Subject: ..." lines, a blank
+// line, the text (UTF-8) -- for the person to check and send (PocketQI: Pocket writes a mail, Mail sends it)
+static bool draft_field (const char *l, const char *name)	// l starts with "name:" (its case ignored)
+{
+	for (; *name; l++, name++) if ((*l | 0x20) != (*name | 0x20)) return false;
+	return true;
+}
+static void compose_from_draft (const char *path)
+{
+	int len; char *b = file_read (path, &len);
+	if (!b) return;
+	compose_new (0);
+	if (!g_compose->hidden)
+	{
+		char *l = b;
+		while (l && *l)
+		{
+			char *e = strchr (l, '\n'); if (e) *e = 0;
+			int k = (int) strlen (l); if (k && l[k - 1] == '\r') l[--k] = 0;
+			char *next = e ? e + 1 : 0;
+			if (!l[0]) { l = next; break; }				// (the blank line: the text follows)
+			const char *v = strchr (l, ':'); v = v ? v + 1 : l + k; while (*v == ' ') v++;
+			if (draft_field (l, "to:")) g_compose->to->setText (v);
+			else if (draft_field (l, "subject:")) g_compose->subject->setText (v);
+			else if (draft_field (l, "cc:")) { g_compose->cc->setText (v); g_compose->ccOn = true; g_compose->place (); }
+			l = next;
+		}
+		if (l && *l) g_compose->body->insertText (l);
+		g_compose->invalidate (true);
+		g_compose->body->setFocus ();
+	}
+	free (b);
+}
 // the message made: its bytes, its recipients
 static bool compose_build (Buf &raw, Job *j, bool draft)
 {
@@ -1290,8 +1325,9 @@ int main (void)
 	char args[400]; int na = kapi_get_args (args, sizeof args); args[na > 0 && na < 400 ? na : 0] = 0;
 	char *a = args; while (*a == ' ') a++;
 	int al = (int) strlen (a); while (al && a[al - 1] == ' ') a[--al] = 0;
-	char attachList[300] = "";
+	char attachList[300] = "", draft[300] = "";
 	if (!strncmp (a, "--attach ", 9)) { a += 9; while (*a == ' ') a++; scpy (attachList, a, sizeof attachList); a[0] = 0; }
+	if (!strncmp (a, "--compose ", 10)) { a += 10; while (*a == ' ') a++; scpy (draft, a, sizeof draft); a[0] = 0; }
 	if (a[0] == '"') { a++; char *q = strchr (a, '"'); if (q) *q = 0; }
 	if (a[0] && open_eml (a)) {}
 	else g_m.open ();
@@ -1370,6 +1406,7 @@ int main (void)
 		if (g_m.view.convs.n && !small) open_conv (0);
 		if (g_m.accts.n) g_m.sync_all ();
 		if (attachList[0]) compose_with_files (attachList);
+		if (draft[0]) compose_from_draft (draft);
 	}
 
 	root.run ();

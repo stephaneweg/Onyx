@@ -1,0 +1,10 @@
+# Pocket application -- une app vocale en BASIC : main.bas, lancee par le shell vocal.
+# COMMAND$ = les arguments donnes par le LLM (outcome), separes par des tabulations ; galo.bi : Arg$, Say.
+name = Humeur
+category = Divers
+description = Essai de l'humeur a deux axes (SetMood) : le visage fait le tour du cercle
+# Ce que le LLM peut demander, une action par ligne :
+#   llm.<action> = <arguments> : <ce que fait l'action>
+# Types d'arguments (verifies par le shell) : date (AAAA-MM-JJ), heure (HH:MM), nombre, texte ;
+# entre crochets : facultatif (seulement a la fin).
+llm.tour = : faire le tour des humeurs sur le visage

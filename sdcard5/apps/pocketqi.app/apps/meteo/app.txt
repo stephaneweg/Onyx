@@ -1,0 +1,10 @@
+# Pocket application -- la meteo, par Open-Meteo (https://open-meteo.com : gratuit, sans cle, donnees CC BY 4.0).
+# COMMAND$ = les arguments donnes par le LLM (outcome), separes par des tabulations ; galo.bi : Arg$, Say.
+# La ville : celle nommee par la personne, sinon la variable « ville » de la memoire (SD:/etc/memoire.txt, lue ici,
+# jamais envoyee au LLM). Seule la ville part chez Open-Meteo (geocodage), puis ses coordonnees.
+name = Meteo
+category = Information
+description = le temps qu'il fait et les previsions a sept jours
+llm.now = [texte] : le temps qu'il fait (texte : la ville, seulement si la personne en nomme une, sinon rien : l'app prend la sienne ; quand la personne dit ou elle habite : retenir [ville, ...])
+llm.day = date [texte] : la meteo d'un jour, d'aujourd'hui a six jours plus tard (texte : la ville, seulement si elle est nommee)
+llm.week = [texte] : les sept prochains jours, un par ligne, a demander avec askinfo puis a resumer dans un say (texte : la ville, seulement si elle est nommee)

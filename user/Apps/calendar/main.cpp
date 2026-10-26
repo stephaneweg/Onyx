@@ -16,7 +16,8 @@
 // TrueType fonts). Kept as iCalendar in SD:/apps/calendar.app/calendar.ics (model.h); File > Import / Export
 // iCalendar exchange .ics files with Google Calendar, Outlook, Thunderbird. agenda.txt (the
 // coming appointments, "YYYYMMDD|HH:MM title") is written for the desktop's agenda widget; the
-// old calendar's notes in it are taken over the first time. An argument "YYYYMMDD" opens that day.
+// old calendar's notes in it are taken over the first time (agendafiles.h). An argument "YYYYMMDD" opens that day.
+// calendar.ics changed by another program (PocketQI's Pocket notes appointments and tasks) is read again.
 //
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"
@@ -27,6 +28,7 @@
 using namespace uikit;
 
 #include "model.h"
+#include "agendafiles.h"		// (the paths, agenda.txt and reminders.txt: shared with PocketQI)
 #include "views.h"
 #include "dialogs.h"
 
@@ -34,9 +36,6 @@ using namespace uikit;
 #define H		660
 #define TB_H		48
 #define SIDE_W		272
-#define CAL_ICS		"SD:/apps/calendar.app/calendar.ics"
-#define AGENDA_TXT	"SD:/apps/calendar.app/agenda.txt"
-#define REMIND_TXT	"SD:/apps/calendar.app/reminders.txt"
 // The kind of files the Import and Export dialogs offer (uikit/dialog.h).
 static const char *const ICS_KINDS = "iCalendar files|*.ics|All files|*";
 
@@ -57,20 +56,6 @@ static bool day_first (void) { const char *l = uk_lang (); return l && l[0] == '
 
 // ---- the file ------------------------------------------------------------------------------------------
 
-static char *read_file (const char *path, int *len)
-{
-	void *f = kapi_open (path);
-	if (!f) return 0;
-	unsigned sz = kapi_fsize (f);
-	char *b = new char[sz + 1];
-	int got = kapi_read (f, b, sz);
-	kapi_close (f);
-	if (got < 0) got = 0;
-	b[got] = '\0';
-	if (len) *len = got;
-	return b;
-}
-
 static void default_categories (void)
 {
 	cat_add ("Work", 0x003B82F6); cat_add ("Personal", 0x0010B981); cat_add ("Family", 0x00F59E0B);
@@ -80,7 +65,7 @@ static void default_categories (void)
 // The old calendar's notes ("YYYYMMDD|note", a time in the note: a timed event) become events.
 static void take_over_agenda (void)
 {
-	char *t = read_file (AGENDA_TXT, 0);
+	char *t = cal_read_file (AGENDA_TXT, 0);
 	if (!t) return;
 	for (char *p = t; *p; )
 	{
@@ -103,65 +88,7 @@ static void take_over_agenda (void)
 	delete [] t;
 }
 
-// What a reminder says: "Dentist at 17:30, Dr. Peeters".
-static void reminder_text (const Event &e, int start, char *t, int cap)
-{
-	t[0] = '\0';
-	scat (t, cap, e.title[0] ? e.title : TR ("(No title)"));
-	if (e.allDay) scat (t, cap, start / 1440 > (start - e.remind) / 1440 ? TR (" (tomorrow)") : TR (" (today)"));
-	else { char hm[8]; fmt_hm (start, hm, sizeof hm); scat (t, cap, TR (" at ")); scat (t, cap, hm); }
-	if (e.place[0]) { scat (t, cap, ", "); scat (t, cap, e.place); }
-}
-
-// agenda.txt for the desktop's agenda widget: the next month's appointments, in order.
-static void write_agenda (void)
-{
-	static Occ occ[400];
-	int n = occurrences (g_today, g_today + 31, occ, 400, true);
-	int cap = n * 120 + 16, len = 0;
-	char *b = new char[cap];
-	for (int i = 0; i < n; i++)
-	{
-		const Event &e = g_ev[occ[i].ev];
-		int dn = occ[i].start / 1440; if (dn < g_today) dn = g_today;
-		char l[140] = "";
-		scatn (l, sizeof l, dn_y (dn)); scat2 (l, sizeof l, dn_m (dn)); scat2 (l, sizeof l, dn_d (dn)); scat (l, sizeof l, "|");
-		if (!e.allDay && occ[i].end - occ[i].start < 1440) { char hm[8]; fmt_hm (occ[i].start, hm, sizeof hm); scat (l, sizeof l, hm); scat (l, sizeof l, " "); }
-		char ti[100]; to_latin1 (e.title, ti, sizeof ti);
-		scat (l, sizeof l, ti); scat (l, sizeof l, "\n");
-		for (int k = 0; l[k] && len < cap - 1; k++) b[len++] = l[k];
-	}
-	kapi_save_file (AGENDA_TXT, b, (unsigned) len);
-	delete [] b;
-
-	// reminders.txt: the reminders of the next month, "YYYYMMDDHHMM|text" in order -- the agenda
-	// widget (always running) sends them as notifications, the calendar open or not.
-	n = occurrences (g_today, g_today + 31, occ, 400, true);
-	struct R { int at, k; } r[400]; int nr = 0;
-	for (int i = 0; i < n; i++)
-	{
-		const Event &e = g_ev[occ[i].ev];
-		if (e.remind < 0) continue;
-		r[nr].at = occ[i].start - e.remind; r[nr].k = i; nr++;
-	}
-	for (int i = 1; i < nr; i++) { R t = r[i]; int j = i; while (j > 0 && r[j - 1].at > t.at) { r[j] = r[j - 1]; j--; } r[j] = t; }
-	cap = nr * 200 + 16; len = 0;
-	b = new char[cap];
-	for (int i = 0; i < nr; i++)
-	{
-		const Occ &o = occ[r[i].k]; const Event &e = g_ev[o.ev];
-		int at = r[i].at;
-		char l[240] = "";
-		scatn (l, sizeof l, dn_y (at / 1440)); scat2 (l, sizeof l, dn_m (at / 1440)); scat2 (l, sizeof l, dn_d (at / 1440));
-		scat2 (l, sizeof l, at % 1440 / 60); scat2 (l, sizeof l, at % 60); scat (l, sizeof l, "|");
-		char rt[200], r1[200]; reminder_text (e, o.start, rt, sizeof rt); to_latin1 (rt, r1, sizeof r1);
-		scat (l, sizeof l, r1);
-		scat (l, sizeof l, "\n");
-		for (int k = 0; l[k] && len < cap - 1; k++) b[len++] = l[k];
-	}
-	kapi_save_file (REMIND_TXT, b, (unsigned) len);
-	delete [] b;
-}
+static unsigned g_icsSig;			// calendar.ics as read or written last (another program's change seen)
 
 static void save (void)
 {
@@ -169,15 +96,17 @@ static void save (void)
 	char *t = ics_write (&len);
 	kapi_save_file (CAL_ICS, t, (unsigned) len);
 	delete [] t;
-	write_agenda ();
+	cal_write_agenda (g_today);
+	g_icsSig = cal_file_sig ();
 }
 
 static void load (void)
 {
-	char *t = read_file (CAL_ICS, 0);
+	char *t = cal_read_file (CAL_ICS, 0);
 	if (t) { ics_read (t, false); delete [] t; }
 	else { default_categories (); take_over_agenda (); save (); }
 	if (g_ncat == 0) default_categories ();
+	g_icsSig = cal_file_sig ();
 }
 
 // ---- what is shown ------------------------------------------------------------------------------------
@@ -382,7 +311,7 @@ static void m_import ()
 {
 	char path[256];
 	if (!uk_file_open (path, sizeof path, "SD:/", ICS_KINDS)) return;
-	char *t = read_file (path, 0);
+	char *t = cal_read_file (path, 0);
 	if (!t) { uk_messagebox (TR ("Import"), TR ("The file could not be read."), MB_OK); return; }
 	int n = ics_read (t, true);
 	delete [] t;
@@ -439,7 +368,7 @@ static void reminders (void)
 		int at = occ[i].start - e.remind;
 		if (at > lastMin && at <= now)
 		{
-			char t[200]; reminder_text (e, occ[i].start, t, sizeof t);
+			char t[200]; cal_reminder_text (e, occ[i].start, t, sizeof t);
 			notify (TR ("Calendar"), t);
 		}
 	}
@@ -472,8 +401,21 @@ public:
 			bool newDay = today != g_today;
 			g_today = today; g_nowMin = now;
 			if (g_view != 2) g_grid->invalidate (true);
-			if (newDay) { refresh (); write_agenda (); }
+			if (newDay) { refresh (); cal_write_agenda (g_today); }
 			reminders ();
+		}
+		// calendar.ics changed by another program (PocketQI's agenda): read again, every 2 s, no dialog open
+		static unsigned seen;
+		if (kapi_get_ticks () - seen >= 200)
+		{
+			seen = kapi_get_ticks ();
+			for (Widget *c = firstChild; c; c = c->nextSib) if (c->modal && !c->hidden) return;
+			if (cal_file_sig () != g_icsSig)
+			{
+				g_nev = g_ntk = g_ncat = 0;
+				load ();
+				refresh ();
+			}
 		}
 	}
 };

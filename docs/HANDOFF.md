@@ -4,6 +4,28 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
+## PocketQI, Pocket the desk assistant (2026-10-26): built, published, NOT run on a Pi yet
+
+The user asked for an Onyx port of their own project **PocketQI** (github.com/stephaneweg/PocketQI: Pocket, a voice
+assistant -- an LLM decides, BASIC apps act, two animated eyes show the mood -- for a robot, an ESP32 handheld, Windows),
+then, the same day, for Pocket to act in **Onyx's own utility apps**.
+- **The app**: `user/Apps/pocketqi/` (docs/03 "PocketQI" says the layers), `sdcard/apps/pocketqi.app/` (the BASIC
+  skills `apps/{courses,meteo,humeur}`, `lib/galo.bi`, `lang/fr.txt`, `config.ini.example`); docs/04 "PocketQI".
+  PocketQI's LLM protocol, moods and face are in `core/` unchanged (commit `060b797`); `brain.h` / `skills.h` port its
+  shell and its BASIC host. Typed, not spoken: Onyx has no sound input (no wake word, no voice yet).
+- **The native skills** (`natives.h`): agenda and tasks in the **Calendar** (`calendar/model.h` + the new shared
+  `calendar/agendafiles.h`; the Calendar now reads `calendar.ics` again when another program changed it), **Notes**,
+  **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card), the **Clock**'s alarms,
+  **printing** through PrinterKit (a note, the agenda, the tasks, the shopping list; the BASIC skills' `PRINTER:`).
+  Calendar and Mail were rebuilt and published with it.
+- **Tested on the PC**: `shots.sh pocketqi` (EN, FR: a canned LLM answer through `SIM_NET` and `config.ini url =`),
+  `pocket640.sh <out> pocketqi` (640 x 480 by keys). **Not known**: Mistral / Groq over mbedTLS on the Pi (the
+  certificate is not verified, as `/bin/llm`), the face's cost at 25 images a second on the Pi 4, a key typed in the
+  Settings on the PocketTerm35, a real printer (the PC's test stood PrinterKit in by a stub that logs its calls).
+- **Next ideas**: the voice (PicoTTS, Apache-2.0; or Mistral's TTS), the microphone when the kernel has sound input,
+  `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
+  itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.
+
 ## Cosmo Zoom!, a native 3D anti-gravity racer on the GPU (2026-10-15): built, NOT run on a Pi yet
 
 The user asked for "a native 3D game: a wipEout like Antigrav, but cartoon, mixed with Mario Kart" -- ships chosen and
