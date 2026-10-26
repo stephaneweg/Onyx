@@ -37,6 +37,7 @@
 #include <kern/procx.h>		// (v75) a process's argv / environment blocks
 #include <kern/ofile.h>		// (v75) OFileBootCleanup
 #include <kern/volume.h>		// (v93) the volumes: VolMountCard, VolPoll
+#include <kern/touch.h>		// cmdline.txt touch=1: the GT911 touch screen as the pointer
 #ifdef ARM_ALLOW_MULTI_CORE
 #include <circle/multicore.h>
 #endif
@@ -2355,6 +2356,8 @@ TShutdownMode CKernel::Run (void)
 					m_2DGraphics.GetDisplay (), &m_Logger);
 			m_Logger.Write (FromKernel, LogNotice, "input started");
 		}
+		// cmdline.txt touch=1: a touch screen on the I2C bus 1 as the pointer (the GT911: the PocketTerm35's)
+		if (m_Options.GetAppOptionDecimal ("touch", 0) != 0) TouchStart ();
 
 		// Compositor BEFORE the userland, run at once (YieldTo) so it exists and
 		// presents before the first app's window. (There used to be a 6 s pause here

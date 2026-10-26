@@ -219,6 +219,14 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   Its built-in speaker (8 Ohm 2 W) and its 3.5 mm output are fed by the Pi's own headphone jack (PWM): the Sound
   applet's **Automatic** (or **Headphone jack**) plays there (checked by the user, 2026-10-26); the device sets their
   volume itself too (Fn + W mute, Fn + E / R down / up).
+- **`touch`**: `touch=1` makes a **touch screen the pointer**: the Goodix GT911 on the I2C bus 1, which is the
+  **Waveshare PocketTerm35**'s screen. Use it with the maker's `dtparam=i2c_arm=on` in `config.txt`, which is already
+  there for the device.
+  - One finger moves the pointer there and holds the left button: **a tap is a click**, a slide drags.
+  - **Two fingers moved up or down scroll**, like the wheel.
+
+  It follows the screen's resolution, a game's own included. `kmsg` says `touch: GT911 at 0x5D: ...`, or that none was
+  found. Tried on the device (2026-10-26): it works. The USB mouse and the keyboard still work beside it.
 - **`keylog`**: `keylog=1` writes every keyboard report to the kernel log (`kmsg`, lines `keylog:` -- the modifiers
   and the HID codes of the keys held): to learn what a new keyboard or a device's buttons send. **Off by default:
   it logs what is typed** (passwords too); remove it after use.

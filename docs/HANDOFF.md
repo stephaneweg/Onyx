@@ -100,11 +100,26 @@ pocketshell and consolehome -- CosmoZoom's 800 x 600 overflowed the 640 x 480 sc
 the keys (a cursor over its pieces with UIKit's objnav, a ring; A clicks, Bksp back; `pocket640.sh keys`: `mediacur`);
 the **file chooser**'s volumes by Left / Right (pocket, console); the **Gamepad applet**: Tab steps the pads, and the
 keyboard tab maps Print Screen / Pause (the device's Select / Start: `KEY_PRTSC`, `KEY_PAUSE`, the kernel's held keys
-extended -- Backspace, Tab, Home..Delete, F1-F12 too). **Next (the user): the touch screen** -- the PocketTerm35's
-display is a touch one (Waveshare: "keyboard + touchscreen"), not seen by Onyx; most likely I2C (the maker's
-`dtparam=i2c_arm=on`, `waveshare-35dpi-4b` overlay): an I2C scan on the Pi first, then a driver. The user's card: `usbc=1`,
-`keyb US` (QWERTY), the maker's overlay line, no `otg_mode`, and **`keylog=1` still on: remove it**. The branch was
-merged with `main` the same day and pushed into `main` (the user's request).
+extended -- Backspace, Tab, Home..Delete, F1-F12 too). **The touch screen works** (the same day; the user tried it on
+the device). It is a Goodix GT911 on I2C bus 1 at 0x5D, found with BASIC's `I2CSCAN$`: product "911", firmware 0x1060,
+640 x 480, 5 touches.
+- The driver is `sys/touch.cpp`, behind `cmdline.txt touch=1`: a kernel task polls the controller every 16 ms (no
+  interrupt line) and feeds `WsInputPointer`.
+  - One finger is the pointer with the left button down: a tap is a click.
+  - Two fingers moved up or down are the wheel.
+  - The coordinates are scaled to the screen's size at that moment.
+- The I2C bus is shared with GPIOKit's programs (`GpioI2cKernel*` in `sys/gpio.cpp`; docs/02 §17).
+- Not done yet:
+  - a long press as the right button;
+  - a calibration for a screen turned by `display_rotate`.
+
+The user's card: `usbc=1 touch=1`, `keyb US` (QWERTY), the maker's overlay line, no `otg_mode`. `keylog` is off now.
+The kernel was deployed **over the network**:
+- the Pi's `curl -o` from an HTTP server on the PC (`wget` stops at 64 KB);
+- the old kernel kept as `kernel8-rpi4_avant_touch.img`;
+- `kmsg` gives the backlog only once: the first reader after boot takes it.
+
+The branch was merged with `main` the same day and pushed into `main` (the user's request).
 
 **Update, 2026-10-11 (the user's decision; `docs/COMPACT-SHELL-STUDY.md` section 20.7 has the table):** Start and
 Select are the games' -- the shell binds nothing to them (`[buttons]` `start` / `select` = `none`). **CMD (Super)

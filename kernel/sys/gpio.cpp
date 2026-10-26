@@ -80,6 +80,8 @@ static CGPIOClock s_PwmClock (GPIOClockPWM);
 #endif
 
 static CI2CMaster *s_pI2C = 0;  static unsigned s_nI2COwner = 0;
+static boolean s_bI2CKernel = FALSE;		// the kernel uses the bus too (a touch screen: sys/touch.cpp)
+#define KERNEL_OWNER	0xFFFFFFFFu		// the bus's pins' owner while only the kernel has it
 static CSPIMaster *s_pSPI = 0;  static unsigned s_nSPIOwner = 0;
 
 struct TQueue
@@ -275,7 +277,12 @@ static void FreePin (unsigned nPin)
 
 static void CloseBus (int nBus)
 {
-	if (nBus == KAPI_GPIO_BUS_I2C && s_pI2C != 0)
+	if (nBus == KAPI_GPIO_BUS_I2C && s_pI2C != 0 && s_bI2CKernel)	// (the kernel's still: kept, the process's no more)
+	{
+		s_nI2COwner = 0;
+		for (unsigned p = 2; p <= 3; p++) s_nOwner[p] = KERNEL_OWNER;
+	}
+	else if (nBus == KAPI_GPIO_BUS_I2C && s_pI2C != 0)
 	{
 		delete s_pI2C; s_pI2C = 0; s_nI2COwner = 0;
 		FreePin (2); FreePin (3);
@@ -311,6 +318,12 @@ static long BusPins (unsigned nFirst, unsigned nLast, unsigned nPid)
 
 static long I2COpen (unsigned nClock, unsigned nPid)
 {
+	if (s_pI2C != 0 && s_nI2COwner == 0 && s_bI2CKernel)		// the kernel's alone: shared (its clock kept)
+	{
+		s_nI2COwner = nPid;
+		for (unsigned p = 2; p <= 3; p++) s_nOwner[p] = nPid;
+		return 0;
+	}
 	if (s_pI2C != 0) return s_nI2COwner == nPid ? 0 : -KAPI_EBUSY;
 	long r = BusPins (2, 3, nPid);
 	if (r < 0) return r;
@@ -361,6 +374,35 @@ static long I2CScan (unsigned char *pUser, unsigned nPid)
 	}
 	if (pUser == 0 || !UserCopyOut (pUser, Map, sizeof Map)) return -KAPI_EFAULT;
 	return n;
+}
+
+// The kernel's own use of the bus (the touch screen): beside a process's, one transfer at a time without a lock
+// (the kernel runs on core 0 and is not preempted; CI2CMaster waits for its transfer without yielding).
+boolean GpioI2cKernelOpen (unsigned nClock)
+{
+	if (s_pI2C == 0)
+	{
+		if (Takeable (2, KERNEL_OWNER) < 0 || Takeable (3, KERNEL_OWNER) < 0) return FALSE;
+		FreePin (2); FreePin (3);
+		s_pI2C = new CI2CMaster (1, FALSE, 0);
+		if (s_pI2C == 0 || !s_pI2C->Initialize ()) { delete s_pI2C; s_pI2C = 0; return FALSE; }
+		if (nClock != 0) s_pI2C->SetClock (nClock);
+		for (unsigned p = 2; p <= 3; p++) { s_nOwner[p] = KERNEL_OWNER; s_nMode[p] = KAPI_GPIO_M_I2C; }
+	}
+	s_bI2CKernel = TRUE;
+	return TRUE;
+}
+
+int GpioI2cKernelXfer (u8 ucAddr, const void *pWrite, unsigned nWrite, void *pRead, unsigned nRead)
+{
+	if (s_pI2C == 0 || !s_bI2CKernel || (nWrite == 0 && nRead == 0)) return -1;
+	int r = 0;
+#if RASPPI <= 4
+	if (nWrite > 0 && nRead > 0) return s_pI2C->WriteReadRepeatedStart (ucAddr, pWrite, nWrite, pRead, nRead);
+#endif
+	if (nWrite > 0) r = s_pI2C->Write (ucAddr, pWrite, nWrite);
+	if (r >= 0 && nRead > 0) r = s_pI2C->Read (ucAddr, pRead, nRead);
+	return r;
 }
 
 static long SPIOpen (unsigned nClock, unsigned nMode, unsigned nPid)

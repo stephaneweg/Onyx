@@ -3098,6 +3098,29 @@ code that calls it.
   A transfer is copied through a kernel buffer (4096 bytes at most each way); an I2C write then read of
   at most 16 written bytes is one transaction with a repeated start
   (`CI2CMaster::WriteReadRepeatedStart`). The scan reads one byte from each address 0x08..0x77.
+- **The kernel's own use of I2C bus 1** (2026-10-26: the touch screen, below): `GpioI2cKernelOpen (Hz)` and
+  `GpioI2cKernelXfer (addr, write, n, read, n)` (`kern/gpio.h`). The bus is **shared** with the process that opens it:
+  - while only the kernel has the bus, its pins' owner is `0xFFFFFFFF`;
+  - a process's `KAPI_GPIO_I2C_OPEN` then gets the bus as it is (the kernel's clock kept), and the bus stays open when
+    that process closes it or ends.
+
+  No lock is needed. The kernel runs on core 0 and is not preempted, and `CI2CMaster` waits for its transfer without
+  yielding, so one transfer is whole before the next.
+- **The touch screen** (`sys/touch.cpp`, `cmdline.txt touch=1`, off by default): a Goodix **GT911** on I2C bus 1, at
+  0x5D (or 0x14). It is the Waveshare PocketTerm35's 3.5-inch screen. At boot a kernel task:
+  - checks the product id `"911"` at 0x8140;
+  - reads the controller's x / y range at 0x8048 (640 x 480 there);
+  - then polls the status at 0x814E every 16 ms (the interrupt and reset lines are not used). Bit 7 of the status means
+    new points; bits 0-3 give how many. The points are read from 0x814F, 8 bytes each, and the status is written back
+    to 0.
+
+  The touches go to the window server as a mouse's (`WsInputPointer`):
+  - one finger is the pointer there with the left button down: a tap is a click, a slide drags. A move without the
+    button comes first, so what is under the finger knows the pointer is there;
+  - two fingers moved up or down are the wheel: a notch every 24 pixels, no button.
+
+  The coordinates are scaled to the screen's size at that moment, so a game's own resolution works too. In the log:
+  `touch: GT911 at 0x5D: 640 x 480, the pointer`, or why not.
 
 Not done: the alternate functions of pins beyond what `KAPI_GPIO_M_ALT0 + n` sets by hand, I2C bus 0,
 SPI 1 (the AUX SPI), the UARTs 2..5, a debounce, a pin's drive strength, the Pi 5's PWM (the RP1's PWM0:

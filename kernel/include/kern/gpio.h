@@ -16,9 +16,17 @@
 #ifndef _kern_gpio_h
 #define _kern_gpio_h
 
+#include <circle/types.h>
+
 void GpioOnProcessGone (unsigned nPid);		// its pins back to inputs, its buses closed, its queue freed
 void GpioPwmClockKeep (void);			// the PWM clock running again if a header PWM needs it (the
 						// jack's output stops it: sys/sound.cpp calls this after)
+
+// The kernel's own use of the I2C bus 1 (sys/touch.cpp), shared with the process that opens it: opened (FALSE: the
+// pins are a process's in another mode, or no bus), then a transfer -- a write, a read, or both with a repeated start
+// (the bytes read, or written when nothing is read; < 0: no answer).
+boolean GpioI2cKernelOpen (unsigned nClock);
+int GpioI2cKernelXfer (u8 ucAddr, const void *pWrite, unsigned nWrite, void *pRead, unsigned nRead);
 
 extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2);
 

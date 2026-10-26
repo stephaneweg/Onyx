@@ -71,6 +71,7 @@ OBJS = \
 	sys/lsock.o \
 	sys/shm.o \
 	sys/gpio.o \
+	sys/touch.o \
 	arch/aarch64/vectors.o \
 	arch/aarch64/uaccess.o \
 	arch/aarch64/el0.o \
