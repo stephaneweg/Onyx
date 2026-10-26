@@ -16,6 +16,11 @@ SK_API const char *volume_output_word (int out);
 SK_API void volume_save (int vol, int mute);
 // The output chosen (KAPI_SND_OUT_*): applied now, kept in the file -> sound_output's result.
 SK_API int volume_set_output (int out);
+// (v99) The input, a microphone: "input = auto | none | usb | i2s" and "input_gain = <dB>" in the same file.
+SK_API const char *volume_input_word (int in);
+// The input chosen (KAPI_SND_IN_*, -1: kept) and its gain (dB 0..48, -1: kept): the kernel's from the next
+// recording, kept in the file -> sound_input's SELECT result (-KAPI_ENOSYS: a kernel before v99).
+SK_API long volume_set_input (int in, int gain_db);
 
 // ---- the mixer (kapi v85): a program's own volume ------------------------------------------------
 // Every program that plays has a channel (kapi_sound_clients); its volume (0..100) and its mute are

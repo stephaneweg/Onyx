@@ -122,6 +122,10 @@ tone.elf: tone.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h 
 play.elf: play.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h ../Runtime/onyxpp.hpp ../lib/audiokit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/audiokit.imp.a -o $@
 AK_PROGS = play.elf
+# rec: the microphone recorded to a WAV file, or its level shown (AudioKit's ak_in_*: kapi v99 sound_input)
+rec.elf: rec.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Kits/audiokit/audiokit.h ../Runtime/onyxpp.hpp ../lib/audiokit.imp.a
+	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/audiokit.imp.a -o $@
+AK_PROGS += rec.elf
 # fktest: FileKit's self-test (../lib/filekit.so): compression, ZIP on the card and in memory, trees, paths
 fktest.elf: fktest.cpp ../Runtime/crt0.S ../Runtime/user.ld ../Kits/appkit/appkit.h ../Runtime/onyxpp.hpp ../Kits/filekit/filekit.h ../lib/filekit.imp.a
 	$(CXX) $(CXXFLAGS) $(LDFLAGS) $(KAPI_ALIASES) ../Runtime/crt0.S $< ../lib/filekit.imp.a -o $@

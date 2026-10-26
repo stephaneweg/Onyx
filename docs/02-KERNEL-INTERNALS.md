@@ -1244,6 +1244,10 @@ window features back) —, and `appkit_ws.inc` with them. They are UIKit's **`uk
 `uk_win_fullscreen_begin` does), `kapi_present_fb`, `kapi_fullscreen_direct`, the pump, `kapi_screen_size`.
 C programs reach UIKit through `lib/uikit.imp_c.a` (`libgen --bind-c`).
 
+v99 = **the sound's input** (2026-10-26): + `sound_input` (slot **235**), `KAPI_SND_IN_*`. A microphone, one program
+at a time: a USB one (a headset's) or an I2S one on the header. AudioKit's `ak_in_*` reach it, and the Sound
+applet chooses it (*v99: sound_input* below, §14).
+
 v98 = **generated vertex shaders** (2026-10-11; `docs/3DS-EMULATOR-STUDY.md` 9v, 9x): no table entry changes —
 `KAPI_GPU_P_VS_1WAY` (a `gpu_program` flag: its vertex and coordinate shaders are run one thread a QPU — the
 whole register file, 64 registers — and write their outputs to a VPM block of their own, so an output may be
@@ -1808,6 +1812,12 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v99: sound_input
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 235 | `sound_input (op, a0, a1)` | The microphone (`sys/sound.cpp`); `op`: **`KAPI_SND_IN_SELECT`** (0) `(input, gain)` -- `input` = `KAPI_SND_IN_AUTO` (0: a USB one if there is one) / `_NONE` (1) / `_USB` (2) / `_I2S` (3), −1 kept; `gain` 0..48 dB, −1 kept (applied at once while it records) → what records now (`KAPI_SND_IN_NOW`, 0 nothing), what is asked (`_ASKED`), the inputs there (`_HAS (r, i)`: USB when a device with an input is plugged; I2S always, it cannot be detected), the gain (`_GAIN`, dB) and whether it was set rather than the device's default (`_GAIN_SET`). **`_OPEN`** (1) `(rate Hz)` → the rate it records at: the one asked if the device has it, else 48 / 44.1 / 32 / 16 kHz for USB (the program converts; AudioKit does); `-KAPI_EBUSY` another program records, `-KAPI_ENODEV` no microphone, `-KAPI_EIO` it did not start. **`_READ`** (2) `(short *out, max)` → 16-bit **mono** samples taken now, never waiting (0: none yet; `-KAPI_EIO` the device is gone; `-KAPI_EPERM` not the one recording). **`_CLOSE`** (3). The process gone: closed. AppKit: `kapi_sound_input` (`-KAPI_ENOSYS` before v99). |
 
 ### v97: lib_open_as, the graphics server per mode
 
@@ -2458,13 +2468,29 @@ Source: [`kernel/sys/sound.cpp`](../kernel/sys/sound.cpp), [`kern/sound.h`](../k
   `ControlVolume` in dB below the control's maximum, the level's squared curve: a USB headset),
   else by the software gain (`s_Gain`, in `GetChunk`); the mute is always the software's. It is
   applied again at each change of output and when a USB device comes back.
+- **The input (v99): a microphone.** One program records at a time (`sound_input`'s `OPEN`, closed with
+  the process). Which one: `SD:/etc/sound.ini`'s `input = auto | none | usb | i2s` (`auto`: a USB one if
+  there is one), changed by `sound_input`'s `SELECT`, used from the next `OPEN`.
+  - **USB**: a second Circle device, `CUSBSoundBaseDevice (rate, DeviceModeRXOnly)`, beside the output's
+    (a headset plays and records at once: two objects, one each way). It records at the rate asked if
+    the device has it, else at 48, 44.1, 32 or 16 kHz.
+  - **I2S**: `CI2SSoundBaseDevice (..., DeviceModeRXOnly)`, the Pi the clocks' master. An INMP441 or an
+    SPH0645: GPIO 18 the bit clock, 19 the frame, 20 the data, its L/R pin to the ground (the left
+    channel; `input_right = 1` for the right). GPIO 18..21 are kept from GPIOKit's programs while it
+    records (`GpioKernelPins`).
+  - The samples come from Circle's read queue (500 ms) as 24 bits in 32. They are made 16-bit mono with
+    the DC taken away (a first-order high-pass at ~20 Hz) and the gain applied (`input_gain`, 0..48 dB;
+    by default 0 for USB, 24 for I2S: a MEMS microphone is quiet).
+  - A USB microphone pulled out: `SoundPoll` stops it, and the next `READ` says `-KAPI_EIO`.
+  - The output's `auto` now counts only a USB device with an output (a USB microphone alone leaves the
+    sound on the jack).
 - **Core 1 = the producer.** It sleeps in `WFE` until the device starts, then keeps
   `SND_AHEAD` (4) chunks rendered ahead in a ring; `GetChunk` only copies the next chunk
   (zeros if core 1 fell behind) and `SEV`s core 1. Without `ARM_ALLOW_MULTI_CORE` the same
   code renders in `GetChunk` itself (interrupt, core 0).
 - **Rendering** (integer only, no FP in the kernel): the **PCM ring** (0.5 s of s16 stereo frames,
   `sound_write`) and the owner's **mapped ring** (v68), added and clipped. Nothing else: **the kernel
-  only puts sound out**.
+  only puts sound out** (and takes the microphone's in, v99).
 - **No synthesizer in the kernel (since 2026-10-05).** The 16 voices and the two-operator FM
   instruments (v46 / v47: `sound_start`, `sound_stop`, `sound_instrument`) were rendered here until
   then. They are AudioKit's now, in user space — `user/Kits/audiokit/fmsynth.h` (the same code, the same

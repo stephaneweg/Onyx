@@ -28,6 +28,10 @@ void GpioPwmClockKeep (void);			// the PWM clock running again if a header PWM n
 boolean GpioI2cKernelOpen (unsigned nClock);
 int GpioI2cKernelXfer (u8 ucAddr, const void *pWrite, unsigned nWrite, void *pRead, unsigned nRead);
 
+// Header pins nFirst..nLast a kernel driver drives itself (the I2S microphone, GPIO 18..21): taken from the programs
+// (FALSE: one is a program's) while it runs, given back (bTake FALSE) when it stops.
+boolean GpioKernelPins (unsigned nFirst, unsigned nLast, boolean bTake);
+
 extern "C" long kapi_gpio_ctl (int nOp, long a0, long a1, long a2);
 
 #endif

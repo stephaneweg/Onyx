@@ -865,6 +865,13 @@ static int get_datetime (int *y, int *mo, int *d, int *h, int *mi, int *s)
 }
 static int net_status (char *ip, unsigned n) { if (ip && n) snprintf (ip, n, "192.168.1.42"); return 1; }
 static int sound_volume (int, int) { return 7; }
+// (the Sound applet's pictures) the jack plays; a USB microphone is there, none records (kapi v84 / v99)
+static int sound_output (int) { return KAPI_SND_OUT_JACK | (KAPI_SND_OUT_AUTO << 8) | ((1 << KAPI_SND_OUT_AUTO | 1 << KAPI_SND_OUT_JACK | 1 << KAPI_SND_OUT_HDMI) << 16); }
+static long sound_input (int op, long, long)
+{
+	if (op != KAPI_SND_IN_SELECT) return -KAPI_ENODEV;
+	return (KAPI_SND_IN_AUTO << 8) | ((1 << KAPI_SND_IN_AUTO | 1 << KAPI_SND_IN_NONE | 1 << KAPI_SND_IN_USB | 1 << KAPI_SND_IN_I2S) << 16);
+}
 static int stdout_write (const void *b, unsigned n) { return (int) fwrite (b, 1, n, stderr); }
 static void *h_sbrk (long n) { static char *arena = (char *) malloc (512u << 20), *top = arena; char *p = top; top += n; return p; }
 static int pad_state (int, struct kapi_pad *) { return 0; }
@@ -1750,7 +1757,7 @@ static void setup (void)
 	T->msleep = h_msleep; T->get_ticks = h_get_ticks; T->should_exit = h_should_exit; T->yield = yield;
 	T->open = f_open; T->read = f_read; T->write = f_write; T->fsize = f_fsize; T->close = f_close; T->save_file = save_file;
 	T->opendir = f_opendir; T->readdir = f_readdir; T->closedir = f_closedir; T->list_apps = list_apps;
-	T->get_datetime = get_datetime; T->net_status = net_status; T->sound_volume = sound_volume;
+	T->get_datetime = get_datetime; T->net_status = net_status; T->sound_volume = sound_volume; T->sound_output = sound_output; T->sound_input = sound_input;
 	T->stdout_write = stdout_write; T->sbrk = h_sbrk; T->pad_state = pad_state; T->get_modifiers = get_mods;
 	T->launch = launch; T->raise_app = raise_app; T->exec = exec; T->exec_as = exec_as;
 	T->menu_command = menu_command; T->set_menu = set_menu; T->get_menu = get_menu;

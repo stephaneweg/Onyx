@@ -19,7 +19,7 @@ AudioKit is sound: files played, notes on the General MIDI instruments, the FM s
 |---|---|
 | Include | `#include "audiokit/audiokit.h"` |
 | Link | `lib/audiokit.imp.a` |
-| Library | `SD:/lib/audiokit.so` — 232 entries in its table (`user/Kits/audiokit/audiokit.abi`, append-only) |
+| Library | `SD:/lib/audiokit.so` — 236 entries in its table (`user/Kits/audiokit/audiokit.abi`, append-only) |
 | Sources | `user/Kits/audiokit/` |
 
 ## Using it
@@ -66,6 +66,21 @@ if (ak_out_open (256, 1024) == 1)
 }
 ```
 
+**The microphone** (the one chosen in Control Panel ▸ Sound: USB or I2S): mono, 16 bits, at the rate you ask.
+One program records at a time.
+
+```cpp
+int rate = ak_in_open (16000);                        // 0: another program records, -1: no microphone
+if (rate > 0)
+{
+    short s[1600];
+    int n = ak_in_read (s, 1600);                     // never waits: 0 = nothing yet, -1 = gone
+    int level = ak_in_peak (s, n);                    // 0..32767
+    /* ... ak_wav_begin / ak_wav_write to keep it ... */
+    ak_in_close ();
+}
+```
+
 ## Index
 
 Everything the headers declare, in their order — the details are in each header's part below.
@@ -102,6 +117,10 @@ Everything the headers declare, in their order — the details are in each heade
 | `ak_out_free` | frames that would be taken without waiting | `audiokit.h` |
 | `ak_out_queued` | frames written and not yet played | `audiokit.h` |
 | `ak_out_close` | (Not together with the player | `audiokit.h` |
+| `ak_in_open` | -> rate (0 asked: 16000), 0 another program records, -1 no microphone | `audiokit.h` |
+| `ak_in_read` | never waits -> the samples taken (0: none yet), -1 closed / the device gone | `audiokit.h` |
+| `ak_in_close` | The one the Sound applet chose (a USB microphone or a headset's, an I2S microphone on the header | `audiokit.h` |
+| `ak_in_peak` | the loudest sample, 0..32767 (a level meter) | `audiokit.h` |
 | `ak_gain_s16` | buf *= gain, saturated, in place | `audiokit.h` |
 | `ak_mix_s16` | dst += src * gain, saturated | `audiokit.h` |
 | `ak_mono_to_stereo` | the first `frames` shorts spread, in place | `audiokit.h` |
@@ -161,6 +180,7 @@ Everything about sound that more than one program can use, in one copy for the w
   the player a file played in the background on the system's output, and notes played live on a
              General MIDI synthesizer, mixed (ak_play, ak_note_on ...): one line to make a sound
   the output the system's sound output for a program that makes its own frames (ak_out_*)
+  the input  the microphone chosen in the Sound applet, USB or I2S (ak_in_*)
   mixing     gain, mix with saturation, mono to stereo, float to 16 bits with a soft limiter,
              a rate converter (ak_mix_s16, ak_f32_to_s16, ak_resample_*)
   notes      a note's frequency, its name, a name's note (ak_note_*)
@@ -285,6 +305,17 @@ int ak_out_write (const short *frames, int n);		// all of them, waiting for room
 int ak_out_free (void);					// frames that would be taken without waiting
 int ak_out_queued (void);				// frames written and not yet played
 void ak_out_close (void);
+```
+
+### the system's input: a microphone (kapi v99)
+
+The one the Sound applet chose (a USB microphone or a headset's, an I2S microphone on the header: SD:/etc/sound.ini "input ="), one program at a time; the samples 16-bit MONO at the rate asked (converted from the device's), the DC taken away and the input's gain applied by the kernel.
+
+```cpp
+int ak_in_open (int rate);				// -> rate (0 asked: 16000), 0 another program records, -1 no microphone
+int ak_in_read (short *out, int max);			// never waits -> the samples taken (0: none yet), -1 closed / the device gone
+void ak_in_close (void);
+int ak_in_peak (const short *samples, int n);		// the loudest sample, 0..32767 (a level meter)
 ```
 
 ### mixing and conversion (16-bit stereo frames; gains in 16.16: 65536 = 1)

@@ -117,6 +117,23 @@ the device). It is a Goodix GT911 on I2C bus 1 at 0x5D, found with BASIC's `I2CS
   - a long press as the right button;
   - a calibration for a screen turned by `display_rotate`.
 
+**Sound input, a microphone** (the user's request, the same day: the PocketTerm35 has none, the user will put an
+I2S one in the case). kapi **v99** `sound_input` (slot 235):
+- the kernel's `sys/sound.cpp` records from a USB microphone (a second Circle device, receive only, beside the
+  output) or an I2S one on GPIO 18-20 (Circle's I2S device, receive only, the Pi the master; GPIO 18-21 kept from
+  GPIOKit: `GpioKernelPins`);
+- the samples are made 16-bit mono, with a high-pass and a gain (`input_gain`; 24 dB by default for I2S);
+- AudioKit has `ak_in_open` / `_read` / `_close` / `_peak` (the rate converted);
+- SystemKit has `volume_set_input`, and `sound.ini` gets `input =` and `input_gain =`;
+- the **Sound applet** has a "Record from" list, a level meter with **Test**, and a **Gain** slider (its mixer now
+  shows 3 rows to make room);
+- `/bin/rec` records to a WAV file or shows the level;
+- Circle fork: a USB audio device's continuous range of rates (docs/05 §36, PocketQI's patch);
+- the output's `auto` now counts only USB devices with an output.
+
+PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Not tried on the
+device yet**: the Pi was off when it was to be deployed; then test USB (a headset) and I2S (once wired).
+
 **The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
 `SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:
 - `cmdline.txt`: `width=800 height=600 usbc=1 touch=1 keyboard=US` (the user's 800 x 600);

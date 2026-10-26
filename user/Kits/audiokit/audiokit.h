@@ -8,6 +8,7 @@
 //   the player a file played in the background on the system's output, and notes played live on a
 //              General MIDI synthesizer, mixed (ak_play, ak_note_on ...): one line to make a sound
 //   the output the system's sound output for a program that makes its own frames (ak_out_*)
+//   the input  the microphone chosen in the Sound applet, USB or I2S (ak_in_*)
 //   mixing     gain, mix with saturation, mono to stereo, float to 16 bits with a soft limiter,
 //              a rate converter (ak_mix_s16, ak_f32_to_s16, ak_resample_*)
 //   notes      a note's frequency, its name, a name's note (ak_note_*)
@@ -135,6 +136,15 @@ int ak_out_write (const short *frames, int n);		// all of them, waiting for room
 int ak_out_free (void);					// frames that would be taken without waiting
 int ak_out_queued (void);				// frames written and not yet played
 void ak_out_close (void);
+
+// ---- the system's input: a microphone (kapi v99) ----------------------------------------------
+// The one the Sound applet chose (a USB microphone or a headset's, an I2S microphone on the header:
+// SD:/etc/sound.ini "input ="), one program at a time; the samples 16-bit MONO at the rate asked
+// (converted from the device's), the DC taken away and the input's gain applied by the kernel.
+int ak_in_open (int rate);				// -> rate (0 asked: 16000), 0 another program records, -1 no microphone
+int ak_in_read (short *out, int max);			// never waits -> the samples taken (0: none yet), -1 closed / the device gone
+void ak_in_close (void);
+int ak_in_peak (const short *samples, int n);		// the loudest sample, 0..32767 (a level meter)
 
 // ---- mixing and conversion (16-bit stereo frames; gains in 16.16: 65536 = 1) --------------------
 void ak_gain_s16 (short *buf, int frames, int gain);	// buf *= gain, saturated, in place

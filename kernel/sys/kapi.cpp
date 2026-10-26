@@ -2390,6 +2390,39 @@ int kapi_sound_clients (struct kapi_sound_client *pOut, int nMax)
 	return n;
 }
 int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute) { return SoundClientVolume (nPid, nVolume, nMute); }
+
+// (v99) The microphone: one program records at a time (sys/sound.cpp).
+long kapi_sound_input (int nOp, long a0, long a1)
+{
+	switch (nOp)
+	{
+	case KAPI_SND_IN_SELECT:	return SoundInput ((int) a0, (int) a1);
+	case KAPI_SND_IN_OPEN:		return a0 <= 0 ? -KAPI_EINVAL : SoundInputOpen (CallerPid (), (unsigned) a0);
+	case KAPI_SND_IN_CLOSE:		SoundInputClose (CallerPid ()); return 0;
+	case KAPI_SND_IN_READ:
+	{
+		short *pOut = (short *) a0;
+		if (pOut == 0 || a1 <= 0) return -KAPI_EINVAL;
+		unsigned nMax = a1 > 48000 ? 48000 : (unsigned) a1;
+		if (!UserWritable (pOut, (u64) nMax * sizeof (short))) return -KAPI_EFAULT;
+		static s16 Buf[1024];
+		unsigned nPid = CallerPid ();
+		long nDone = 0;
+		while ((unsigned) nDone < nMax)
+		{
+			unsigned nWant = nMax - (unsigned) nDone;
+			if (nWant > sizeof Buf / sizeof Buf[0]) nWant = sizeof Buf / sizeof Buf[0];
+			int n = SoundInputRead (nPid, Buf, nWant);
+			if (n < 0) return nDone > 0 ? nDone : n;
+			if (n == 0) break;
+			memcpy (pOut + nDone, Buf, (size_t) n * sizeof (s16));
+			nDone += n;
+		}
+		return nDone;
+	}
+	default:			return -KAPI_EINVAL;
+	}
+}
 int kapi_sound_instrument (int, const struct kapi_fm_instrument *) { return -1; }	// (retired: see kapi_sound_start)
 
 // --- v68: low-latency sound ---

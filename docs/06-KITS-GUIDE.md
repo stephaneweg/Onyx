@@ -852,6 +852,21 @@ if (ak_out_open (256, 1024) == 1)
 }
 ```
 
+**The microphone** (the one chosen in Control Panel ▸ Sound: USB or I2S): mono, 16 bits, at the rate you ask.
+One program records at a time.
+
+```cpp
+int rate = ak_in_open (16000);                        // 0: another program records, -1: no microphone
+if (rate > 0)
+{
+    short s[1600];
+    int n = ak_in_read (s, 1600);                     // never waits: 0 = nothing yet, -1 = gone
+    int level = ak_in_peak (s, n);                    // 0..32767
+    /* ... ak_wav_begin / ak_wav_write to keep it ... */
+    ak_in_close ();
+}
+```
+
 ## 10. FontKit — fonts and text
 
 `#include "fontkit/uikitface.h"` or `"fontkit/fonts.h"` — link `lib/fontkit.imp.a`.
@@ -1152,6 +1167,7 @@ The header of a kit a C program may use is written in C.
 | play a sound file | AudioKit | `ak_play` |
 | play a note or an effect | AudioKit | `ak_note_on`, `ak_fm_start` |
 | send samples to the output | AudioKit | `ak_out_open`, `ak_out_write` |
+| record the microphone | AudioKit | `ak_in_open`, `ak_in_read` |
 | draw smooth text | FontKit | `ft_uikit_install`, `fnt::get` |
 | print | PrinterKit | `print_dialog`, `print_begin`, `print_page`, `print_end` |
 | light an LED, read a button | GPIOKit | `gk_mode`, `gk_write`, `gk_read` |

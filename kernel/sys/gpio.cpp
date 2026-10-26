@@ -405,6 +405,24 @@ int GpioI2cKernelXfer (u8 ucAddr, const void *pWrite, unsigned nWrite, void *pRe
 	return r;
 }
 
+// Header pins a kernel driver drives itself (an I2S microphone: sys/sound.cpp): kept from the programs while it runs.
+boolean GpioKernelPins (unsigned nFirst, unsigned nLast, boolean bTake)
+{
+	if (nLast >= NPINS || nFirst > nLast) return FALSE;
+	if (!bTake)
+	{
+		for (unsigned p = nFirst; p <= nLast; p++) if (s_nOwner[p] == KERNEL_OWNER) FreePin (p);
+		return TRUE;
+	}
+	for (unsigned p = nFirst; p <= nLast; p++) if (Takeable (p, KERNEL_OWNER) < 0) return FALSE;
+	for (unsigned p = nFirst; p <= nLast; p++)
+	{
+		FreePin (p);
+		s_nOwner[p] = KERNEL_OWNER; s_nMode[p] = KAPI_GPIO_M_ALT0;	// (the driver sets the function)
+	}
+	return TRUE;
+}
+
 static long SPIOpen (unsigned nClock, unsigned nMode, unsigned nPid)
 {
 	if (nMode > 3) return -KAPI_EINVAL;

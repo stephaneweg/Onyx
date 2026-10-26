@@ -259,6 +259,7 @@ int kapi_vol_eject (const char *pVol, unsigned nFlags);
 int kapi_vol_mount (const char *pVol);
 int kapi_vol_format (const char *pVol, const struct kapi_format *pFmt);
 const void *kapi_lib_open_as (const char *pPath, const char *pAlias, unsigned nMinVersion, int *pErr);
+long kapi_sound_input (int nOp, long a0, long a1);
 int kapi_sound_client_volume (unsigned nPid, int nVolume, int nMute);
 // v91 a process's tree (sys/kapi.cpp)
 int kapi_proc_tree (int nPid, int nOp, int *pOut, unsigned nCap);
@@ -545,4 +546,5 @@ void KApiTableInit (void)
 	t->vol_mount         = kapi_vol_mount;
 	t->vol_format        = kapi_vol_format;
 	t->lib_open_as       = kapi_lib_open_as;	// (v97)
+	t->sound_input       = kapi_sound_input;	// (v99)
 }

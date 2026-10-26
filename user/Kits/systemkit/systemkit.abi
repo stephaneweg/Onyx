@@ -120,3 +120,5 @@
 114 display_follow_launch
 115 display_follow_ask
 116 display_follow_tick
+117 volume_input_word
+118 volume_set_input

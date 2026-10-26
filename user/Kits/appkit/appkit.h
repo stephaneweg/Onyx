@@ -553,6 +553,12 @@ KAPI_FN const void * kapi_lib_open_as (const char *path, const char *alias, unsi
 // now, what is asked and which outputs are there (KAPI_SND_OUT_NOW / _ASKED / _HAS of the result);
 // -KAPI_ENOSYS on an older kernel (the jack only). The Sound applet; kept in SD:/etc/sound.ini.
 KAPI_FN int kapi_sound_output (int out);
+// (v99) The sound's input, a microphone (KAPI_SND_IN_*): op KAPI_SND_IN_SELECT (input or -1, gain dB or -1) ->
+// what records, what is asked, which inputs are there, the gain (KAPI_SND_IN_NOW / _ASKED / _HAS / _GAIN); _OPEN
+// (rate) -> the rate it records at (-KAPI_EBUSY: another program records, -KAPI_ENODEV: no microphone); _READ
+// (short *out, max) -> 16-bit mono samples taken, never waiting (-KAPI_EIO: the device is gone); _CLOSE.
+// -KAPI_ENOSYS on a kernel before v99. A program uses AudioKit's ak_in_* (the rate it asks for, converted).
+KAPI_FN long kapi_sound_input (int op, long a0, long a1);
 // (v85) the sound's mixer: the programs that play (each has a channel), a channel's volume and mute
 KAPI_FN int kapi_sound_clients (struct kapi_sound_client *out, int max);
 KAPI_FN int kapi_sound_client_volume (unsigned pid, int volume, int mute);

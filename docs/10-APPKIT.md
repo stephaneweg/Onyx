@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 315 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 316 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -285,6 +285,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_lib_open` | (v83) A shared library (docs/SHARED-LIBS-PLAN.md) | `appkit.h` |
 | `kapi_lib_open_as` | (v97) The graphics server's own library under another name (docs/POCKETUI-TECH-STUDY.md section 3) | `appkit.h` |
 | `kapi_sound_output` | (v84) The sound's output | `appkit.h` |
+| `kapi_sound_input` | (v99) The sound's input, a microphone (KAPI_SND_IN_*) | `appkit.h` |
 | `kapi_sound_clients` | (v85) the sound's mixer | `appkit.h` |
 | `kapi_sound_client_volume` | (v85) the sound's mixer | `appkit.h` |
 | `kapi_is_protected` | (v73) Is this process protected (EL0, kern/el0.h)? Its table's memcpy is then user code, next to the table, instead of the kernel's. | `appkit.h` |
@@ -1138,6 +1139,12 @@ const void * kapi_lib_open_as (const char *path, const char *alias, unsigned min
 
 ```cpp
 int kapi_sound_output (int out);
+```
+
+(v99) The sound's input, a microphone (KAPI_SND_IN_*): op KAPI_SND_IN_SELECT (input or -1, gain dB or -1) -> what records, what is asked, which inputs are there, the gain (KAPI_SND_IN_NOW / _ASKED / _HAS / _GAIN); _OPEN (rate) -> the rate it records at (-KAPI_EBUSY: another program records, -KAPI_ENODEV: no microphone); _READ (short *out, max) -> 16-bit mono samples taken, never waiting (-KAPI_EIO: the device is gone); _CLOSE. -KAPI_ENOSYS on a kernel before v99. A program uses AudioKit's ak_in_* (the rate it asks for, converted).
+
+```cpp
+long kapi_sound_input (int op, long a0, long a1);
 ```
 
 (v85) the sound's mixer: the programs that play (each has a channel), a channel's volume and mute
