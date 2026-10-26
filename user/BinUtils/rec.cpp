@@ -102,8 +102,8 @@ int main (void)
 			if (kapi_get_ticks () - t0 > (unsigned) (seconds * 100 + 300)) { gone = true; break; }	// (nothing comes)
 			kapi_msleep (10);
 		}
-		char c;
-		if (kapi_stdin () != 0 && kapi_stream_read_nb (kapi_stdin (), &c, 1) > 0) { stopped = true; break; }
+		char c;					// (a key stops it -- not the end of the command's own line)
+		if (kapi_stdin () != 0 && kapi_stream_read_nb (kapi_stdin (), &c, 1) > 0 && c != '\r' && c != '\n') { stopped = true; break; }
 	}
 	ak_in_close ();
 	if (w) ak_wav_end (w);
