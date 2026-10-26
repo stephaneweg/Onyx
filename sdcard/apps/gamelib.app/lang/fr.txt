@@ -33,3 +33,5 @@ Quit	Quitter
 Remove %s	Retirer %s
 View	Affichage
 Play Full Screen On / Off	Plein écran : oui / non
+games|All	Tous
+Add...	Ajouter...

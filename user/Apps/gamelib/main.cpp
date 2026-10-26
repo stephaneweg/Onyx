@@ -627,6 +627,19 @@ static void sp_icon (Canvas &cv, int id, int x, int y, int size, unsigned ink, b
 	}
 	else uk_glyph (cv, WKG_PLUS, x + size / 2, y + size / 2, 10, ink);
 }
+// A pocket's landscape narrower than four whole panels (the PocketTerm35's 640 x 480): the panel whole at 2.5 rails
+// (the user, 2026-10-26) -- the systems' icons and short names rather than a rail of icons alone.
+static bool g_spNarrow;
+static const char *sys_short (const char *name)
+{
+	static const char *const T[][2] =
+	{
+		{ "GameCube", "GC" }, { "Nintendo DS", "DS" }, { "Nintendo 3DS", "3DS" }, { "Nintendo 64", "N64" },
+		{ "Super Nintendo", "SNES" }, { "Game Boy Advance", "GBA" }, { "Game Boy Color", "GBC" }, { "Game Boy", "GB" },
+	};
+	for (unsigned i = 0; i < sizeof T / sizeof T[0]; i++) if (strcmp (name, T[i][0]) == 0) return T[i][1];
+	return name;
+}
 static void sp_build (void)			// the groups as headings (they fold), the places with their number of games
 {
 	if (!g_sp) return;
@@ -635,17 +648,17 @@ static void sp_build (void)			// the groups as headings (they fold), the places 
 	for (int gr = 0; gr < NGROUPS; gr++)
 	{
 		int h = g_sp->addHeading (TR (GROUP_NAME[gr]), UK_SPI_FOLDABLE | (g_folded[gr] ? UK_SPI_FOLDED : 0));
-		if (gr == G_LIBRARY) { g_sp->addItem (F_ALL, TR ("All Games"), SPI_ALL, 0, h); count (F_ALL, g_ng); }
+		if (gr == G_LIBRARY) { g_sp->addItem (F_ALL, g_spNarrow ? TRC ("games", "All") : TR ("All Games"), SPI_ALL, 0, h); count (F_ALL, g_ng); }
 		else if (gr == G_SYSTEMS)
 			for (int k = 0; k < NSYS; k++)
 			{
-				g_sp->addItem (F_SYS + k, SYS_NAME(k), SPI_SYS + k, 0, h); count (F_SYS + k, g_nsys[k]);
+				g_sp->addItem (F_SYS + k, g_spNarrow ? sys_short (SYS_NAME(k)) : SYS_NAME(k), SPI_SYS + k, 0, h); count (F_SYS + k, g_nsys[k]);
 				if (g_nsys[k] == 0) g_sp->setFlags (F_SYS + k, UK_SPI_DISABLED);
 			}
 		else
 		{
 			for (int f = 0; f < g_nf; f++) { g_sp->addItem (F_FOLDER + f, g_folder[f], SPI_FOLDER, 0, h); count (F_FOLDER + f, g_nfold[f]); }
-			g_sp->addItem (SP_ADD, TR ("Add Folder..."), SPI_PLUS, 0, h);
+			g_sp->addItem (SP_ADD, g_spNarrow ? TR ("Add...") : TR ("Add Folder..."), SPI_PLUS, 0, h);
 			g_sp->setFlags (SP_ADD, UK_SPI_ACTION);		// (an action, not a place: L / R pass it)
 		}
 	}
@@ -654,7 +667,9 @@ static void sp_build (void)			// the groups as headings (they fold), the places 
 static void sp_place (void)			// its rectangle, what it takes of the window's left
 {
 	if (!g_sp || !g_root) return;
-	g_sp->place (0, BAR_H, SIDE0, g_root->height - ST_H - BAR_H);
+	bool narrow = uk_size_class () == UK_SC_COMPACT && g_root->width < SIDE0 * 4;
+	if (narrow != g_spNarrow) { g_spNarrow = narrow; sp_build (); }
+	g_sp->place (0, BAR_H, narrow ? uk_metrics ().rail * 5 / 2 : SIDE0, g_root->height - ST_H - BAR_H);
 	g_sideW = g_sp->reservedWidth ();
 }
 static void side_click (int r)
@@ -1066,6 +1081,7 @@ int main (void)
 	{
 		g_sp = new SidePanel (0, BAR_H, SIDE0, WIN_H - BAR_H - ST_H, UK_SP_LEFT, UK_SP_NAVIGATION);
 		g_sp->setIconFn (sp_icon);
+		g_sp->setRail (false);			// (pocket: whole, narrower -- sp_place)
 		g_sp->onSelect = [] (SidePanel &, int id) { if (id == SP_ADD) { g_sp->select (g_filter); on_add (); } else set_filter (id); if (g_root) g_root->invalidate (true); };
 		g_sp->onItemMenu = [] (SidePanel &, int id, int x, int y) { if (id >= F_FOLDER && id < SP_ADD) folder_menu (id - F_FOLDER, x, y); };
 		g_sp->onPresentation = [] (SidePanel &, int) { sp_place (); if (g_root) g_root->invalidate (true); };
