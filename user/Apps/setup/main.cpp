@@ -1307,11 +1307,12 @@ static int zone_opts ()
 	for (int i = 0; i < g_nzoneOpts; i++) { g_zoneOpts[i] = g_zoneText[g_zoneMap[i]]; if (g_zoneMap[i] == g_zone) at = i; }
 	return at;
 }
+static bool g_boardKeyb;			// the board's own keyboard (a Pi 400 / 500, the PocketTerm35's): kept whatever the country
 static void on_country (Widget &w)
 {
 	g_country = ((CountryList &) w).sel;
 	const Country &c = COUNTRIES[g_country];
-	for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], c.keyb)) { g_keyb = k; break; }
+	if (!g_boardKeyb) for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], c.keyb)) { g_keyb = k; break; }
 	g_zone = c.zones[0];
 	g_keybDD->setOptions (g_keybOpts, NKEYB, g_keyb); g_kbv->set (g_keyb);
 	int at = zone_opts (); g_zoneDD->setOptions (g_zoneOpts, g_nzoneOpts, at);
@@ -1648,8 +1649,9 @@ int main (void)
 		wpa_load ();
 		for (int i = 0; i < NCOUNTRIES; i++) if (!strcmp (COUNTRIES[i].code, g_wpaCountry)) g_country = i;
 		for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], COUNTRIES[g_country].keyb)) g_keyb = k;
-		// The board's own keyboard (a Pi 400 / Pi 500: its layout from the firmware, the kernel's "keyboard" line):
-		// proposed, and taken at once -- the Wi-Fi's password is typed with it
+		// The board's own keyboard (a Pi 400 / Pi 500: its layout from the firmware; a device's from cmdline.txt
+		// keyboard=, the PocketTerm35's US -- the kernel's "keyboard" line): proposed, taken at once -- the Wi-Fi's
+		// password is typed with it --, and kept when the country changes (the list still changes it)
 		{
 			char info[512]; int n = kapi_kernel_info (info, sizeof info);
 			const char *kb = n > 0 ? strstr (info, "\nkeyboard ") : 0;
@@ -1658,7 +1660,7 @@ int main (void)
 				char code[8]; int i = 0; kb += 10;
 				while (kb[i] && kb[i] != ' ' && kb[i] != '\n' && i < 7) { code[i] = kb[i]; i++; }
 				code[i] = 0;
-				for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], code)) { g_keyb = k; apply_keyb (); }
+				for (int k = 0; k < NKEYB; k++) if (!strcmp (KEYB_CODES[k], code)) { g_keyb = k; g_boardKeyb = true; apply_keyb (); }
 			}
 		}
 		g_zone = COUNTRIES[g_country].zones[0];
@@ -1669,7 +1671,9 @@ int main (void)
 
 	// the window: in the middle of the screen, where it stays (WIN_FLAG_FIXED)
 	int sw = 1024, sh = 768; kapi_screen_size (&sw, &sh);
-	g_pk = uk_mode () == UK_MODE_POCKET && sw < 800;
+	// pocket's own look on a screen the desktop's 800 x 600 window does not fit under PocketUI's band (640 x 480, and
+	// 800 x 600: the PocketTerm35's card, 2026-10-26)
+	g_pk = uk_mode () == UK_MODE_POCKET && (sw < 832 || sh < 664);
 	if (g_pk) { g_winW = sw; g_winH = sh - 30; g_railW = 0; g_top = 40; }	// (the window PocketUI gives: the screen under its band)
 	SetupRoot root ((sw - W - 8) / 2, (sh - H - 32) / 2);
 	if (root.canvas.px == 0) return 1;

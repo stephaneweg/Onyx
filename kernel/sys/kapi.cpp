@@ -43,6 +43,7 @@
 #include <circle/startup.h>		// reboot() (kapi_reboot)
 #include <circle/memory.h>		// CMemorySystem (meminfo)
 #include <circle/machineinfo.h>
+#include <circle/koptions.h>		// cmdline.txt keyboard= (a device's own keyboard: kapi_kernel_info)
 #include <circle/devicetreeblob.h>		// CMachineInfo::GetRAMSize (firmware board RAM)
 #include <circle/actled.h>		// kapi_shutdown: LED off
 #include <circle/2dgraphics.h>		// kapi_present_fb
@@ -375,10 +376,12 @@ int kapi_kernel_info (char *pBuf, unsigned nCap)
 	// keyboard: the board's own keyboard's layout (a keymap's name, or "-") and its code (Setup proposes it)
 	const char *pMap;
 	unsigned nKbd = BoardKeyboard (&pMap);
-	if (nKbd != 0)
+	// cmdline.txt keyboard=<map>: a device's own keyboard the firmware does not know (the PocketTerm35's, US) -- code 0
+	const char *pOpt = nKbd == 0 && CKernelOptions::Get () != 0 ? CKernelOptions::Get ()->GetAppOptionString ("keyboard") : 0;
+	if (nKbd != 0 || (pOpt != 0 && *pOpt != 0 && strlen (pOpt) < 8))
 	{
 		CString Line;
-		Line.Format ("keyboard %s %u\n", pMap, nKbd);
+		Line.Format ("keyboard %s %u\n", nKbd != 0 ? pMap : pOpt, nKbd);
 		Text.Append (Line);
 	}
 	unsigned n = Text.GetLength ();

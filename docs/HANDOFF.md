@@ -117,6 +117,22 @@ the device). It is a Goodix GT911 on I2C bus 1 at 0x5D, found with BASIC's `I2CS
   - a long press as the right button;
   - a calibration for a screen turned by `display_rotate`.
 
+**The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
+`SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:
+- `cmdline.txt`: `width=800 height=600 usbc=1 touch=1 keyboard=US` (the user's 800 x 600);
+- `config.txt`: Waveshare's lines, and their `overlays/` taken from the user's card;
+- the pocket session's file: Setup first, `pocketshell` held back;
+- `system.ini` and the autostart edited by the script: `shell=pocket`, `keyb US`.
+
+Two things were made for it:
+- Setup has the pocket look on any screen the desktop's 800 x 600 window does not fit under PocketUI's band (it was
+  under 800 px wide only). `pocket640.sh setup` checks it at 800 x 600.
+- `cmdline.txt keyboard=<map>`: a device's own keyboard, reported in `kapi_kernel_info`'s `keyboard` line as a Pi
+  400's is. Setup proposes it and keeps it when the country changes.
+
+Not tried yet: the card booted from blank on the device (the user does not want to take the card out; the parts
+were tried one by one).
+
 The user's card: `usbc=1 touch=1`, `keyb US` (QWERTY), the maker's overlay line, no `otg_mode`. `keylog` is off now.
 The kernel was deployed **over the network**:
 - the Pi's `curl -o` from an HTTP server on the PC (`wget` stops at 64 KB);
