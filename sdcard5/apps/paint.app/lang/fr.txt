@@ -1,0 +1,28 @@
+# Paint's words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the tasks,
+# the hint line): the rest of Paint is not translated yet.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+task	tâche
+start	commencer
+zoom	zoom
+undo	annuler
+save	enregistrer
+CROP	ROGNER
+move	déplacer
+size	taille
+ratio	format
+apply	appliquer
+cancel	annuler
+ROTATE	TOURNER
+turn 90°	tourner de 90°
+flip	retourner
+done	terminé
+TEXT	TEXTE
+type	taper
+put	poser
+Crop	Rogner
+Resize	Taille
+Rotate	Tourner
+Adjust	Ajuster
+Text	Texte
+Free	Libre
+Drawing needs a pointer: brushes, shapes and layers are in the desktop mode.	Dessiner demande un pointeur : pinceaux, formes et calques sont en mode bureau.

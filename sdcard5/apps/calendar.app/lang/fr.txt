@@ -126,3 +126,4 @@ all-day	journée
  more	 de plus
 Nothing to do	Rien à faire
 Tomorrow	Demain
+Calendars	Agendas

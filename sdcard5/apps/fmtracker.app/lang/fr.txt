@@ -131,3 +131,4 @@ From the Start	Depuis le début
 Loop the Pattern	Boucler le motif
 Stop	Arrêter
 C D E F G A B: a note (Shift = #), 0-7: octave, Space: silence, Del: ---, Shift+arrows: a block, ^P: play	C D E F G A B : une note (Maj = #), 0-7 : octave, Espace : silence, Suppr : ---, Maj+flèches : un bloc, ^P : lire
+Patterns	Motifs

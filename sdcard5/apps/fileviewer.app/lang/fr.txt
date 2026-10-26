@@ -147,3 +147,4 @@ Pin This Folder...	Épingler ce dossier...
 Restore from Trash	Restaurer depuis la corbeille
 Edit	Édition
 Paste	Coller
+Enter runs it	Entrée le lance

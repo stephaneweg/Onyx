@@ -1,0 +1,20 @@
+# Slides' words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the hint
+# line, the drawers' names): the rest of Slides is not translated yet.
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+slide	diapo
+open	ouvrir
+new	nouvelle
+delete	supprimer
+close	fermer
+field	champ
+tab	onglet
+change	changer
+value	valeur
+TEXT	TEXTE
+done	terminé
+tools	outils
+edit	modifier
+present	présenter
+Slides	Diapos
+Inspector	Inspecteur
+its buttons	ses boutons

@@ -237,3 +237,20 @@ New password	Nouveau mot de passe
 %s %s:%d (%s)  ·  SMTP %s:%d (%s)%s	%s %s:%d (%s)  ·  SMTP %s:%d (%s)%s
 plain	en clair
   ·  Microsoft sign-in	  ·  connexion Microsoft
+Attach a File...	Joindre un fichier...
+Show Cc and Bcc	Afficher Cc et Cci
+Save the Draft	Enregistrer le brouillon
+folder	dossier
+open	ouvrir
+write	écrire
+message	message
+back	retour
+search	chercher
+send the reply	envoyer la réponse
+the message	le message
+buttons	boutons
+use	utiliser
+send	envoyer
+next field	champ suivant
+leave	quitter
+add an account	ajouter un compte

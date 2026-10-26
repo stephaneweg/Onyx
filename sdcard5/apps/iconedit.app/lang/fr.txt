@@ -46,3 +46,9 @@ Shift Up	Décaler vers le haut
 Shift Down	Décaler vers le bas
 Clear	Effacer
 Grid On / Off	Grille : oui / non
+, and .: the colour	, et . : la couleur
+pixel	pixel
+draw	dessiner
+colour	couleur
+swap	échanger
+colours	couleurs
