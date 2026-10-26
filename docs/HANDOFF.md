@@ -153,8 +153,11 @@ I2S one in the case). kapi **v99** `sound_input` (slot 235):
 - Circle fork: a USB audio device's continuous range of rates (docs/05 §36, PocketQI's patch);
 - the output's `auto` now counts only USB devices with an output.
 
-PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Not tried on the
-device yet**: the Pi was off when it was to be deployed; then test USB (a headset) and I2S (once wired).
+PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Tried on the
+device the same day** (kernel v99 deployed over the network): a USB headset's microphone records at 16 kHz -- `rec
+SD:/tmp/mic.wav 3`, silence about -72 dBFS, a voice -18 dBFS, the file read back by `play --info`. **I2S not tried
+yet** (no microphone wired). The user's Pi was switched back to the pocket mode (`session switch pocket`): the
+Control Panel's desktop window does not fit 640 x 480.
 
 **The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
 `SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:
