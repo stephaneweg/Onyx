@@ -88,7 +88,10 @@ All the logic lives in the **`CKernel`** class ([`kernel/kernel.cpp`](../kernel/
    (`BuiltinCursor`, the 12×19 arrow that was `SD:skins/mousecur.bin` — the card has no `skins/`
    folder any more: the window chrome is drawn user-side).
 7. **RAM:**: `RamFsInit()` — the RAM volume, its size from `system.ini`'s `ramfs=` (§16).
-8. **USB**: `m_USB.Initialize()` (mouse + HID keyboard, hot-plug).
+8. **USB**: `m_USB.Initialize()` (mouse + HID keyboard, hot-plug). On the Pi 4 `m_USB` is Circle's
+   `CUSBSubSystem` (docs/05 §33): the VL805 (the USB-A sockets) and, with `cmdline.txt usbc=1`
+   (`EnableInternalController ()` first; `config.txt otg_mode=1`), the SoC's own xHCI behind the USB-C
+   socket — the Waveshare PocketTerm35's keyboard. Its failure leaves the USB-A sockets working.
 
 ### `CKernel::Run()` — the service loop
 

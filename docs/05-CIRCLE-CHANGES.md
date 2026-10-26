@@ -1093,6 +1093,33 @@ Find, which no layout maps), where `SD:/etc/keymaps/JP.kmap` has them. The raw k
 are unchanged. Not the keymap decoupling of §1 (its skill re-applies that one after an upstream merge: check this
 fold is still there too). Fork commit `9a9180ba`. **Not tested on a Japanese keyboard yet.**
 
+## 33. The Pi 4's two xHCI controllers at once (the USB-C socket)
+
+**Why.** The Raspberry Pi 4 has two xHCI controllers: the VL805 on PCIe (the four USB-A sockets) and the SoC's own
+(`0xFE9C0000`, the USB-C socket, with `config.txt otg_mode=1`). Upstream drives one or the other, chosen when it is
+built (`USE_XHCI_INTERNAL`). The keyboard of the **Waveshare PocketTerm35** (an RP2040, an ordinary USB HID keyboard
+that `CUSBKeyboard` takes) is wired to the USB-C socket, and the USB-A sockets must keep working.
+
+**What.** Without `USE_XHCI_INTERNAL` the Pi 4 now builds `XHCI_PI4_DUAL` (`usb/xhciconfig.h`):
+- `CUSBHCIDevice` is **`CUSBSubSystem`** on the Pi 4 too (`usb/usbhcidevice.h`, `lib/usb/Makefile`), as on the Pi 5,
+  without the Pi 5's southbridge: device #0 the VL805 at once; **device #1** the SoC's controller, made in
+  `Initialize ()` when `EnableInternalController ()` was called before it. Its failure is a warning (`Cannot
+  initialize xHCI device #1`): the VL805 keeps running. Both share the subsystem's `CXHCISharedMemAllocator`.
+- `CXHCIDevice`: per controller, the IRQ (`ARM_IRQ_PCIE_HOST_INTA` / `ARM_IRQ_XHCI_INTERNAL`), the registers
+  (`ARM_XHCI0_BASE` / `ARM_XHCI1_BASE`, `bcm2711.h`), the version (0x100 / 0x110), the PCIe bring-up and the VL805's
+  firmware load (device #0 only), the slots enabled (`GetMaxSlots ()`: the controller's own, at most
+  `XHCI_CONFIG_MAX_SLOTS`, now 64 for the arrays; `xhcislotmanager.cpp` writes it), and the **contexts' stride**
+  (`GetContextSize ()`, HCCPARAMS1's CSZ: 32 bytes on the VL805, 64 on the SoC's).
+- `usb/xhci.h`: `XHCI_INPUT_CONTEXT_SIZE`, `XHCI_DEVICE_CONTEXT_SIZE`, `XHCI_INPUT_CONTROL / _DEVICE / _SLOT /
+  _ENDPOINT` lay the contexts out by that stride; `xhciusbdevice.cpp` and `xhciendpoint.cpp` build the input contexts
+  and size the device context with them instead of the structures' size (kept at 32 bytes on the Pi 4). The DMA
+  addresses are unchanged: the Pi 4's PCIe inbound window starts at 0.
+
+`USE_XHCI_INTERNAL` (one controller, the CM4's) and the Pi 5 build as before (both checked to compile). The kernel
+calls `EnableInternalController ()` for `cmdline.txt usbc=1` (docs/02 §1, docs/04 `cmdline.txt`). Fork commit
+`af3c5667`. **Not yet tried on the device** (2026-10-26): the VL805's path is the one changed least (its stride and
+limits are the old constants), the SoC controller's is upstream's `USE_XHCI_INTERNAL` one.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on

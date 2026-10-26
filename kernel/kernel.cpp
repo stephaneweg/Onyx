@@ -2247,6 +2247,14 @@ boolean CKernel::Initialize (void)
 	// input thread later pumps UpdatePlugAndPlay() for hot-plug.
 	if (bOK)
 	{
+#if RASPPI == 4
+		// cmdline.txt usbc=1: the USB-C socket's controller too (the SoC's own xHCI, beside the
+		// VL805), with config.txt otg_mode=1 -- the keyboard of a Waveshare PocketTerm35 is there
+		if (m_Options.GetAppOptionDecimal ("usbc", 0) != 0)
+		{
+			m_USB.EnableInternalController ();
+		}
+#endif
 		m_bUSB = m_USB.Initialize ();
 		if (!m_bUSB)
 		{
