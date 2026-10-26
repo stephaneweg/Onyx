@@ -222,8 +222,13 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`touch`**: `touch=1` makes a **touch screen the pointer**: the Goodix GT911 on the I2C bus 1, which is the
   **Waveshare PocketTerm35**'s screen. Use it with the maker's `dtparam=i2c_arm=on` in `config.txt`, which is already
   there for the device.
-  - One finger moves the pointer there and holds the left button: **a tap is a click**, a slide drags.
-  - **Two fingers moved up or down scroll**, like the wheel.
+  - One finger moves the pointer there, then works as on a phone:
+    - **a tap is a click**;
+    - **a slide up or down scrolls**, the page following the finger;
+    - **a slide sideways, or a press held 0.4 s then moved, drags** with the left button: a slider, a scroll bar, a
+      selection, a window by its title.
+  - Two fingers moved up or down scroll too.
+  - There is no sideways scroll: Onyx has no horizontal wheel.
 
   It follows the screen's resolution, a game's own included. `kmsg` says `touch: GT911 at 0x5D: ...`, or that none was
   found. Tried on the device (2026-10-26): it works. The USB mouse and the keyboard still work beside it.

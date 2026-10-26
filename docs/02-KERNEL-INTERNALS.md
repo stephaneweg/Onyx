@@ -3115,9 +3115,16 @@ code that calls it.
     to 0.
 
   The touches go to the window server as a mouse's (`WsInputPointer`):
-  - one finger is the pointer there with the left button down: a tap is a click, a slide drags. A move without the
-    button comes first, so what is under the finger knows the pointer is there;
-  - two fingers moved up or down are the wheel: a notch every 24 pixels, no button.
+  - one finger first moves the pointer there, without the button, so what is under the finger knows the pointer is
+    there. Then it works as on a phone:
+    - a **tap is a click**;
+    - **moved up or down, it scrolls**: the wheel, a notch every 20 pixels, the page following the finger, no button
+      (the user, 2026-10-26);
+    - **moved sideways or held still 0.4 s, it drags**: the left button down where it touched, until the finger lets
+      go (a slider, a scroll bar, a selection, a window's title).
+
+    There is no sideways scroll: the system has no horizontal wheel.
+  - two fingers moved up or down are the wheel too, no button.
 
   The coordinates are scaled to the screen's size at that moment, so a game's own resolution works too. In the log:
   `touch: GT911 at 0x5D: 640 x 480, the pointer`, or why not.
