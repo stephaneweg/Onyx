@@ -1116,8 +1116,8 @@ Pi 1-3 only, and the USB library chooses xHCI or DWHCI when it is built (`RASPPI
   `BUS_ADDRESS` (the first GB, `HEAP_LOW` buffers), as the gadget driver does on the Pi 4.
 
 The kernel calls `EnableDWHCI ()` for `cmdline.txt usbc=1` (docs/02 §1, docs/04 `cmdline.txt`). USB audio on the
-DWHCI is not supported (`usbsoundbasedevice` is xHCI's). Fork commit `1ba908d7`. **Not yet tried on the device**
-(2026-10-26).
+DWHCI is not supported (`usbsoundbasedevice` is xHCI's). Fork commit `1ba908d7`. **Tried on the device**
+(2026-10-26): the keyboard types, with §34 and §35.
 
 *History:* a first try the same morning drove the SoC's **internal xHCI** instead (`config.txt otg_mode=1`, fork
 `af3c5667`): the Pi 4 B hung at boot when its registers were read (that controller is the CM4's); reverted
@@ -1142,7 +1142,34 @@ of a real USB mouse (the kernel follows `mouse1` alone).
   boot report (`TranslateReport ()`: modifiers E0-E7, six keys), then goes on as before; the interface's other
   reports (its mouse, consumer keys) are ignored. Boot keyboards are unchanged.
 
-Not yet tried on the device (2026-10-26). The interface's mouse and any gamepad in it are not driven.
+Fork commit `d29dc22e`. Tried on the device (2026-10-26): the keyboard types. The interface's mouse and any
+gamepad in it are not driven.
+
+## 35. A full-speed device on the Pi 4's DWC OTG root port
+
+**Why.** With §33 and §34 the PocketTerm35's RP2040 was enumerated, but no keyboard report ever came, and the
+device left and came back every 10-20 s; after a while a kernel panic. Three faults, found with counters in the
+driver (2026-10-26):
+
+- **The periodic transfers' frame.** Every interrupt transfer ended in a **frame overrun** (8251 of 8254): Circle
+  scheduled it for the *current* frame (`HCCHAR.OddFrm` = the frame number's parity). On the Pi 1-3 the devices sit
+  behind the LAN9514's high-speed hub (split transactions); here a full-speed device is on the root port itself.
+  `dwhcidevice.cpp`, `StartChannel ()`: the periodic transfers of a device on the root port (no split) are
+  scheduled for the **next** frame on the Pi 4 (`m_bPeriodicNextFrame`, as Linux's dwc2 puts them where they will be
+  on the wire), and 16 frame overruns in a row switch to the other frame either way.
+- **A removed device's requests.** `CancelDeviceTransactions ()` aborted the device's channels, but their requests
+  completed afterwards, from the interrupt, when the device and its drivers were already deleted: the HID driver
+  touched its deleted self (the panic, `CUSBHIDDevice::CompletionRoutine`) and submitted its next request. The
+  device's asynchronous requests on a channel now get a completion that only frees them (`DiscardedCompletion`),
+  and the function waits for their channels (100 ms at most). `CUSBRequest::GetCompletionRoutine ()` tells a
+  blocking request (the driver's own waiter) from them.
+- **DTR.** `CUSBSerialCDCDevice::Configure ()` raised DTR and RTS at once; the RP2040 (its CDC serial port beside
+  the keyboard) then took a terminal for reading it, blocked writing to a port nothing read, and its watchdog
+  restarted it (the device leaving and coming back). DTR and RTS are now raised at the port's first `Read ()` or
+  `Write ()` (`CUSBSerialHostDevice::FirstUse ()`), as Linux does when the tty is opened.
+
+The DWC OTG FIFOs were checked: depth 4080 words, the 3 x 1024 Circle programs fit. Fork commits `09cfd2a3`
+(the frame, the requests) and `d3e518ab` (DTR). Tried on the device: the keyboard types, no disconnection.
 
 ## Contributions to upstream Circle
 

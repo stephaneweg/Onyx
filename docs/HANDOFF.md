@@ -79,19 +79,20 @@ mockup_pocketterm.py`). What is built, slice by slice, and what differs from the
 **`docs/COMPACT-SHELL-STUDY.md` section 20**; the captures of the real code: `docs/compact-shell/real/pocketterm/`.
 The same branch has the PocketTerm Simulator (`pc/`, another session's: the device's face on a PC, a client of `rdpd`).
 
-**Update, 2026-10-26: the device has arrived** (the user: Onyx boots on it, the screen by HDMI, the battery and the
-network fine) -- **its keyboard did not answer**: its RP2040 is wired to the Pi's **USB-C socket**, the DWC OTG
-controller's (the maker's `dtoverlay=dwc2,dr_mode=host` is Linux's), which Circle drove on the Pi 1-3 only. A first
-try drove the SoC's internal xHCI (`otg_mode=1`): the Pi 4 B **hung at boot** -- reverted. Built the same day: Circle's
-DWHCI on the Pi 4 beside the xHCI, the USB library choosing by each device's host (docs/05 §33);
-`cmdline.txt usbc=1` starts it. The user's card (D:) has this kernel, `usbc=1`, the maker's overlay line and no
-`otg_mode`; backups `kernel8-rpi4_avant_usbc.img`, `config.txt.avant_usbc`, `cmdline.txt.avant_usbc`. **Waiting for
-the test on the device**; if it hangs: remove `usbc=1`; if the keyboard does not answer: `kmsg` (`dwhci`, `usb`
-lines: host running? a `ukbd` found?). **Then (same day):** the DWC OTG host works -- the RP2040 is found on the
-USB-C socket -- but its keyboard is a composite HID interface (`int3-0-0`) that Circle took as a mouse (and that
-mouse took `mouse1` from the USB-A mouse): Circle reads such a keyboard from its report descriptor now (docs/05 §34;
-the descriptor in `kmsg`, `usbkbd`). The user wants the layout QWERTY: `keyb US` in `SD:/etc/autostart` (was BE). The branch was merged with `main` of 2026-10-19 the same day (conflicts:
-3DForge's TR words, Console Home's French).
+**Update, 2026-10-26: the device has arrived, its keyboard types** (the user: Onyx boots on it, the screen by HDMI,
+the battery and the network fine). Its keyboard is an RP2040 wired to the Pi's **USB-C socket** -- the DWC OTG
+controller's (the maker's `dtoverlay=dwc2,dr_mode=host` is Linux's), which Circle drove on the Pi 1-3 only. Built the
+same day, in Circle (docs/05 §33-35): the DWHCI on the Pi 4 beside the xHCI, the USB library choosing by each
+device's host (`cmdline.txt usbc=1` starts it); a keyboard read from its HID report descriptor (a composite
+interface: keyboard, mouse, consumer keys); a full-speed device's periodic transfers scheduled for the next frame
+(the current one overran every time); a removed device's requests no longer completed into its deleted drivers (a
+kernel panic); DTR raised on a CDC port's first use only (the RP2040 blocked, then restarted). A first try with the
+SoC's internal xHCI (`otg_mode=1`) hung the Pi 4 B at boot: reverted. `cmdline.txt keylog=1` (off by default) logs
+the raw key codes. **Its game buttons send letters** (A `a`, B `b`, X `x`, Y `y`, L `l`, R `r`, Select Print Screen
+-- Fn + Select the same --, Start Pause; read with keylog): the RP2040's firmware (not published) does it, Onyx cannot
+tell them from the keys -- the user's decision is pending (docs/04 `cmdline.txt` usbc). The user's card: `usbc=1`,
+`keyb US` (QWERTY), the maker's overlay line, no `otg_mode`, and **`keylog=1` still on: remove it**. The branch was
+merged with `main` the same day and pushed into `main` (the user's request).
 
 **Update, 2026-10-11 (the user's decision; `docs/COMPACT-SHELL-STUDY.md` section 20.7 has the table):** Start and
 Select are the games' -- the shell binds nothing to them (`[buttons]` `start` / `select` = `none`). **CMD (Super)

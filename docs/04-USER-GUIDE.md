@@ -211,7 +211,12 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   of a **Waveshare PocketTerm35** is (its RP2040 is wired to the Pi's USB-C socket, inside). The maker's
   `dtoverlay=dwc2,dr_mode=host` in `config.txt` is for Linux (Onyx reads no overlay; it does no harm); **do not** put
   `otg_mode=1`. `kmsg` says `USB-C socket: DWC OTG host running`, or why not; the USB-A sockets work either way.
-  **Not yet tried on the device** (2026-10-26).
+  Tried on the device (2026-10-26): its keyboard types. Its game buttons are keys of that keyboard, the same codes as
+  letters: **A** `a`, **B** `b`, **X** `x`, **Y** `y`, **L** `l`, **R** `r`, **Select** Print Screen (Fn + Select
+  too), **Start** Pause -- the device's own controller sends them so; Onyx cannot tell them from those keys.
+- **`keylog`**: `keylog=1` writes every keyboard report to the kernel log (`kmsg`, lines `keylog:` -- the modifiers
+  and the HID codes of the keys held): to learn what a new keyboard or a device's buttons send. **Off by default:
+  it logs what is typed** (passwords too); remove it after use.
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a
   row lose priority — see `docs/02`); the scheduler is then plain round-robin

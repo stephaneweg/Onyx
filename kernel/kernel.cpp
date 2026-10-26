@@ -577,6 +577,7 @@ private:
 // owners only draw into their own canvas.
 //
 boolean g_bDisplayDma = TRUE;			// cmdline.txt dispdma=0: no asynchronous display DMA
+boolean g_bKeyLog = FALSE;			// cmdline.txt keylog=1: the keyboards' raw reports in the log
 extern boolean g_bGpuDirect;			// (sys/v3d.cpp) gpudirect=0: the GPU never writes the window itself
 #if RASPPI >= 5
 extern boolean g_bGpu71;			// (sys/v3d.cpp) gpu71=0: the Pi 5's GPU (V3D 7.1) not started
@@ -1261,6 +1262,7 @@ public:
 			DetectMidi ();
 			SoundPoll ();		// (v84: a USB audio device plugged / unplugged)
 			VolPoll ();		// (v93: a USB stick plugged in: mounted; pulled out: unmounted)
+			FlushKeyLog ();		// (keylog=1)
 			CScheduler::Get ()->MsSleep (100);
 		}
 	}
@@ -1402,6 +1404,19 @@ private:
 	{
 		unsigned nSlot = (unsigned) (uintptr) pArg;
 		if (nSlot >= KBD_MAX) return;
+		if (g_bKeyLog)					// noted here (interrupt), logged by FlushKeyLog ()
+		{
+			unsigned nIn = s_nKeyLogIn;
+			if (nIn - s_nKeyLogOut < KEYLOG_SIZE)
+			{
+				TKeyLog *pEntry = &s_KeyLog[nIn % KEYLOG_SIZE];
+				pEntry->ucSlot = (unsigned char) nSlot;
+				pEntry->ucMods = ucModifiers;
+				for (unsigned k = 0; k < 6; k++) pEntry->Keys[k] = RawKeys[k];
+				DataMemBarrier ();
+				s_nKeyLogIn = nIn + 1;
+			}
+		}
 		s_KbdMods[nSlot] = ucModifiers;
 		for (unsigned k = 0; k < 6; k++) s_KbdKeys[nSlot][k] = RawKeys[k];
 		PublishKeys ();
@@ -1468,12 +1483,37 @@ private:
 	static unsigned char s_KbdMods[KBD_MAX];	// each keyboard's last raw report
 	static unsigned char s_KbdKeys[KBD_MAX][6];
 
+	// cmdline.txt keylog=1 (off by default: it writes what is typed to the log): each raw
+	// report -- the modifiers and the HID usages of the keys held -- noted at interrupt level,
+	// written by the input task. To learn a new keyboard's codes (the PocketTerm35's buttons).
+	struct TKeyLog { unsigned char ucSlot, ucMods, Keys[6]; };
+	static const unsigned KEYLOG_SIZE = 64;
+	static TKeyLog s_KeyLog[KEYLOG_SIZE];
+	static volatile unsigned s_nKeyLogIn;
+	static unsigned s_nKeyLogOut;
+
+	void FlushKeyLog (void)
+	{
+		while (s_nKeyLogOut != s_nKeyLogIn)
+		{
+			DataMemBarrier ();
+			const TKeyLog *pEntry = &s_KeyLog[s_nKeyLogOut % KEYLOG_SIZE];
+			m_pLogger->Write ("keylog", LogNotice, "ukbd%u: mods %02X keys %02X %02X %02X %02X %02X %02X",
+					  pEntry->ucSlot + 1, pEntry->ucMods, pEntry->Keys[0], pEntry->Keys[1],
+					  pEntry->Keys[2], pEntry->Keys[3], pEntry->Keys[4], pEntry->Keys[5]);
+			s_nKeyLogOut++;
+		}
+	}
+
 	static CInputTask  *s_pThis;
 };
 
 CInputTask *CInputTask::s_pThis = 0;
 unsigned char CInputTask::s_KbdMods[CInputTask::KBD_MAX];
 unsigned char CInputTask::s_KbdKeys[CInputTask::KBD_MAX][6];
+CInputTask::TKeyLog CInputTask::s_KeyLog[CInputTask::KEYLOG_SIZE];
+volatile unsigned CInputTask::s_nKeyLogIn = 0;
+unsigned CInputTask::s_nKeyLogOut = 0;
 
 // Keyboard-layout control exposed to the kapi layer (sys/kapi.cpp). The kernel no longer
 // compiles in any country map, so loading one *by name* (kapi_set_keymap) is unsupported
@@ -2168,6 +2208,8 @@ boolean CKernel::Initialize (void)
 		// (diagnostics) dispdma=0: the compositor's copies to the screen synchronous (the
 		// asynchronous 2D DMA off); gpudirect=0: the GPU renders into its own buffer, copied
 		g_bDisplayDma = m_Options.GetAppOptionDecimal ("dispdma", 1) != 0;
+		// keylog=1: the keyboards' raw reports in the log (a new keyboard's codes; off by default)
+		g_bKeyLog = m_Options.GetAppOptionDecimal ("keylog", 0) != 0;
 #if RASPPI >= 5
 		// opaque=0: the Pi 5's firmware honours framebuffer_ignore_alpha (a recent bootloader): the
 		// pixels are sent as they are (no pass making them opaque) and the direct full-screen mode is back
