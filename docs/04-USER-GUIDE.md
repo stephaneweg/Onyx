@@ -2740,6 +2740,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations; each conversation in **a window of its own** (or beside the list: **View** menu). Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, on **WebKit** (the dock's Internet drawer, or `run jet [address]`): `http://` and `https://`, JavaScript, video and sound, one page per window — its own section below, *Jet Browser (`jet`)*. (Until 2026-10-04 Jet was a NetSurf port, and this browser was the package **web**: `pkg update jet` brings the new one; `pkg delete web` then removes the old copy.) |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** adds the network to the known ones in the file (or updates its password; since 2026-10-09 the other known networks are kept — NetKit's `wifi.h`, the menu bar's Wi-Fi menu and the console's Wi-Fi page the same — the one saved last joined first) and joins it at once when the Wi-Fi is up; **Save & Reboot** writes it then restarts; **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
+| **PocketQI** (`pocketqi`) | **Pocket, the family's desk assistant**: type a sentence, a large language model (Mistral, Groq, or a server of your own) decides what Pocket says and does; its **face** (two big eyes) shows its mood; **skills** in Onyx BASIC note appointments, to-dos and shopping, give the weather; it **remembers** names on the device only. **Enter** sends, Page Up / Down scroll, Esc skips Pocket's question; Pocket ▸ New Conversation (^N), What Pocket Remembers..., Skills..., Settings... (the API keys); Edit ▸ Copy Last Answer, Copy Conversation (see *PocketQI* below). Files: `SD:/apps/pocketqi.app/config.ini`, `etc/memoire.txt`, `apps/<skill>/`. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
 | **voronoy** | The wallpaper's painter (launched at boot, and by the Theme applet's Apply; no window): Voronoi cells, a gradient, bubbles, a colour, a picture, or a grey pattern of `SD:/wallpapers` coloured by the gradient, as `SD:/etc/wallpaper.ini` says (§11). |
 
@@ -2949,6 +2950,91 @@ header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same En
 ![Clock in French](../screenshots/clock-alarms-fr.png)
 ![Le minuteur](../screenshots/clock-timer-fr.png)
 *In French: Alarmes; le Minuteur.*
+
+### PocketQI, Pocket the desk assistant (`pocketqi`)
+
+![PocketQI](../screenshots/pocketqi.png)
+*PocketQI: "Hello Pocket, my name is Lea" -- Pocket smiles, remembers the name (on the device) and answers.*
+
+**Pocket** is a small assistant for the family's desk: you write to it as you would speak to it, it answers in a few
+words, and it acts through its **skills** -- small apps in Onyx BASIC that keep the agenda, the to-do list and the
+shopping list, or look up the weather. Its **face** -- two big glowing eyes, after Eilik, Cozmo or EMO -- shows
+its **mood** (joyful, curious, surprised, sad, tired, mischievous... nineteen of them, each at three intensities) and
+what it is doing: the eyes become two hopping dots while it **thinks**, they bob while it **speaks**, they look
+around while it waits. It is the Onyx port of the user's own project **PocketQI** (github.com/stephaneweg/PocketQI),
+whose Pocket also lives in a robot, on an ESP32 handheld and on a Windows PC. In the dock's **Productivity** drawer,
+or `run pocketqi`.
+
+Pocket thinks with a **large language model** on the Internet: **Mistral** (`ministral-14b-latest`, the default),
+**Groq** (`qwen/qwen3.8-27b`) as the fallback, or a server of your own. It needs **an API key** (free: console.mistral.ai,
+console.groq.com) and the network. Until a key is given, the status line says *No API key yet: Pocket > Settings.*
+
+**The window**: the face on top; the **conversation** -- your sentences on the right (in the accent colour), Pocket's
+answers on the left, and between them small grey lines saying what Pocket does (*▸ agenda write 2026-09-29 ...*,
+*Remembered: nom = Lea*, *(Pocket waves)*), errors in red --; a status line (*Pocket is thinking...*); while the
+conversation is empty, **three questions to try**; the **field** and **Send**. The window can be resized; in the pocket
+mode it fills the screen (on a 640 x 480 PocketTerm35 too: the face smaller, a line of hints at the foot).
+
+**Talking to Pocket**: type and press **Enter** (or Send). Pocket answers in your language (it is told to). Things to try:
+*My name is Lea* (it remembers it), *Note the dentist tomorrow at 2 pm* (the agenda), *What do I have this week?*,
+*I must call the plumber* (the to-do list), *Add milk and eggs to the shopping list*, *What's the weather in Lyon?*,
+*Who was Marie Curie?* (it reads Wikipedia's summary first), *Tell me a story* (in pieces: every three, *Shall I go
+on?*; *continue yesterday's story* takes up an interrupted one), *Warn me at 8 pm to take the laundry out* (a
+reminder, while PocketQI is open). When Pocket **asks you something** (*At what time?*), the status line says it waits:
+type the answer and Enter, or **Esc** for none. While it works, a new sentence waits (*Pocket is still busy...*).
+
+**Keys**: Enter sends; **Page Up / Page Down** scroll the conversation from the field; with the conversation focused
+(Tab, a click, the D-pad), Up / Down / Home / End scroll it. **Ctrl+N** a new conversation, **Ctrl+Q** quits. With a
+**gamepad** or a handheld's buttons: **A** sends (or presses the question chosen), the **D-pad** moves between the field,
+the questions and the conversation; the menus are the CMD key (or F10) as in every app.
+
+| Menu | Item | Keys | Does |
+|---|---|---|---|
+| Pocket | New Conversation | Ctrl+N | the conversation forgotten (the LLM's history too; what Pocket remembers stays), the face back to neutral |
+| | What Pocket Remembers... | | the memory, `name = value` lines; **Forget Everything** clears it |
+| | Skills... | | the skills installed, with what they do |
+| | Settings... | | below |
+| | Quit | Ctrl+Q | |
+| Edit | Copy Last Answer | | Pocket's last answer to the clipboard |
+| | Copy Conversation | | the whole conversation as text |
+| Help | About PocketQI | | |
+
+**Settings**: the **Mistral key** and the **Groq key** (shown as dots; either one is enough), **Ask first** (Mistral
+or Groq: the other one is the fallback when it has a key), the **model** (empty: the provider's default), a **server**
+of your own -- the address of an OpenAI-compatible `chat/completions` endpoint on your network (a local model:
+`http://192.168.1.20:8080/v1/chat/completions`), which is then the only one asked --, and Pocket's **character**
+(serious, calm, warm, playful, mischievous: the tone of its answers).
+
+**Privacy**: what you type goes to the model's provider (Mistral, Groq) with the last six exchanges, today's date and
+the skills' descriptions. **What Pocket remembers never leaves the device**: the model only sees a marker in braces --
+*My name is Lea* goes as *My name is {nom}*, the answer comes back as *Nice to meet you, {nom}!* and Pocket puts the
+name back before showing it. The conversation sent is forgotten after ten minutes without a word. The server's
+certificate is not checked yet (as `/bin/llm`).
+
+**The skills** (`SD:/apps/pocketqi.app/apps/<skill>/`: `main.bas`, its manifest `app.txt`, its data): **agenda**
+(write, read, delete, move an appointment), **todo** (add, plan, done, list, edit, clear), **courses** (the shopping
+list: add, remove, change a quantity, list, clear), **meteo** (the weather now, a day, the week -- Open-Meteo, free and
+without a key, data CC BY 4.0; the town: the one named, else the one Pocket remembers as *ville*), **humeur** (a tour of
+the face's moods). They are PocketQI's own and **speak French** for now. A skill is a folder: copy one in and Pocket
+knows it at the next sentence (the manifest's `llm.<action> = <types> : <what it does>` lines are what the model is
+told); they are written in Onyx BASIC with the library `lib/galo.bi` (`Say`, `Arg$`, `Web$`, `JsonText$`, `SetMood`,
+`Ask$`...; docs/03 *PocketQI* says how to write one). A skill is stopped after ten seconds of its own work.
+
+**Not in this version** (PocketQI has them on its other devices): the microphone and the wake word *dis Pocket*
+(Onyx has no sound input yet), Pocket's voice, its drawings on the screen, the mail, printing and address-book skills.
+
+**Files** (all in `SD:/apps/pocketqi.app/`):
+
+| File | What |
+|---|---|
+| `config.ini` | the settings: `provider`, `mistral_key`, `groq_key`, `model`, `url`, `url_key`, `character` (`config.ini.example` says each) -- **your API keys: keep it private** |
+| `etc/memoire.txt` | what Pocket remembers, `name = value` a line |
+| `etc/cron.txt` | the reminders and the tasks watched (*warn me...*) |
+| `etc/histoires.txt` | the stories and explanations left halfway (10 at most) |
+| `apps/<skill>/` | the skills; their data beside them (`agenda/agenda.txt`, `todo/todo.txt`, `courses/liste.txt`) |
+| `lib/galo.bi` | the skills' library |
+| `prompt/<name>.txt` | (optional) a text of the model's instructions changed without rebuilding -- PocketQI's mechanism |
+| `tmp/` | a text the model wrote for a skill |
 
 ### Letters, the word processor (`letters`)
 

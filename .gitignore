@@ -85,6 +85,13 @@ sdcard_lite/mail/
 
 # Lisa's Groq API key: never commit it
 sdcard/apps/lisa.app/config.ini
+# PocketQI: the user's API keys, what Pocket remembers, its cron and stories, the skills' data
+sdcard/apps/pocketqi.app/config.ini
+sdcard/apps/pocketqi.app/etc/
+sdcard/apps/pocketqi.app/tmp/
+sdcard/apps/pocketqi.app/apps/agenda/agenda.txt
+sdcard/apps/pocketqi.app/apps/todo/todo.txt
+sdcard/apps/pocketqi.app/apps/courses/liste.txt
 
 # Jet, the browser on WebKit: its 100 MB program is built by tools/webkit/build-web.sh and carried by
 # its package only (too big for git); and WebKit's data on the card (cookies, storage, caches)

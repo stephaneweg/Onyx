@@ -1,0 +1,86 @@
+# PocketQI -- the French words (English<TAB>French; uikit/lang.h). tools/lang/check.py pocketqi
+The question is too long.	La question est trop longue.
+, every %ld minutes	, toutes les %ld minutes
+, at %02ld:%02ld	, à %02ld:%02ld
+I am not watching anything for now.	Je ne surveille rien pour l'instant.
+I am watching: 	Je surveille :
+I cannot watch that.	Je ne peux pas surveiller ça.
+I did not understand the time.	Je n'ai pas compris l'heure.
+I am already watching too many things.	Je surveille déjà trop de choses.
+Remembered: 	Retenu :
+I cannot find the answer.	Je n'arrive pas à trouver la réponse.
+I have nothing in progress to go on with.	Je n'ai rien en cours à reprendre.
+I cannot do that.	Je ne peux pas faire ça.
+The %s skill has a problem.	La compétence %s a un problème.
+No API key yet: open Pocket > Settings to give your Mistral or Groq key.	Pas encore de clé d'API : ouvre Pocket > Réglages pour donner ta clé Mistral ou Groq.
+No network: is the Wi-Fi or the cable connected?	Pas de réseau : le Wi-Fi ou le câble est-il branché ?
+The API key was refused: check it in Pocket > Settings.	La clé d'API a été refusée : vérifie-la dans Pocket > Réglages.
+The LLM did not answer. Try again in a moment.	Le modèle de langage n'a pas répondu. Réessaie dans un instant.
+Shall I tell you more?	Tu veux que je développe ?
+Shall I go on?	Tu veux la suite ?
+All right.	D'accord.
+All right, let us stop here. You can ask me for the rest later.	D'accord, on s'arrête là. Tu pourras me demander la suite plus tard.
+Your answer...	Ta réponse...
+Ask Pocket something...	Demande quelque chose à Pocket...
+(Pocket waves)	(Pocket fait coucou)
+(Pocket laughs)	(Pocket rit)
+(Pocket dances)	(Pocket danse)
+(Pocket sits down)	(Pocket s'assied)
+(Pocket stands up)	(Pocket se lève)
+(Pocket stops)	(Pocket s'arrête)
+Pocket is busy. Try again once it has answered.	Pocket est occupée. Réessaie quand elle aura répondu.
+Mistral	Mistral
+Groq	Groq
+Serious	Sérieuse
+Calm	Calme
+Warm	Chaleureuse
+Playful	Enjouée
+Mischievous	Malicieuse
+Settings	Réglages
+The language model	Le modèle de langage
+Pocket thinks with a large language model on the Internet. Get a free key at console.mistral.ai or console.groq.com.	Pocket réfléchit avec un grand modèle de langage sur Internet. Une clé gratuite s'obtient sur console.mistral.ai ou console.groq.com.
+Mistral key:	Clé Mistral :
+Groq key:	Clé Groq :
+Ask first:	Demander d'abord à :
+Model (optional):	Modèle (facultatif) :
+Server (optional):	Serveur (facultatif) :
+A server of your own: the address of an OpenAI-compatible chat/completions endpoint; it is then the only one asked.	Un serveur à toi : l'adresse d'un point d'accès chat/completions compatible OpenAI ; c'est alors le seul interrogé.
+Pocket	Pocket
+Character:	Caractère :
+Save	Enregistrer
+Cancel	Annuler
+The settings could not be written on the card.	Les réglages n'ont pas pu être écrits sur la carte.
+What Pocket Remembers	Ce dont Pocket se souvient
+Nothing yet. Tell Pocket your name, your town, the names of your family: it remembers them here, on this device. The language model only ever sees their names in braces, never their values.	Rien pour l'instant. Dis à Pocket ton prénom, ta ville, les prénoms de ta famille : elle s'en souvient ici, sur cet appareil. Le modèle de langage ne voit jamais que leur nom entre accolades, jamais leur valeur.
+Kept on this device only: the language model never sees these values.	Gardé sur cet appareil seulement : le modèle de langage ne voit jamais ces valeurs.
+Forget Everything	Tout oublier
+Close	Fermer
+Forget everything Pocket remembers?	Oublier tout ce dont Pocket se souvient ?
+Pocket has forgotten everything.	Pocket a tout oublié.
+Pocket's Skills	Les compétences de Pocket
+Small apps in Onyx BASIC that Pocket runs when you ask (SD:/apps/pocketqi.app/apps). Their words are in French for now.	De petites apps en Onyx BASIC que Pocket lance quand tu le demandes (SD:/apps/pocketqi.app/apps). Elles parlent français pour l'instant.
+Pocket is still busy with your last sentence...	Pocket est encore occupée par ta dernière phrase...
+Pocket is waiting for your answer (Esc: no answer).	Pocket attend ta réponse (Échap : pas de réponse).
+Pocket is thinking...	Pocket réfléchit...
+Pocket is busy...	Pocket est occupée...
+No API key yet: Pocket > Settings.	Pas encore de clé d'API : Pocket > Réglages.
+About PocketQI	À propos de PocketQI
+PocketQI -- Pocket, the family's desk assistant, on Onyx.\nA port of PocketQI (github.com/stephaneweg/PocketQI). MIT License.\n\nThe language model answers through Mistral or Groq; what Pocket remembers stays on this device.	PocketQI -- Pocket, l'assistante de bureau de la famille, sur Onyx.\nUn portage de PocketQI (github.com/stephaneweg/PocketQI). Licence MIT.\n\nLe modèle de langage répond par Mistral ou Groq ; ce dont Pocket se souvient reste sur cet appareil.
+New Conversation	Nouvelle conversation
+What Pocket Remembers...	Ce dont Pocket se souvient...
+Skills...	Compétences...
+Settings...	Réglages...
+Quit	Quitter
+Edit	Édition
+Copy Last Answer	Copier la dernière réponse
+Copy Conversation	Copier la conversation
+Help	Aide
+send	envoyer
+move	aller
+scroll	défiler
+Send	Envoyer
+What's the weather today?	Quel temps fait-il aujourd'hui ?
+What is on my agenda this week?	Qu'est-ce que j'ai dans mon agenda cette semaine ?
+Tell me a short story	Raconte-moi une petite histoire
+Hello! I am Pocket. Ask me a question, or tell me what to note in your agenda or your lists.	Bonjour ! Je suis Pocket. Pose-moi une question, ou dis-moi quoi noter dans ton agenda ou tes listes.
+Pocket could not start its thread.	Pocket n'a pas pu démarrer son fil d'exécution.

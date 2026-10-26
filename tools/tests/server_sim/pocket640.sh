@@ -10,7 +10,7 @@
 #     Circuits, Turtle Quest, GPIO Lab and Letters -- it changes with what the view is doing (a mode's name first);
 #   - drawers: UIKit's rule -- a side panel without places opens and closes by L / R (the Calendar, the Icon Editor);
 #   - audit: every other app with a window, captured (docs/compact-shell/real/pocketterm/AUDIT-640.md).
-# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard koton keys drawers audit]  (AUDIT_APPS="a b": those apps)
+# Usage: sh tools/tests/server_sim/pocket640.sh [out dir] [only: mail circuits gpiolab turtle setup letters slides qbstudio paint applets pkgman 3dforge lr home stickies clipboard koton keys drawers pocketqi audit]  (AUDIT_APPS="a b": those apps)
 # SHOTS_PNG=<folder>: the pictures copied there too. MEDIA_SHOTS=<shots.sh's folder>: the libraries some apps need for
 # the PC (mbedTLS, AudioKit, MuPDF: `sh tools/tests/desktop_sim/shots.sh mail media pdf` makes them); skipped without.
 set -e
@@ -622,6 +622,28 @@ if want home; then
 fi
 
 # ---- Stickies (Q9): in pocket an ordinary full-screen app -- the pinned notes as cards, two columns; the D-pad, A opens Notes
+if want pocketqi; then
+	echo "pocket640: PocketQI"
+	mkdir -p "$OUT/pqi"
+	for f in groq_proto pocket_humeur pocket_visage; do gcc -O2 -w -c user/Apps/pocketqi/core/$f.c -o "$OUT/pqi/$f.o"; done
+	ftapp pocket pocketqi uikit_pocket -DPOCKETQI_NO_TLS $BAS "$OUT"/pqi/*.o -lm
+	# its LLM a server of its own (config.ini url), whose answer is canned (SIM_NET: a chat completion)
+	WR=$(langdir ""); mkdir -p "$WR/apps/pocketqi.app"
+	printf 'provider = mistral\nurl = http://llm.local/v1/chat/completions\n' > "$WR/apps/pocketqi.app/config.ini"
+	b='{"id":"sim","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"1\"]}, {\"app\": \"say\", \"args\": [\"Sunny all day in Lyon, from 12 to 21 degrees: a light jacket for the morning.\"]}]}"},"finish_reason":"stop"}]}'
+	NET=$(printf 'HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: %d\\r\\n\\r\\n%s' "$(printf '%s' "$b" | wc -c)" "$b")
+	K () { echo "key $1;$W;"; }
+	PQ="$P640 SIM_APPNAME=pocketqi SIM_APP=pocketqi SIM_SLEEP=1 SIM_WRITES=$WR"
+	# the first screen (the face, the questions to try, the field, the hint line); Up: the focus on a question; A
+	# (Enter): it is asked, Pocket answers; Up twice: the conversation, which Page Up scrolls
+	run pocket_pocketqi pt-pocketqi-640 "$WWW;expect kind fill;expect frame 0;$W;dump $OUT/pt-pocketqi-640.elsm;$(K $UP)dump $OUT/pt-pocketqi-640-chip.elsm;$(K 13)$WWW;$WWW;$WWW;$WWW;dump $OUT/pt-pocketqi-640-answer.elsm;$(K $UP)$(K $UP)dump $OUT/pt-pocketqi-640-chat.elsm" $PQ SIM_NET="$NET"
+	for f in pt-pocketqi-640 pt-pocketqi-640-chip pt-pocketqi-640-answer pt-pocketqi-640-chat; do out $f; size $f 640x480 "$f is the whole 640 x 480 screen"; done
+	hintline pt-pocketqi-640 "PocketQI"
+	differ pt-pocketqi-640 pt-pocketqi-640-chip "Up: the focus on a question to try"
+	differ pt-pocketqi-640-chip pt-pocketqi-640-answer "A: the question asked, Pocket's answer"
+	differ pt-pocketqi-640-answer pt-pocketqi-640-chat "Up: the focus on the conversation"
+fi
+
 if want stickies; then
 	echo "pocket640: Stickies, a full-screen app"
 	AK=""; [ -f "${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a" ] && AK="${MEDIA_SHOTS:-/tmp/onyx_shots}/libaudiokit.a"

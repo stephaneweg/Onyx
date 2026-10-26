@@ -47,12 +47,12 @@ FT_APP_ELFS = $(FT_APPS:=.elf)
 
 APP_ELFS = $(APPS:=.elf)
 
-all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
+all: libs $(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf pocketqi.elf photos.elf pkgman.elf pkgd.elf printd.elf plugins bin servers BinUtils/basic.elf doom
 # (AppKit's stubs are linked into every program: made first)
 # (a real prerequisite, not an order-only one: every program relinks when AppKit's stubs change -- libgen
 # rewrites them only when a slot moved. On 2026-10-08 an order-only one let the programs keep stale stubs:
 # none could start. The link lines use $< and LDFLAGS, never $^: it is not linked twice)
-$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
+$(APP_ELFS) $(FT_APP_ELFS) letters.elf sheet.elf slides.elf qbstudio.elf turtle.elf 3dforge.elf n3dsemu.elf koton.elf courier.elf calendar.elf paint.elf archiver.elf clipd.elf clockd.elf clipboard.elf screenshot.elf media.elf pdf.elf mail.elf telegram.elf pocketqi.elf photos.elf pkgman.elf pkgd.elf printd.elf BinUtils/basic.elf $(KPLUG_ELFS): lib/appkit_stubs.o
 
 # ---- Shared libraries (docs/SHARED-LIBS-PLAN.md; kapi v83): position-independent code linked with
 # Runtime/lib.ld at 0 -- the kernel places it --, ONE exported symbol (Runtime/lib.vers), the export table, which is
@@ -591,6 +591,21 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard Libs/mail/*.h)
 	$(CXX) $(NL_CXXFLAGS) -Wno-format-truncation -IKits/fontkit -I$(FT_SRC)/include -I$(MAIL_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
 	       lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a -L$(MAIL_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lm -o $@
 
+# PocketQI, Pocket the family's desk assistant (Apps/pocketqi: the user's PocketQI, github.com/stephaneweg/PocketQI,
+# ported): a newlib app as Courier (FreeType's text through uikit, mbedTLS for https:// -- NetKit's http.hpp over
+# ../tls/onyx_tls.hpp), Onyx BASIC's compiler and VM built in for its skills, PocketQI's own C cores (core/: the LLM's
+# protocol, the moods, the face) compiled as C.
+PQI_MBEDTLS ?= ../third_party/mbedtls-3.6.3
+PQI_CORE = Apps/pocketqi/core/groq_proto.o Apps/pocketqi/core/pocket_humeur.o Apps/pocketqi/core/pocket_visage.o
+Apps/pocketqi/core/%.o: Apps/pocketqi/core/%.c $(wildcard Apps/pocketqi/core/*.h)
+	$(CC) $(NL_CFLAGS) -fno-math-errno -c $< -o $@
+pocketqi.elf: Apps/pocketqi/main.cpp $(wildcard Apps/pocketqi/*.h) $(PQI_CORE) Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
+	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h Libs/basic/basfont.h Kits/netkit/http.hpp Libs/tls/onyx_tls.hpp \
+	      lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
+	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include -I$(PQI_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
+	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp $(PQI_CORE) lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a \
+	       -L$(PQI_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lstdc++ -lm -o $@
+
 # Telegram, the instant messenger in the way of Windows Live Messenger (Apps/telegram: docs/04 "Telegram"): a newlib app as
 # Mail (FreeType's text through uikit), its own MTProto 2.0 (tl.h, mtproto.h, client.h) on mbedTLS's cryptography, the API's
 # schema compiled in (schema.inc: tools/telegram/mkschema.py), FileKit's inflate (gzip_packed), uikit's image codecs, ImageKit's
@@ -959,7 +974,7 @@ BinUtils/basic.elf: Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/uikit.imp.a
 	$(CXX) $(CXXFLAGS_FP) -I. -IKits -IRuntime -IInclude -ILibs -IEmulators -IPorts $(LDFLAGS) $(KAPI_ALIASES) Runtime/crt0.S Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/audiokit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a -o $@
 
 clean:
-	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Emulators/nds/*.o Emulators/nds/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
+	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a Apps/pocketqi/core/*.o $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Emulators/nds/*.o Emulators/nds/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
 	rm -f Kits/uikit/*.o Kits/uikit/*.a
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj

@@ -160,6 +160,12 @@ build () {
 		$CXX -Iuser/Kits/fontkit -I$FT/include -Iuser/Apps/clipd -o "$OUT/clipboard" "$OUT/fakekapi.o" $D/clipboard_demo.cpp \
 			"$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
+	if [ "$1" = pocketqi ]; then			# (newlib-like: FreeType; no TLS on the PC; Onyx BASIC built in for its skills; PocketQI's C cores)
+		mkdir -p "$OUT/pqi"
+		for f in groq_proto pocket_humeur pocket_visage; do gcc -O2 -w -c user/Apps/pocketqi/core/$f.c -o "$OUT/pqi/$f.o" || return 1; done
+		$CXX -Iuser/Kits/fontkit -I$FT/include -DPOCKETQI_NO_TLS -o "$OUT/pocketqi" "$OUT/fakekapi.o" user/Apps/pocketqi/main.cpp user/Libs/basic/bascomp.cpp \
+			user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT"/pqi/*.o "$OUT/libuikit.a" "$OUT/libft.a" -lpthread -lm; return
+	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
 	fi
@@ -172,7 +178,7 @@ build () {
 APPS="2048 agenda calendar cardfile control dock dockconf eyes fileviewer freecell gamelib graphcalc iconedit
       fmtracker invaders irc mandelbrot menubar minesweeper paint pipes rtfview solitaire taskman terminal theme
       tinycalc tinypad widgets wifimenu letters sheet slides qbstudio turtle 3dforge ledger koton courier archiver clipboard screenshot media pdf mail photos setup pkgman gpiolab
-      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram ndsemu"
+      config wpaconf padconf soundconf displayconf keyconf langconf modeconf preloadconf disks notes stickies circuits pinball critters clock telegram ndsemu pocketqi"
 for a in $APPS; do build $a & done
 # the BASIC runtime (SD:/bin/basic: a BASIC program's window; its PLAYFILE, MIDINOTE: AudioKit)
 audiokit
@@ -794,6 +800,27 @@ if want mail; then			# (Mail against two made-up mailboxes: tools/tests/mail/fak
 	ms mail-hosted new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40"
 	ms mail-m365 new "$WZ;$(typ 'steph@acme-demo.be');$W40;down 714 514;up 714 514;$W40;down 360 368;up 360 368;$W40;down 330 291;up 330 291;wait;wait;wait;wait;wait"
 	kill $MS1 $MS2
+fi
+if want pocketqi; then			# (PocketQI: a sentence typed, the LLM's answer canned -- SIM_NET: a chat completion whose message
+					#  is the outcomes -- and run: the face's mood, what Pocket remembers, a skill (the agenda, in
+					#  French); its config.ini, in the writes' folder, sends the LLM's request to a server of its own)
+	PQ="$OUT/writes/apps/pocketqi.app"; rm -rf "$PQ"; mkdir -p "$PQ"
+	printf 'provider = mistral\nurl = http://llm.local/v1/chat/completions\n' > "$PQ/config.ini"
+	# llm_answer OUTCOMES: the HTTP answer of a chat completion whose message is OUTCOMES (its quotes written \")
+	llm_answer () {
+		b="{\"id\":\"sim\",\"object\":\"chat.completion\",\"model\":\"ministral-14b-latest\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"$1\"},\"finish_reason\":\"stop\"}]}"
+		printf 'HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: %d\\r\\n\\r\\n%s' "$(printf '%s' "$b" | wc -c)" "$b"
+	}
+	W20="$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W"
+	if [ "$SHOTS_LANG" = fr ]; then
+		A=$(llm_answer '{\"langue\": \"fr\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"agenda\", \"args\": [\"write\", \"2026-09-29\", \"rendez-vous chez le dentiste\", \"14:00\"]}, {\"app\": \"say\", \"args\": [\"C'"'"'est noté.\"]}]}')
+		Q='Note le dentiste demain a 14h'
+	else
+		A=$(llm_answer '{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"retenir\", \"args\": [\"nom\", \"Lea\"]}, {\"app\": \"say\", \"args\": [\"Nice to meet you, {nom}! I will remember your name. What can I do for you today?\"]}]}')
+		Q='Hello Pocket, my name is Lea'
+	fi
+	sim pocketqi pocketqi "wait;wait;$(typ "$Q");key 13;$W20;$W20;$W20;$W20" $P SIM_SLEEP=1 SIM_NET="$A"; png pocketqi
+	rm -rf "$PQ"
 fi
 if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with
 					#  their EXIF, a library.db with favourites, albums --: the days, a selection, a photo and its

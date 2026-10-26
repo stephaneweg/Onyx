@@ -1,0 +1,13 @@
+# Pocket application -- une app vocale en BASIC : main.bas, lancee par le shell vocal.
+# COMMAND$ = les arguments donnes par le LLM (outcome), separes par des tabulations ; galo.bi : Arg$, Say.
+name = Agenda
+category = Organisation
+description = l'agenda de la famille
+# Ce que le LLM peut demander, une action par ligne :
+#   llm.<action> = <arguments> : <ce que fait l'action>
+# Types d'arguments reconnus par le shell (verifies avant de lancer l'app) : date (AAAA-MM-JJ),
+# heure (HH:MM), nombre, texte (60 caracteres au plus). Entre crochets : facultatif (seulement a la fin).
+llm.write = date texte [heure] : ajouter un rendez-vous ou un evenement (texte tel que dit, sans marqueur absent de la phrase : rendez-vous chez le dentiste, anniversaire de Paul ; heure HH:MM des qu'une heure est dite, 14h -> 14:00, midi -> 12:00, 9h30 -> 09:30, sinon rien ; si le jour n'est pas dit, ne l'invente pas, meme pas demain : demande-le avec ask) ; des que la personne annonce quelque chose de prevu ("demain j'ai le dentiste a 14h", "samedi on part en vacances"), meme sans demander de le noter
+llm.read = date [date] : dire les rendez-vous d'un jour, ou d'une periode (les deux jours inclus ; cette semaine : lundi a dimanche)
+llm.delete = texte [date] : supprimer un rendez-vous (texte : les mots qui le designent, dentiste ; la date seulement si elle est dite)
+llm.edit = texte date [heure] : deplacer un rendez-vous (les mots qui le designent, le nouveau jour, la nouvelle heure HH:MM des qu'une heure est dite)

@@ -3682,6 +3682,45 @@ covers them offline. **Not tried here**: the TCP transport (the PC's sandbox all
 on the Pi. **The screenshots**: `sh tools/tests/desktop_sim/shots.sh telegram` (`--demo`). The icon:
 `python3 tools/icons/telegram_icon.py`.
 
+### PocketQI, Pocket the desk assistant (`user/Apps/pocketqi`)
+
+PocketQI (its use: docs/04 §12 *PocketQI*) is the Onyx port of the user's project **PocketQI**
+(github.com/stephaneweg/PocketQI): Pocket, an assistant whose mind is a large language model, whose hands are small
+apps in Onyx BASIC and whose face is two animated eyes. PocketQI runs on a robot (a bare-metal Circle kernel), an
+ESP32 handheld and Windows; on Onyx it is a **newlib** uikit app (`pocketqi.elf`: FreeType's text, mbedTLS for
+https:// as Courier, Onyx BASIC's compiler and VM built in). **MIT**, all of it (PocketQI's code is the author's own,
+placed under MIT here; mbedTLS is taken under Apache-2.0).
+
+| File | What |
+|---|---|
+| `core/groq_proto.c`, `.h` | **PocketQI's LLM protocol, unchanged** (C): the system prompt (in French: the model answers in the person's language), the history, the masked memory (`groq_mask` / `groq_unmask`: a value the person said becomes `{nom}` before it leaves, and back), the request's JSON (`chat/completions`, `response_format: json_object`), the answer's `{"langue": ..., "outcomes": [{"app": ..., "args": [...]}]}` parsed and checked (the moods, the gestures, the variables to remember), the providers (Groq, Mistral). Its texts can be replaced without rebuilding: `SD:/apps/pocketqi.app/prompt/<name>.txt` (`groq_set_lire_texte`). |
+| `core/pocket_humeur.c`, `.h` | **PocketQI's moods, unchanged**: 19 named moods x 3 intensities, and the two axes (valence x arousal) the skills' `SetMood` uses; the way back to neutral after 12 s (`pocket_humeur_tick`). |
+| `core/pocket_visage.c`, `.h` | **PocketQI's face, unchanged**: the eyes as signed distances, every parameter on a spring (the transitions), blinks, glances, the little signs (tears, a vein, "z z z", a heart), the states (`VISAGE_VEILLE` idle, `_ECOUTE` waiting, `_REFLECHIT` the hopping dots, `_PARLE` bobbing); drawn line by line in ARGB at any size (`pocket_visage_image_argb`). |
+| `text.h` | UTF-8 <-> Latin-1 <-> code page 437 (Onyx BASIC's strings: `basic/basfont.h`'s tables), the files (AppKit's `kapi_open` / `kapi_save_file`: the same calls in the desktop simulator), the dates (days since 1970 from `kapi_get_datetime`). |
+| `net.h` | One request: NetKit's `HttpClient` (`netkit/http.hpp`) with `ONYX_HTTP_TLS` (`tls/onyx_tls.hpp` over mbedTLS); the certificate is not verified (as `/bin/llm`). `POCKETQI_NO_TLS`: http:// only (the desktop simulator). |
+| `skills.h` | **The skills** (PocketQI's `pocket_apps.cpp`, ported): the manifests (`apps/<id>/app.txt`: `llm.<action> = <types> : <what>`, `cron =`), the outcome checked against them (an action known, the arguments' count and types -- `date` YYYY-MM-DD, also a spoken date, `heure` HH:MM, `nombre`, `texte`), the program compiled with `lib/galo.bi` after it (`WITH HEADERS ... END WITH` made `WebHeader` calls first), kept compiled (`saveBax` / `loadBax`, six at most), run by a `bas::Host` whose devices are PocketQI's: `SAY:` (each line shown, then a pause to read it, as the voice would take), `MOOD:`, `LLM:` (SendLLM), `ASKINFO:`, `CRON:` / `CRON:STOP`, `[METHOD ]http(s)://...` with `HEADERS:` / `STATUS:` / `RESPONSE:`, and Onyx's `LANG:` (the system's language); `MAIL:` and `PRINTER:` answer 501, `SCREEN:` "0 0". The skills' `SD:` is the app's folder: their paths (`SD:/apps/agenda/agenda.txt`, `SD:/etc/memoire.txt`) are PocketQI's, unchanged. |
+| `brain.h` | **Pocket's mind** (PocketQI's `pocketqi_win.cpp`: `chat ()`, `run_outcomes ()`, the cron, the stories): one turn -- the LLM asked (the server of `config.ini url`, else the provider chosen, then the other one), the outcomes run in order (`say`, `humeur`, `geste`, `retenir`, `wiki` / `askinfo` / `ask` with their second turn, `next` / `reprendre`, `maketext`, `cron`, a skill), the history kept in markers, forgotten after 10 minutes. It talks to the window through `BrainUi` and its fixed words are English in the source, marked `TRN` and translated by the window. |
+| `main.cpp` | The window: `FaceView` (the face at 25 images a second), `ChatView` (the bubbles, wrapped by `uk_text_wrap`), the field (`Entry`), three questions to try, the menus, the settings (`FormDialog`), the memory. **The brain runs on a thread** (`kapi_thread_create`, 1 MB of stack): a sentence handed over with an event (`g_jobEv`), the person's answer to a question with another (`g_ansEv`); everything it shows comes back through `kapi_post` (`on_msg`: a line, a mood, a state, the end of the turn), so the face keeps moving while the network or a skill works. `ONYX_HOSTED_NEW`: libstdc++'s `operator new` (the brain keeps its text in `std::string`). |
+
+**A skill of your own**: a folder `SD:/apps/pocketqi.app/apps/<id>/` with `main.bas` and `app.txt` (`name`,
+`description`, one `llm.<action> = <types> : <what it does, for the model>` line per action; `cron = <actions>` for
+those the cron may run again). The arguments come in `COMMAND$`, separated by tabs (`Arg$ (1)` is the action);
+`Say "..."` shows a sentence; `Ask$ ("...")` asks the person and returns the answer ("" when none); `ForLLM` is 1 when
+the skill runs for the model (askinfo: what it says goes back to the model as data); `Web$`, `WebSend$`, `WebHeader`,
+`WebStatus`, `JsonText$` reach a web API; `SetMood 60, 40` or `SetMoodName "happy", 2` set the face; `LANG:` read
+gives `en` or `fr`. PocketQI Studio (PocketQI's Windows IDE) writes such skills too. The skills shipped are PocketQI's
+own (agenda, todo, courses, meteo, humeur) and speak French; their `genpdf` / `genmail` actions are left out of the
+manifests (no printing or mail skill on Onyx yet).
+
+**Following PocketQI**: the three `core/` files are PocketQI's commit `060b797` as they are, but for their two-line MIT
+header -- copy a newer one over them (keep the header). `skills.h` and `brain.h` follow PocketQI's `pocket_apps.cpp` and
+`pocketqi_win.cpp`; `sdcard/apps/pocketqi.app/{apps,lib}` its `system/sd/{apps,lib}` (LF line ends here).
+
+**Tests on the PC**: `sh tools/tests/desktop_sim/shots.sh pocketqi` (and `SHOTS_LANG=fr`): the window with a turn
+whose LLM answer is canned (`SIM_NET`: a chat completion; `config.ini url =` points the request at it) -- in English a
+name remembered, in French the agenda skill run in the VM. The icon: `python3 tools/icons/pocketqi_icon.py`. **Not tried
+here**: Mistral and Groq themselves, over TLS, on the Pi.
+
 ### Photos, the photo library (`user/Apps/photos`)
 
 The photo library (the mock-ups, the plan and the user's decisions: `docs/photos/README.md`; its use: docs/04 *Photos*)
