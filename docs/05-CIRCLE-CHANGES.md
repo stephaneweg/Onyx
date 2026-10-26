@@ -1093,32 +1093,34 @@ Find, which no layout maps), where `SD:/etc/keymaps/JP.kmap` has them. The raw k
 are unchanged. Not the keymap decoupling of §1 (its skill re-applies that one after an upstream merge: check this
 fold is still there too). Fork commit `9a9180ba`. **Not tested on a Japanese keyboard yet.**
 
-## 33. The Pi 4's two xHCI controllers at once (the USB-C socket)
+## 33. The Pi 4's DWC OTG controller as a host beside the xHCI (the USB-C socket)
 
-**Why.** The Raspberry Pi 4 has two xHCI controllers: the VL805 on PCIe (the four USB-A sockets) and the SoC's own
-(`0xFE9C0000`, the USB-C socket, with `config.txt otg_mode=1`). Upstream drives one or the other, chosen when it is
-built (`USE_XHCI_INTERNAL`). The keyboard of the **Waveshare PocketTerm35** (an RP2040, an ordinary USB HID keyboard
-that `CUSBKeyboard` takes) is wired to the USB-C socket, and the USB-A sockets must keep working.
+**Why.** The keyboard of the **Waveshare PocketTerm35** (an RP2040, an ordinary USB HID keyboard that `CUSBKeyboard`
+takes) is wired to the Pi 4's **USB-C socket**. On a Pi 4 B that socket is the **DWC OTG** controller's (Linux:
+`dtoverlay=dwc2,dr_mode=host`, the maker's instructions). Upstream builds the DWC host driver (`CDWHCIDevice`) for the
+Pi 1-3 only, and the USB library chooses xHCI or DWHCI when it is built (`RASPPI <= 3` / `>= 4`).
 
-**What.** Without `USE_XHCI_INTERNAL` the Pi 4 now builds `XHCI_PI4_DUAL` (`usb/xhciconfig.h`):
-- `CUSBHCIDevice` is **`CUSBSubSystem`** on the Pi 4 too (`usb/usbhcidevice.h`, `lib/usb/Makefile`), as on the Pi 5,
-  without the Pi 5's southbridge: device #0 the VL805 at once; **device #1** the SoC's controller, made in
-  `Initialize ()` when `EnableInternalController ()` was called before it. Its failure is a warning (`Cannot
-  initialize xHCI device #1`): the VL805 keeps running. Both share the subsystem's `CXHCISharedMemAllocator`.
-- `CXHCIDevice`: per controller, the IRQ (`ARM_IRQ_PCIE_HOST_INTA` / `ARM_IRQ_XHCI_INTERNAL`), the registers
-  (`ARM_XHCI0_BASE` / `ARM_XHCI1_BASE`, `bcm2711.h`), the version (0x100 / 0x110), the PCIe bring-up and the VL805's
-  firmware load (device #0 only), the slots enabled (`GetMaxSlots ()`: the controller's own, at most
-  `XHCI_CONFIG_MAX_SLOTS`, now 64 for the arrays; `xhcislotmanager.cpp` writes it), and the **contexts' stride**
-  (`GetContextSize ()`, HCCPARAMS1's CSZ: 32 bytes on the VL805, 64 on the SoC's).
-- `usb/xhci.h`: `XHCI_INPUT_CONTEXT_SIZE`, `XHCI_DEVICE_CONTEXT_SIZE`, `XHCI_INPUT_CONTROL / _DEVICE / _SLOT /
-  _ENDPOINT` lay the contexts out by that stride; `xhciusbdevice.cpp` and `xhciendpoint.cpp` build the input contexts
-  and size the device context with them instead of the structures' size (kept at 32 bytes on the Pi 4). The DMA
-  addresses are unchanged: the Pi 4's PCIe inbound window starts at 0.
+**What.**
+- `sysconfig.h`: `USB_HCI_DWHCI` / `USB_HCI_XHCI`, what the library is built for -- **both on the Pi 4** (without
+  `USE_XHCI_INTERNAL`). `CUSBHostController::IsXHCI ()` (TRUE in `CXHCIDevice`) and `USB_HOST_IS_XHCI (host)`: the
+  library asks a device's host which one it is where it chose by the board -- `usbdevice` (the address from the pool
+  on a DWHCI device, the slot on an xHCI one; `EnableHubFunction ()` no longer pure), `usbendpoint` (the PID and
+  interval of a DWHCI endpoint, the `CXHCIEndpoint` of an xHCI one), `usbstandardhub` (the child's class),
+  `usbstring` (the long request on xHCI), `usbserialhost`, `usbaudiostreaming`, `usbfloppydevice`;
+  `CDWHCIRootPort::GetPortID ()` = 1. The Pi 1-3 and the Pi 5 build as before.
+- `CUSBHCIDevice` is **`CUSBSubSystem`** on the Pi 4 (`usbhcidevice.h`, `lib/usb/Makefile`: the DWHCI and the
+  subsystem built for the Pi 4): the VL805's xHCI, and the `CDWHCIDevice` made in `Initialize ()` after
+  `EnableDWHCI ()`; its failure is a warning, the USB-A sockets keep working.
+- `dwhcidevice.cpp`, `InitCore ()`, Pi 4: the host mode **forced** (`DWHCI_CORE_USB_CFG_FORCE_HOST_MODE`, bit 29),
+  then waited for (`CUR_MODE_HOST`, 200 ms at most) -- the USB-C socket has no ID pin saying "host". Its DMA uses
+  `BUS_ADDRESS` (the first GB, `HEAP_LOW` buffers), as the gadget driver does on the Pi 4.
 
-`USE_XHCI_INTERNAL` (one controller, the CM4's) and the Pi 5 build as before (both checked to compile). The kernel
-calls `EnableInternalController ()` for `cmdline.txt usbc=1` (docs/02 §1, docs/04 `cmdline.txt`). Fork commit
-`af3c5667`. **Not yet tried on the device** (2026-10-26): the VL805's path is the one changed least (its stride and
-limits are the old constants), the SoC controller's is upstream's `USE_XHCI_INTERNAL` one.
+The kernel calls `EnableDWHCI ()` for `cmdline.txt usbc=1` (docs/02 §1, docs/04 `cmdline.txt`). USB audio on the
+DWHCI is not supported (`usbsoundbasedevice` is xHCI's). **Not yet tried on the device** (2026-10-26).
+
+*History:* a first try the same morning drove the SoC's **internal xHCI** instead (`config.txt otg_mode=1`, fork
+`af3c5667`): the Pi 4 B hung at boot when its registers were read (that controller is the CM4's); reverted
+(`85e3c7d7`).
 
 ## Contributions to upstream Circle
 

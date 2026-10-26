@@ -207,11 +207,10 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   a little faster, and the games' direct full-screen mode comes back. The Control Panel's **Display** applet has the
   check box (*Alpha fix*, shown on a Pi 5).
 - **`usbc`** (the Raspberry Pi 4 only): `usbc=1` makes the **USB-C socket a USB host** too, beside the four USB-A
-  sockets: its controller (the SoC's own xHCI) is started with the VL805's. It needs **`otg_mode=1`** in `config.txt`'s
-  `[pi4]` section (the firmware then routes the socket to that controller). That is where the keyboard of a
-  **Waveshare PocketTerm35** is (its RP2040 is wired to the Pi's USB-C socket, inside); the maker's
-  `dtoverlay=dwc2,dr_mode=host` is for Linux only — Onyx reads no overlay. Without `otg_mode=1` the socket stays
-  the power input only, and `kmsg` says `Cannot initialize xHCI device #1`; the USB-A sockets work either way.
+  sockets: its DWC OTG controller is started as a host after the USB-A sockets' controller. That is where the keyboard
+  of a **Waveshare PocketTerm35** is (its RP2040 is wired to the Pi's USB-C socket, inside). The maker's
+  `dtoverlay=dwc2,dr_mode=host` in `config.txt` is for Linux (Onyx reads no overlay; it does no harm); **do not** put
+  `otg_mode=1`. `kmsg` says `USB-C socket: DWC OTG host running`, or why not; the USB-A sockets work either way.
   **Not yet tried on the device** (2026-10-26).
 - **`slice`**: the app time slice, in 10 ms ticks (default `2` = 20 ms).
 - **`hogsched`**: `hogsched=0` turns off the CPU-hog detection (apps preempted twice in a

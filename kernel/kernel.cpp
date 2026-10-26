@@ -2248,11 +2248,11 @@ boolean CKernel::Initialize (void)
 	if (bOK)
 	{
 #if RASPPI == 4
-		// cmdline.txt usbc=1: the USB-C socket's controller too (the SoC's own xHCI, beside the
-		// VL805), with config.txt otg_mode=1 -- the keyboard of a Waveshare PocketTerm35 is there
+		// cmdline.txt usbc=1: the USB-C socket as a host too (the DWC OTG controller, beside the
+		// VL805's xHCI) -- the keyboard of a Waveshare PocketTerm35 is there
 		if (m_Options.GetAppOptionDecimal ("usbc", 0) != 0)
 		{
-			m_USB.EnableInternalController ();
+			m_USB.EnableDWHCI ();
 		}
 #endif
 		m_bUSB = m_USB.Initialize ();

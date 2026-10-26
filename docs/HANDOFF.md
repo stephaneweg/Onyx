@@ -80,13 +80,15 @@ mockup_pocketterm.py`). What is built, slice by slice, and what differs from the
 The same branch has the PocketTerm Simulator (`pc/`, another session's: the device's face on a PC, a client of `rdpd`).
 
 **Update, 2026-10-26: the device has arrived** (the user: Onyx boots on it, the screen by HDMI, the battery and the
-network fine) -- **its keyboard did not answer**: its RP2040 is wired to the Pi's **USB-C socket**, which Circle did
-not drive (the maker's `dtoverlay=dwc2,dr_mode=host` is Linux's). Built the same day: Circle drives the Pi 4's two
-xHCI controllers at once (docs/05 §33, fork `af3c5667`); `cmdline.txt usbc=1` + `config.txt [pi4] otg_mode=1` start
-the USB-C one (docs/04 `cmdline.txt`). The user's card (D:) has this kernel, both lines and backups
-(`kernel8-rpi4_avant_usbc.img`, `config.txt.avant_usbc`, `cmdline.txt.avant_usbc`). **Waiting for the test on the
-device**; if the keyboard still does not answer: `kmsg` (`xhci`, `usb` lines: device #1 running? a `ukbd` found?).
-The branch was merged with `main` of 2026-10-19 the same day (conflicts: 3DForge's TR words, Console Home's French).
+network fine) -- **its keyboard did not answer**: its RP2040 is wired to the Pi's **USB-C socket**, the DWC OTG
+controller's (the maker's `dtoverlay=dwc2,dr_mode=host` is Linux's), which Circle drove on the Pi 1-3 only. A first
+try drove the SoC's internal xHCI (`otg_mode=1`): the Pi 4 B **hung at boot** -- reverted. Built the same day: Circle's
+DWHCI on the Pi 4 beside the xHCI, the USB library choosing by each device's host (docs/05 §33);
+`cmdline.txt usbc=1` starts it. The user's card (D:) has this kernel, `usbc=1`, the maker's overlay line and no
+`otg_mode`; backups `kernel8-rpi4_avant_usbc.img`, `config.txt.avant_usbc`, `cmdline.txt.avant_usbc`. **Waiting for
+the test on the device**; if it hangs: remove `usbc=1`; if the keyboard does not answer: `kmsg` (`dwhci`, `usb`
+lines: host running? a `ukbd` found?). The branch was merged with `main` of 2026-10-19 the same day (conflicts:
+3DForge's TR words, Console Home's French).
 
 **Update, 2026-10-11 (the user's decision; `docs/COMPACT-SHELL-STUDY.md` section 20.7 has the table):** Start and
 Select are the games' -- the shell binds nothing to them (`[buttons]` `start` / `select` = `none`). **CMD (Super)
