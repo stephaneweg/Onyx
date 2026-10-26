@@ -104,7 +104,8 @@ static inline void pad_keyboard (int on) { g_pad_kbd_on = on; }
 static const struct { const char *name; int code; } pad_key_words[] = {
 	{ "up", KEY_UP }, { "down", KEY_DOWN }, { "left", KEY_LEFT }, { "right", KEY_RIGHT }, { "enter", KEY_ENTER },
 	{ "backspace", KEY_BACKSPACE }, { "space", ' ' }, { "tab", KEY_TAB }, { "esc", 27 }, { "home", KEY_HOME },
-	{ "end", KEY_END }, { "pgup", KEY_PGUP }, { "pgdn", KEY_PGDN }, { "del", KEY_DEL }, { "none", 0 } };
+	{ "end", KEY_END }, { "pgup", KEY_PGUP }, { "pgdn", KEY_PGDN }, { "del", KEY_DEL },
+	{ "prtsc", KEY_PRTSC }, { "pause", KEY_PAUSE }, { "none", 0 } };
 // A key's word in gamepad.ini -> its code (the KEY_* of appkit.h, a lower-case character), -1 not a key.
 static inline int pad_key_code (const char *w, int n)
 {

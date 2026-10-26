@@ -35,6 +35,9 @@
 
 using namespace uikit;
 
+// The screen at the size of the app in front (SystemKit display.h's display_follow: an app's app.txt `resolution =`, the
+// user's SD:/etc/console.ini [screen] line, what it asked; the system's size at home) -- shared with the pocket shell.
+static struct display_follow g_follow;		// (before the catalog: its open_app uses it)
 #include "Apps/pocketshell/catalog.h"		// the apps, the categories, the recent ones, the running ones
 #include "Apps/pocketshell/look.h"		// rounded boxes of any radius, rings, shadows
 
@@ -142,10 +145,6 @@ struct Hits { Hit h[MAXHITS]; int n; void clear () { n = 0; } void add (int x, i
 	const Hit *at (int x, int y) const { for (int k = n - 1; k >= 0; k--) if (x >= h[k].x && x < h[k].x + h[k].w && y >= h[k].y && y < h[k].y + h[k].h) return &h[k]; return 0; } };
 static Hits g_homeHits, g_overHits;
 enum { H_CAT = 1, H_ITEM, H_SUB, H_ROW, H_PAGE, H_DBTN, H_KEY };
-static bool screen_of (const char *app, int *w, int *h);
-static void screen_to (int w, int h, const char *who);
-static char g_launch[32];				// an app just opened: its size before it comes in front (screen_follow)
-static unsigned g_launchT;
 // A hint's width (hint () below draws it): its button's pill and its word.
 static int hint_w (const char *btn, const char *word)
 {
@@ -728,74 +727,16 @@ static void pad_poll (void)
 
 // ---- the games' screen sizes ----------------------------------------------------------------------------------
 // An app may want its own resolution on the console (an emulator: the size its picture scales best to, the GPU's
-// work for the 3D ones): its app.txt's `resolution = 800x600`, or the
-// user's SD:/etc/console.ini, section [screen], `<app> = 640x480` (`system`: the system's). While that app is in
-// front the screen has its size (kapi_screen_set, switched before it starts when this shell opens it); at home, the
-// game ended or another app in front, the system's size again (the one the screen had before).
-static int g_sysW, g_sysH;
-static bool screen_of (const char *app, int *w, int *h)	// the app's own size (SystemKit display.h) -> true (cached by name)
-{
-	static char s_app[32]; static int s_w, s_h; static unsigned s_t;
-	if (!ieq (app, s_app) || kapi_get_ticks () - s_t > 500)	// (read again every 5 s: a file changed meanwhile)
-	{
-		fs_copy (s_app, app, sizeof s_app); s_t = kapi_get_ticks ();
-		if (!display_game_size (app, &s_w, &s_h)) s_w = s_h = 0;
-	}
-	*w = s_w; *h = s_h;
-	return s_w > 0;
-}
-// The screen at w x h for an app (w 0: the system's size again). The system's size is the screen's whenever no app's
-// own size is on (a change made meanwhile -- the Display applet -- followed); only a size set here is undone.
-static bool g_ours;					// the screen has an app's size, set here
-// A size an app asked for itself while it runs (display_game_ask: a BASIC game's SCREEN mode) -- its while it is in
-// front, forgotten when it is no longer among the tasks. "*": asked before it was seen in front.
-static char g_askApp[32]; static int g_askW, g_askH;
-static void screen_asked (int w, int h)
-{
-	int ok = 0;
-	for (int i = 0; w > 0 && i < display_modes (); i++) { int mw, mh; display_mode (i, &mw, &mh); if (mw == w && mh == h) ok = 1; }
-	if (!ok) { g_askApp[0] = 0; g_askW = g_askH = 0; return; }
-	fs_copy (g_askApp, g_front[0] ? g_front : "*", sizeof g_askApp); g_askW = w; g_askH = h;
-}
-static void screen_to (int w, int h, const char *who)
-{
-	int cw = 0, ch = 0;
-	kapi_screen_size (&cw, &ch);
-	if (w == 0 && !g_ours) { if (cw > 0) { g_sysW = cw; g_sysH = ch; } return; }
-	if (w == 0) { w = g_sysW; h = g_sysH; }
-	else if (!g_ours && cw > 0) { g_sysW = cw; g_sysH = ch; }
-	static unsigned s_fail; static int s_fw, s_fh;
-	if (cw == w && ch == h) { g_ours = w != g_sysW || h != g_sysH; return; }
-	if (w == s_fw && h == s_fh && kapi_get_ticks () - s_fail < 200) return;	// (refused: again in 2 s)
-	int r = kapi_screen_set (w, h);
-	char m[96]; int n = 0;
-	lx_cat (m, sizeof m, &n, "consolehome: the screen at "); num_cat (m, sizeof m, &n, w); lx_cat (m, sizeof m, &n, " x "); num_cat (m, sizeof m, &n, h);
-	lx_cat (m, sizeof m, &n, who[0] ? " for " : " (the system's)"); if (who[0]) lx_cat (m, sizeof m, &n, who);
-	if (r != 0) { lx_cat (m, sizeof m, &n, " -- not now: "); num_cat (m, sizeof m, &n, r); s_fail = kapi_get_ticks (); s_fw = w; s_fh = h; }
-	else g_ours = w != g_sysW || h != g_sysH;
-	static char s_said[96];
-	if (strcmp (m, s_said) != 0) { strcpy (s_said, m); ax_putln (m); }	// (a refusal said once)
-}
+// work for the 3D ones): its app.txt's `resolution = 800x600`, or the user's SD:/etc/console.ini, section [screen],
+// `<app> = 640x480` (`system`: the system's). While that app is in front the screen has its size (switched before it
+// starts when this shell opens it); at home, the game ended or another app in front, the system's size again.
+// SystemKit's display_follow does it (2026-10-26: the pocket shell does the same).
 static void screen_follow (void)			// (every 0.1 s: the screen at the size of what is in front)
 {
-	if (g_sysW == 0) return;
-	const char *who = g_home ? "" : g_front;
-	if (g_launch[0])
-	{
-		if (ieq (g_front, g_launch) || kapi_get_ticks () - g_launchT > 1000) g_launch[0] = 0;	// (in front, or 10 s)
-		else who = g_launch;
-	}
-	int w = 0, h = 0;
-	if (g_askApp[0] == '*' && g_front[0]) fs_copy (g_askApp, g_front, sizeof g_askApp);
-	if (g_askApp[0] && g_askApp[0] != '*')			// (its app ended: forgotten)
-	{
-		bool there = false;
-		for (int i = 0; i < g_ntasks; i++) if (ieq (g_tasks[i].name, g_askApp)) there = true;
-		if (!there) { g_askApp[0] = 0; g_askW = g_askH = 0; }
-	}
-	if (who[0] && g_askApp[0] && ieq (who, g_askApp)) { w = g_askW; h = g_askH; }
-	else if (!(who[0] && screen_of (who, &w, &h))) w = h = 0;
-	screen_to (w, h, w ? who : "");
+	const char *names[UK_TASKS_MAX];
+	int n = 0;
+	for (int i = 0; i < g_ntasks && i < UK_TASKS_MAX; i++) names[n++] = g_tasks[i].name;
+	display_follow_tick (&g_follow, g_home ? "" : g_front, names, n);
 }
 
 static void messages (void)
@@ -806,7 +747,7 @@ static void messages (void)
 	{
 		if (type == SHELL_MSG_HOME) { menu_hide (); uk_shell_front (0, 0); g_homeDirty = true; }
 		else if (type == SHELL_MSG_SWITCHER || type == SHELL_MSG_QUICK) menu_toggle ();
-		else if (type == SHELL_MSG_SCREEN && n >= 8) { int s[2]; memcpy (s, buf, 8); screen_asked (s[0], s[1]); }
+		else if (type == SHELL_MSG_SCREEN && n >= 8) { int s[2]; memcpy (s, buf, 8); display_follow_ask (&g_follow, g_front, s[0], s[1]); }
 	}
 }
 
@@ -878,7 +819,7 @@ int main (void)
 		return 0;
 	}
 	kapi_screen_size (&g_sw, &g_sh);
-	g_sysW = g_sw; g_sysH = g_sh;				// (the system's size: the screen's with no game's size on)
+	display_follow_init (&g_follow, "consolehome");		// (the system's size: the screen's with no game's size on)
 	{
 		struct uk_win_server_info si;
 		memset (&si, 0, sizeof si);

@@ -24,35 +24,63 @@ InputKit is the keyboard and the gamepads as one input: a program asks for an ac
 
 ## Using it
 
-**Before writing a helper, look for it in the kits.** If two programs could use it, it belongs to a
-kit.
+A program asks for an **action** — `IN_UP`, `IN_ACCEPT`, `IN_NEXT`... — never for "the arrow key or the D-pad".
+Each action has its **sources**, keys (with their modifiers) and pad buttons, in one file, **`SD:/etc/input.ini`**
+(two sections, `[keys]` and `[pad]`; without the file, or for what it does not say, the defaults):
 
-### Adding a function to a kit
+| action | keys | pad | what it is for |
+|---|---|---|---|
+| `up` `down` `left` `right` | the arrows | the D-pad (and the left stick) | the focus, the caret |
+| `accept` | Enter | A | open, confirm, activate |
+| `back` | Esc | B | cancel, close, back |
+| `alt1` | Delete | X | the second action: close the chosen app, remove |
+| `alt2` | Shift+F10 | Y | the options: a context menu |
+| `prev` / `next` | Ctrl+Page Up, Ctrl+Shift+Tab / Ctrl+Page Down, Ctrl+Tab | L / R | the tab, the category, the section before / after |
+| `menu` | F10 | — | the app's menus (PocketUI's CMD key is the server's own) |
+| `home` | Ctrl+Esc | the middle button | Home |
+| `start` `select` `l2` `r2` | — | Start, Select, L2, R2 | a game's |
 
-1. **Declare** it in the kit's header, with a comment that says what it does.
-2. **Write its code** in the kit's source (for SystemKit, NetKit and `filekit/fsutil.h`: the `.inc`
-   beside the header).
-3. **Build**: the kit's table (`<kit>.abi`) gets the new name at its end. Commit the `.abi`. A name is
-   never removed nor renamed: a function that is no longer needed keeps a body.
-4. **Raise the package's version** (`tools/pkg/versions.ini`: `1.<the table's size>.0`) and what the
-   applications need (`needs = <kit> >= 1.<size>` in `tools/pkg/packages.ini`).
-5. **Document** it: its comment in the header is its documentation — run
-   `python tools/docgen/kitdocs.py` (the kit's reference follows), add an example here if it deserves
-   one, then `python docs/build_docs.py`.
+Which raw button of a given pad model is "A" stays **`gamepad.h`**'s business (`SD:/etc/gamepad.ini`, the Control
+Panel's Gamepad applet): InputKit is built on it, and the emulators that still read `gamepad.h` are untouched.
 
-### Creating a kit
+Two ways to read, for two kinds of programs:
 
-When a domain has no kit (SystemKit and NetKit are the models — small, with no dependency):
+- **events**, for an interface — `in_poll` gives the pads' actions *pressed*, *repeated* (the directions, at the
+  keyboard's cadence) and *released*, each saying its source (so a hint shows the right glyph: `in_binding`); a key
+  the program received becomes its action with `in_key_action (key, kapi_get_modifiers ())`. Only the program that
+  has the keys gets a pad's events: a background app never moves;
+- **state**, for a game — `in_state (player, &st)`: the actions held now (`st.held & IN_BIT (IN_ACCEPT)`), the
+  sticks, per player; player 0 also reads the keyboard's held keys. A program that reads the state **owns the pad**
+  (`in_claimed`): the interface's navigation leaves it alone.
 
-- a folder `user/Kits/<kit>/`: **one header a program includes, `<kit>/<kit>.h`** — it may bring a
-  header per subject, each declaring its functions (`XK_API int f (...);`) with a `.inc` beside it for
-  the code — and one source `<kit>.cpp` that compiles the code into the library;
-- its rules in `user/Makefile` (copy SystemKit's block): the library `lib/<kit>.so`, its import
-  archives `lib/<kit>.imp.a` (C++) and `lib/<kit>.imp_c.a` (C);
-- its package in `tools/pkg/packages.ini` (`required = 1`, `files = lib/<kit>.so lib/<kit>.bi` — the `.bi` is
-  what BASIC reads of it, made by the build: *From BASIC* above).
+```cpp
+#include "inputkit/inputkit.h"
 
-The header of a kit a C program may use is written in C.
+// an interface with its own loop: the pad and the keys through the same switch
+static void act (int action)
+{
+	switch (action)
+	{
+	case IN_LEFT:   move (-1); break;
+	case IN_RIGHT:  move (1); break;
+	case IN_ACCEPT: open_chosen (); break;
+	case IN_BACK:   close_me (); break;
+	case IN_NEXT:   next_page (); break;
+	}
+}
+static void on_key (unsigned long, int, long key) { int a = in_key_action ((int) key, kapi_get_modifiers ()); if (a >= 0) act (a); }
+// ... each turn:
+struct in_event ev[8];
+for (int i = 0, n = in_poll (ev, 8); i < n; i++) if (ev[i].kind != IN_RELEASE) act (ev[i].action);
+
+// a game: the state
+struct in_state st;
+if (in_state (0, &st)) { if (st.held & IN_BIT (IN_LEFT)) x--; if (st.held & IN_BIT (IN_ACCEPT)) jump (); }
+```
+
+**A UIKit app writes none of this**: a `Root` takes its navigation from InputKit (docs/03 §5.10.8) — the pad's
+directions, A, B and X act as the arrows, Enter, Esc and Delete on the focused control, L / R step the window's
+tabs, Y is the context menu. Text is not InputKit's: characters keep coming as keys.
 
 ## Index
 

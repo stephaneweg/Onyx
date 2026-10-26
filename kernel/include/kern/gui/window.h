@@ -62,13 +62,22 @@ void ScreenDirty (void);
 #define MOD_SHIFT		2
 #define MOD_ALT			4
 
-// Logical key codes (the held keys: kapi_key_held).
+// Logical key codes (the held keys: kapi_key_held; appkit.h's).
+#define KEY_BACKSPACE		8
+#define KEY_TAB			9
 #define KEY_ENTER		13
 #define KEY_UP			0x100
 #define KEY_DOWN		0x101
 #define KEY_LEFT		0x102
 #define KEY_RIGHT		0x103
+#define KEY_HOME		0x104
+#define KEY_END			0x105
+#define KEY_PGUP		0x106
+#define KEY_PGDN		0x107
 #define KEY_DEL			0x108
+#define KEY_F1			0x110		// .. KEY_F12 = 0x11B
+#define KEY_PRTSC		0x11C		// (2026-10-26) held only: no character -- the PocketTerm35's Select
+#define KEY_PAUSE		0x11D		// ... its Start
 
 // An event queued for a program's pump.
 struct GUIEvent
@@ -115,7 +124,7 @@ private:
 	volatile boolean m_bExitRequested;
 };
 
-#define HELD_KEYS	0x110		// logical key codes tracked as "held" (< KEY_DEL + 8)
+#define HELD_KEYS	0x120		// logical key codes tracked as "held" (up to KEY_PAUSE)
 #define HELD_WORDS	((HELD_KEYS + 31) / 32)
 
 class CWindowManager

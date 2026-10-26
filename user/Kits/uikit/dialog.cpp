@@ -643,6 +643,23 @@ bool FileDialog::onKey (long k)
 		return true;
 	}
 	if (k == KEY_BACKSPACE && (m_nameBox == 0 || m_nameBox->text[0] == '\0')) { goUp (); return true; }
+	// (2026-10-26, pocket and console: the keys drive) Left / Right: the volume before / after, round -- the volumes'
+	// column was a pointer's only (the name box, when it has the keys, keeps its arrows for its caret)
+	FdExtra &x = fd_x (m_ent);
+	if ((k == KEY_LEFT || k == KEY_RIGHT) && uk_keys_drive () && x.vw && x.nvol > 1)
+	{
+		int cur = -1;
+		for (int i = 0; i < x.nvol && cur < 0; i++)
+		{
+			int n = 0; while (x.vol[i][n]) n++;
+			bool same = true;
+			for (int c = 0; c < n; c++) if (fd_low (m_dir[c]) != fd_low (x.vol[i][c])) same = false;
+			if (same) cur = i;
+		}
+		int next = cur < 0 ? 0 : (cur + (k == KEY_LEFT ? -1 : 1) + x.nvol) % x.nvol;
+		char v[8]; fd_scopy (v, x.vol[next], 8); enter (v);
+		return true;
+	}
 	return false;
 }
 

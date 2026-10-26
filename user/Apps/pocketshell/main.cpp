@@ -32,6 +32,9 @@
 #include "uikit/bmp.h"
 #include "fontkit/uikitface.h"
 #include "inputkit/inputkit.h"		// a pad's buttons and the keys as actions (buttons.h)
+// The screen at the size of the app in front, as the console's (SystemKit display.h; 2026-10-26: CosmoZoom's 800 x 600
+// bigger than a 640 x 480 handheld's screen): its app.txt's `resolution =` while it is in front, the system's again at home.
+static struct display_follow g_follow;
 
 using namespace uikit;
 
@@ -995,6 +998,15 @@ static void messages (void)
 		case SHELL_MSG_SWITCHER: if (g_over == OV_SWITCHER) over_hide (); else open_switcher (false); break;
 		case SHELL_MSG_QUICK: if (g_over == OV_QUICK) over_hide (); else over_show (OV_QUICK); break;
 		case SHELL_MSG_CLIPBOARD: if (g_over != OV_CLIP) over_hide (); clip_open (); break;
+		case SHELL_MSG_SCREEN:					// (display_game_ask: a BASIC game's SCREEN mode)
+			if (n >= 8)
+			{
+				int s[2]; memcpy (s, buf, 8);
+				const char *front = "";
+				for (int i = 0; i < g_ntasks; i++) if (g_tasks[i].flags & UK_TASK_FRONT) front = g_tasks[i].name;
+				display_follow_ask (&g_follow, front, s[0], s[1]);
+			}
+			break;
 		}
 	}
 }
@@ -1059,6 +1071,7 @@ int main (void)
 	else ax_puts ("pocketshell: no window for the on-screen keyboard\n");
 
 	kapi_ipc_register (SHELL_SERVICE);
+	display_follow_init (&g_follow, "pocketshell");
 	if (!kapi_ipc_register (NOTIFY_SERVICE)) ax_puts ("pocketshell: another program serves the notifications (notifyd)\n");
 	scan_apps ();
 	recent_load ();
@@ -1088,6 +1101,19 @@ int main (void)
 		int mi = 0;
 		kapi_get_datetime (0, 0, 0, 0, &mi, 0);
 		if (mi != lastMin) { lastMin = mi; if (g_over == OV_QUICK) g_overDirty = true; g_homeDirty = true; }	// (the Today line's "in 25 min")
+		static unsigned lastFollow;
+		if (kapi_get_ticks () - lastFollow >= 10)			// every 0.1 s: the screen at the size of the app in front
+		{
+			lastFollow = kapi_get_ticks ();
+			const char *names[UK_TASKS_MAX], *front = "";
+			int n = 0;
+			for (int i = 0; i < g_ntasks && i < UK_TASKS_MAX; i++)
+			{
+				names[n++] = g_tasks[i].name;
+				if (!g_home && (g_tasks[i].flags & UK_TASK_FRONT)) front = g_tasks[i].name;
+			}
+			display_follow_tick (&g_follow, front, names, n);
+		}
 		static unsigned lastSync;
 		if (kapi_get_ticks () - lastSync >= 100)			// every second: the screen, the agenda, the documents
 		{

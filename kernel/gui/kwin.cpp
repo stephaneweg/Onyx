@@ -87,11 +87,21 @@ static int UsageToKey (unsigned char u)
 {
 	if (u >= 0x04 && u <= 0x1D) return 'a' + (u - 0x04);
 	if (u >= 0x1E && u <= 0x26) return '1' + (u - 0x1E);
+	if (u >= 0x3A && u <= 0x45) return KEY_F1 + (u - 0x3A);	// F1 .. F12
 	switch (u)
 	{
 	case 0x27: return '0';
 	case 0x28: case 0x58: return KEY_ENTER;
 	case 0x29: return 27;
+	case 0x2A: return KEY_BACKSPACE;		// (2026-10-26: the keys a pad's buttons may be mapped to --
+	case 0x2B: return KEY_TAB;			//  the Gamepad applet's keyboard -- held too)
+	case 0x46: return KEY_PRTSC;
+	case 0x48: return KEY_PAUSE;
+	case 0x4A: return KEY_HOME;
+	case 0x4B: return KEY_PGUP;
+	case 0x4C: return KEY_DEL;
+	case 0x4D: return KEY_END;
+	case 0x4E: return KEY_PGDN;
 	case 0x2C: return ' ';
 	case 0x4F: return KEY_RIGHT;
 	case 0x50: return KEY_LEFT;

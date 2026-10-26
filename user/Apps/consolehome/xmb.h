@@ -598,17 +598,15 @@ static void draw_home (void)
 static void play_rom (int r)				// a ROM: its emulator, at the emulator's own screen size (screen_follow)
 {
 	const char *emu = g_gsys[g_roms[r].sys].emu;
-	int w, h;
 	tasks_read ();
-	if (task_of (emu) < 0 && screen_of (emu, &w, &h)) { fs_copy (g_launch, emu, sizeof g_launch); g_launchT = kapi_get_ticks (); screen_to (w, h, emu); }
+	if (task_of (emu) < 0) display_follow_launch (&g_follow, emu);
 	lx_open (g_roms[r].path, "");
 }
 static void open_app_at (int a)
 {
 	const char *name = g_apps[a].name;
-	int w, h;
 	tasks_read ();
-	if (task_of (name) < 0 && screen_of (name, &w, &h)) { fs_copy (g_launch, name, sizeof g_launch); g_launchT = kapi_get_ticks (); screen_to (w, h, name); }
+	if (task_of (name) < 0) display_follow_launch (&g_follow, name);
 	open_app (name);
 }
 static void activate (void)

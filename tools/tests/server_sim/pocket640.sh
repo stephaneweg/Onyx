@@ -904,7 +904,9 @@ if want keys; then
 		tinypad) kd $a 40 "@0;key a;key b;$W;@1;$(K $F6)@2;$(K $RIGHT)$(K 13)@3;$(K 27)@4;$(CT 0x06)@5" SIM_ARGS=SD:/notes.txt ;;
 		fileviewer) kd $a 60 "@0;$(K $DOWN)$(K $DOWN)@1;$(K 13)@2;$(K 0x7f)@3;$(K $RIGHT)@4;$(K $F6)@5" SIM_ARGS=SD:/apps ;;
 		pdf) kd $a 200 "@0;$(K $PGDN)@1;${LL}@2;$(K $DOWN)$(K $DOWN)@3;$(K $RIGHT)@4;$(K $DOWN)$(K $DOWN)@5" SIM_SLEEP=1 SIM_ARGS=SD:/${PDFDOC#sdcard/} ;;
-		media) kd $a 220 "@0;$(K $DOWN)@1;$(K 13)@2;$(K 0x20)@3;$(K $RIGHT)@4;${TAB}@5" SIM_SLEEP=1 ;;
+		media) kd $a 220 "@0;$(K $DOWN)@1;$(K 13)@2;$(K 0x20)@3;$(K $RIGHT)@4;${TAB}@5" SIM_SLEEP=1
+			# (2026-10-26) the content by the keys: its cursor over the pieces, A on one, Bksp back
+			KN=mediacur kd $a 220 "@0;$(K $DOWN)@1;$(K $DOWN)@2;$(K $RIGHT)@3;$(K $DOWN)@4;$(K 13)@5;$(K 0x08)@6" SIM_SLEEP=1 ;;
 		imageview) kd $a 80 "@0;$(CT 0x0f)$W;@1;$(K 27)@2" ;;	# (no picture: the PC's build has no ImageKit -- its file chooser, then)
 		iconedit) kd $a 60 "@0;$(K $RIGHT)$(K $DOWN)@1;key 0x2e;$W;key 0x2e;$W;$(K 13)@2;mods 2;$W;$(K $RIGHT)$(K $RIGHT)mods 0;$W;@3;key l;$W;$(K $DOWN)$(K 13)$(K $RIGHT)$(K $RIGHT)$(K $DOWN)@4;$(K 13)@5" SIM_ARGS=SD:/apps/invaders.app/icon.bmp ;;
 		fmtracker) kd $a 60 "@0;$(K $DOWN)@1;$(K $RIGHT)@2;key z;$W;@3;$(K 0x20)@4;${TAB}@5" SIM_ARGS=SD:/music/fms/AIRWOLF.FMS ;;
@@ -935,6 +937,12 @@ if want keys; then
 	kdiff fileviewer 0 1 "Down x 2: another folder"; kdiff fileviewer 1 2 "Enter: into it"; kdiff fileviewer 2 3 "Bksp: out of it"
 	kdiff pdf 0 1 "Page Down scrolls"; kdiff pdf 1 2 "L: the drawer"; kdiff pdf 2 3 "Down x 2 in Pages: the third page"; kdiff pdf 3 4 "Right: Contents"; kdiff pdf 4 5 "Down x 2: another entry and its page"
 	kdiff media 0 1 "Down: the search field has the keys"
+	if kin media; then
+		differ keys-mediacur-0 keys-mediacur-1 "media: Down: the keys' cursor on a piece of the page"
+		differ keys-mediacur-2 keys-mediacur-3 "media: Right: the next piece"
+		differ keys-mediacur-4 keys-mediacur-5 "media: A: the piece opened"
+		differ keys-mediacur-5 keys-mediacur-6 "media: Bksp: back"
+	fi
 	kdiff imageview 0 1 "Ctrl + O: the file chooser"; ksame imageview 0 2 "Esc: closed"
 	kdiff iconedit 0 1 "the arrows: a pixel has the keys"; kdiff iconedit 1 2 ". . and A: a pixel drawn in another colour"; kdiff iconedit 2 3 "Shift + Right x 2: a run"; kdiff iconedit 3 4 "L, A, the arrows: a line stretched"; kdiff iconedit 4 5 "A: the line kept"
 	kdiff fmtracker 0 1 "Down: the next row"; kdiff fmtracker 1 2 "Right: the next column"

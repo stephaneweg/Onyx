@@ -31,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 113 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 117 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -185,6 +185,17 @@ display_save_option ("opaque", "0");                       // another kernel opt
 char v[8]; if (display_saved_option ("opaque", v, sizeof v) > 0) { /* "0" */ }
 ```
 
+**The screen at the size of the app in front** (`display.h` `display_follow`, 2026-10-26): what the console's home and
+the pocket shell both do -- an app's own size while it is in front (its `resolution =`, `console.ini`, what it asked
+with `display_game_ask`), the system's again at home. A shell keeps one `struct display_follow`:
+
+```c
+static struct display_follow f;  display_follow_init (&f, "pocketshell");
+display_follow_launch (&f, "cosmozoom");          // opening it: its size now, before it reads the screen's
+display_follow_ask (&f, front, w, h);             // SHELL_MSG_SCREEN received
+display_follow_tick (&f, front, names, n);        // every 0.1 s: the app in front ("" at home), the programs running
+```
+
 **The keyboard and the mouse** (`input.h`, 2026-10-09): the layouts on the card, the one in use, taking one (kept for
 every start), whether it is AZERTY or QWERTZ (a virtual keyboard follows it), the wheel's speed:
 
@@ -209,7 +220,7 @@ input_wheel_save (3);                                       // SD:/etc/theme.txt
 | `applet_proto.h` | A settings applet shown inside the Control Panel |
 | `locale.h` | The system's language and time zone (`SD:/etc/system.ini`) |
 | `session.h` | The interface's mode (desktop, pocket, console) and its session: `SD:/etc/session/<mode>`, the switch |
-| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH)`, `shell_running ()`): the menu bar's way in pocket |
+| `shell.h` | The pocket shell's screens asked (`shell_ask (SHELL_MSG_HOME / _SWITCHER / _QUICK / _SEARCH / _CLIPBOARD)`, `shell_running ()`): the menu bar's way in pocket |
 | `recent.h` | The documents opened last (`recent_doc_add`, `recent_docs`: `SD:/etc/recent-docs`; `fa_open` notes them) |
 | `display.h` | The screen's resolution: the sizes, the one kept (`SD:/cmdline.txt`), the console's games' own (`SD:/etc/console.ini [screen]`) |
 | `input.h` | The keyboard's layouts (`SD:/etc/keymaps`, kept in `SD:/etc/autostart`) and the mouse wheel's speed |

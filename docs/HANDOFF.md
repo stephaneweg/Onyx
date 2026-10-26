@@ -94,7 +94,15 @@ tell them from the keys. **The user's choice, built the same day:** in pocket an
 steps the window's tabs (Shift+Tab back; UIKit `internal::tab_steps`), the home's categories follow Tab (a Tab cap at
 the chips' end, "Tab category"), and the screenshot is Shift+Select (PocketUI's policy `screenshot_shift`: Shift +
 Print Screen); tested in the server simulator (`pocketterm.sh input`: Tab / Shift+Tab in the gallery, Tab on the
-home). docs/COMPACT-SHELL-STUDY.md section 20.4, docs/04. The user's card: `usbc=1`,
+home). docs/COMPACT-SHELL-STUDY.md section 20.4, docs/04. **Later the same day (the user, on the device):** the pocket mode
+switches the screen to a full-screen app's own size as the console does (SystemKit `display_follow`, shared by
+pocketshell and consolehome -- CosmoZoom's 800 x 600 overflowed the 640 x 480 screen); the **Media Player**'s page by
+the keys (a cursor over its pieces with UIKit's objnav, a ring; A clicks, Bksp back; `pocket640.sh keys`: `mediacur`);
+the **file chooser**'s volumes by Left / Right (pocket, console); the **Gamepad applet**: Tab steps the pads, and the
+keyboard tab maps Print Screen / Pause (the device's Select / Start: `KEY_PRTSC`, `KEY_PAUSE`, the kernel's held keys
+extended -- Backspace, Tab, Home..Delete, F1-F12 too). **Next (the user): the touch screen** -- the PocketTerm35's
+display is a touch one (Waveshare: "keyboard + touchscreen"), not seen by Onyx; most likely I2C (the maker's
+`dtparam=i2c_arm=on`, `waveshare-35dpi-4b` overlay): an I2C scan on the Pi first, then a driver. The user's card: `usbc=1`,
 `keyb US` (QWERTY), the maker's overlay line, no `otg_mode`, and **`keylog=1` still on: remove it**. The branch was
 merged with `main` the same day and pushed into `main` (the user's request).
 

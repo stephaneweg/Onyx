@@ -261,4 +261,90 @@ SK_FN int display_game_ask (int w, int h)
 	size[0] = w; size[1] = h;
 	return kapi_mailbox_send (pid, 105 /* SHELL_MSG_SCREEN */, size, sizeof size) ? 1 : 0;
 }
+
+// ---- the screen at the size of the app in front (the console's home and the pocket shell) ----
+static inline int dp_ieq (const char *a, const char *b)
+{
+	if (!a || !b) return 0;
+	while (*a && dp_low (*a) == dp_low (*b)) { a++; b++; }
+	return *a == 0 && *b == 0;
+}
+static inline void dp_copy (char *d, const char *s, int cap) { int i = 0; if (s) while (s[i] && i < cap - 1) { d[i] = s[i]; i++; } d[i] = 0; }
+static inline void dp_cat (char *b, int cap, int *k, const char *s) { while (s && *s && *k < cap - 1) b[(*k)++] = *s++; b[*k] = 0; }
+static inline void dp_catnum (char *b, int cap, int *k, int v) { char t[16]; int n = 0; if (v < 0) { dp_cat (b, cap, k, "-"); v = -v; } dp_num (t, &n, v); t[n] = 0; dp_cat (b, cap, k, t); }
+// display_game_size's answer for an app, cached by name (read again every 5 s: a file changed meanwhile) -> 1 a size
+static inline int dp_follow_size (struct display_follow *f, const char *app, int *w, int *h)
+{
+	if (!dp_ieq (app, f->cache_app) || kapi_get_ticks () - f->cache_t > 500)
+	{
+		dp_copy (f->cache_app, app, sizeof f->cache_app); f->cache_t = kapi_get_ticks ();
+		if (!display_game_size (app, &f->cache_w, &f->cache_h)) f->cache_w = f->cache_h = 0;
+	}
+	*w = f->cache_w; *h = f->cache_h;
+	return f->cache_w > 0;
+}
+// The screen at w x h for an app (w 0: the system's size again).
+static inline void dp_follow_to (struct display_follow *f, int w, int h, const char *who)
+{
+	int cw = 0, ch = 0;
+	kapi_screen_size (&cw, &ch);
+	if (w == 0 && !f->ours) { if (cw > 0) { f->sys_w = cw; f->sys_h = ch; } return; }
+	if (w == 0) { w = f->sys_w; h = f->sys_h; }
+	else if (!f->ours && cw > 0) { f->sys_w = cw; f->sys_h = ch; }
+	if (cw == w && ch == h) { f->ours = w != f->sys_w || h != f->sys_h; return; }
+	if (w == f->fail_w && h == f->fail_h && kapi_get_ticks () - f->fail_t < 200) return;	// (refused: again in 2 s)
+	int r = kapi_screen_set (w, h);
+	char m[96]; int k = 0; m[0] = 0;
+	dp_cat (m, sizeof m, &k, f->shell); dp_cat (m, sizeof m, &k, ": the screen at "); dp_catnum (m, sizeof m, &k, w);
+	dp_cat (m, sizeof m, &k, " x "); dp_catnum (m, sizeof m, &k, h);
+	dp_cat (m, sizeof m, &k, who && who[0] ? " for " : " (the system's)"); if (who && who[0]) dp_cat (m, sizeof m, &k, who);
+	if (r != 0) { dp_cat (m, sizeof m, &k, " -- not now: "); dp_catnum (m, sizeof m, &k, r); f->fail_t = kapi_get_ticks (); f->fail_w = w; f->fail_h = h; }
+	else f->ours = w != f->sys_w || h != f->sys_h;
+	int same = 1; for (int i = 0; same && (m[i] || f->said[i]); i++) if (m[i] != f->said[i]) same = 0;
+	if (!same) { dp_copy (f->said, m, sizeof f->said); ax_putln (m); }
+}
+SK_FN void display_follow_init (struct display_follow *f, const char *shell)
+{
+	char *p = (char *) f;
+	for (unsigned i = 0; i < sizeof *f; i++) p[i] = 0;
+	dp_copy (f->shell, shell, sizeof f->shell);
+	kapi_screen_size (&f->sys_w, &f->sys_h);
+}
+SK_FN int display_follow_launch (struct display_follow *f, const char *app)
+{
+	int w, h;
+	if (!app || !app[0] || !dp_follow_size (f, app, &w, &h)) return 0;
+	dp_copy (f->launch, app, sizeof f->launch); f->launch_t = kapi_get_ticks ();
+	dp_follow_to (f, w, h, app);
+	return 1;
+}
+SK_FN void display_follow_ask (struct display_follow *f, const char *front, int w, int h)
+{
+	int ok = 0;
+	for (int i = 0; w > 0 && i < display_modes (); i++) { int mw, mh; display_mode (i, &mw, &mh); if (mw == w && mh == h) ok = 1; }
+	if (!ok) { f->ask_app[0] = 0; f->ask_w = f->ask_h = 0; return; }
+	dp_copy (f->ask_app, front && front[0] ? front : "*", sizeof f->ask_app); f->ask_w = w; f->ask_h = h;
+}
+SK_FN void display_follow_tick (struct display_follow *f, const char *front, const char *const *running, int n)
+{
+	if (f->sys_w == 0) kapi_screen_size (&f->sys_w, &f->sys_h);
+	if (!front) front = "";
+	const char *who = front;
+	if (f->launch[0])
+	{
+		if (dp_ieq (front, f->launch) || kapi_get_ticks () - f->launch_t > 1000) f->launch[0] = 0;	// (in front, or 10 s)
+		else who = f->launch;
+	}
+	int w = 0, h = 0;
+	if (f->ask_app[0] == '*' && front[0]) dp_copy (f->ask_app, front, sizeof f->ask_app);
+	if (f->ask_app[0] && f->ask_app[0] != '*')			// (its app ended: forgotten)
+	{
+		int there = 0;
+		for (int i = 0; i < n; i++) if (dp_ieq (running[i], f->ask_app)) there = 1;
+		if (!there) { f->ask_app[0] = 0; f->ask_w = f->ask_h = 0; }
+	}
+	if (who[0] && f->ask_app[0] && dp_ieq (who, f->ask_app)) { w = f->ask_w; h = f->ask_h; }
+	else if (!(who[0] && dp_follow_size (f, who, &w, &h))) w = h = 0;
+	dp_follow_to (f, w, h, w ? who : "");
+}
 #undef SK_FN

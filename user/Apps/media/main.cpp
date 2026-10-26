@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include "appkit/appkit.h"
 #include "systemkit/systemkit.h"
+#include "uikit/objnav.h"		// (the keys' cursor over the content: the nearest piece that way)
 #include "player.h"
 #include "ui.h"
 #include "thumbs.h"
@@ -594,8 +595,20 @@ public:
 	HitList hits; int hot; int contentH; IntList rows; bool rowsValid;
 	char *sel; int selCap; int anchorRow, lastClickRow; unsigned lastClickT;
 	bool dragSb; int dragOff;
+	// (2026-10-26, pocket and console: uk_keys_drive ()) THE KEYS' CURSOR: `hot`, the piece the mouse hovers, moved by the
+	// arrows to the nearest piece that way (UIKit's objnav); A / Enter does what a click does (a song's row: plays from
+	// it), Backspace goes back. The pieces are numbered as drawn and those out of sight are not, so the cursor keeps the
+	// piece itself (cur: its kind and numbers) and finds it again after each drawing. Nothing that way: the page scrolls
+	// first, then the focus leaves (the rail at the left, the bar above).
+	UkObjNav nav; Hit cur; bool curOn; int pendDir, pendX, pendY;
 	Content (int l, int t, int w, int h) : Widget (l, t, w, h), hot (-1), contentH (0), rowsValid (false), sel (0), selCap (0), anchorRow (-1),
-		lastClickRow (-1), lastClickT (0), dragSb (false), dragOff (0) {}
+		lastClickRow (-1), lastClickT (0), dragSb (false), dragOff (0), cur (), curOn (false), pendDir (0), pendX (0), pendY (0)
+	{ canFocus = uk_keys_drive (); }
+	void cur_take (int i) { hot = i; curOn = i >= 0 && i < hits.n; if (curOn) cur = hits.h[i]; }
+	void cur_relocate ();
+	void cur_show ();
+	bool key_move (long k);
+	void key_press ();
 	unsigned bgColor () override { return C_FIELD; }
 	int &sy () { return page ().scroll; }
 	void reset_selection () { if (sel) memset (sel, 0, (size_t) selCap); anchorRow = -1; }
@@ -1378,7 +1391,7 @@ void Content::onDraw ()
 		yEnd = draw_list_page (x, y0, w, TR ("PLAYLIST"), nm, cov);
 		break;
 	}
-	case P_NOW: yEnd = draw_now (x, y0, w); contentH = height; return;
+	case P_NOW: yEnd = draw_now (x, y0, w); contentH = height; cur_relocate (); return;
 	case P_SEARCH: yEnd = draw_search (x, y0, w); break;
 	case P_WELCOME: yEnd = draw_welcome (x, y0, w); break;
 	case P_VIDEOS: yEnd = draw_videos (x, y0, w); break;
@@ -1391,6 +1404,103 @@ void Content::onDraw ()
 		UkThumb t = uk_thumb (contentH, height, sy_, height - 8);
 		uk_draw_vscroll (canvas, width - UK_SBW - 2, 4, UK_SBW, height - 8, t, C_FIELD, dragSb);
 	}
+	cur_relocate ();
+	if (curOn && hot >= 0 && hot < hits.n)		// (the keys' cursor: a ring round its piece)
+	{
+		const Hit &h = hits.h[hot];
+		uk_rline (canvas, h.x - 4, h.y - 4, h.w + 8, h.h + 8, 9, C_ACCENT);
+		uk_rline (canvas, h.x - 3, h.y - 3, h.w + 6, h.h + 6, 8, C_ACCENT);
+	}
+}
+
+// The keys' cursor found again after a drawing (the pieces renumbered): the same piece; else, after a scroll the keys
+// asked for, the nearest piece that way from where the cursor was.
+void Content::cur_relocate ()
+{
+	if (!curOn) return;
+	int at = -1;
+	for (int i = 0; i < hits.n && at < 0; i++)
+		if (hits.h[i].kind == cur.kind && hits.h[i].a == cur.a && hits.h[i].b == cur.b) at = i;
+	if (at < 0 && pendDir)
+	{
+		int best = -1, bestD = 0;
+		for (int i = 0; i < hits.n; i++)
+		{
+			const Hit &h = hits.h[i];
+			int cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+			if (cy < 0 || cy > height) continue;			// (in sight)
+			if ((pendDir > 0 && cy <= pendY) || (pendDir < 0 && cy >= pendY)) continue;
+			int d = (cy > pendY ? cy - pendY : pendY - cy) + 2 * (cx > pendX ? cx - pendX : pendX - cx);
+			if (best < 0 || d < bestD) { best = i; bestD = d; }
+		}
+		at = best;
+	}
+	pendDir = 0;
+	int was = hot;
+	if (at >= 0) cur_take (at); else { hot = -1; curOn = false; }
+	if (hot != was) invalidate (true);			// (drawn again with the cursor where it is)
+}
+
+// The cursor's piece in sight (the page scrolled to it).
+void Content::cur_show ()
+{
+	if (hot < 0 || hot >= hits.n) return;
+	const Hit &h = hits.h[hot];
+	int maxS = contentH - height; if (maxS < 0) maxS = 0;
+	int s = sy ();
+	if (h.y < 8) s += h.y - 8;
+	else if (h.y + h.h > height - 8) s += h.y + h.h - (height - 8);
+	s = s < 0 ? 0 : s > maxS ? maxS : s;
+	if (s != sy ()) { sy () = s; invalidate (true); }
+}
+
+bool Content::key_move (long k)
+{
+	if (hits.n == 0) return false;
+	if (!curOn || hot < 0 || hot >= hits.n)			// (the focus just came in: the first piece in sight)
+	{
+		int first = -1;
+		for (int i = 0; i < hits.n && first < 0; i++) if (hits.h[i].y + hits.h[i].h > 0 && hits.h[i].y < height) first = i;
+		if (first < 0) first = 0;
+		cur_take (first); cur_show (); invalidate (true);
+		return true;
+	}
+	static UkObjRect r[512];
+	for (int i = 0; i < hits.n; i++) r[i] = UkObjRect { hits.h[i].x, hits.h[i].y, hits.h[i].w, hits.h[i].h };
+	nav.mode = UK_OBJ_PICK; nav.sel = hot;
+	if (uk_objnav_key (nav, k, r, hits.n) == UK_OBJ_PICKED && nav.sel != hot)
+	{
+		cur_take (nav.sel); cur_show (); invalidate (true);
+		return true;
+	}
+	// nothing that way in sight: the page scrolls on (the pieces past the view are not drawn), else the focus leaves
+	int maxS = contentH - height; if (maxS < 0) maxS = 0;
+	int step = height * 2 / 3;
+	const Hit &h = hits.h[hot];
+	if (k == KEY_DOWN && sy () < maxS)
+	{
+		int s = sy () + step; if (s > maxS) s = maxS;
+		pendDir = 1; pendX = h.x + h.w / 2; pendY = h.y + h.h / 2 - (s - sy ());
+		sy () = s; invalidate (true); return true;
+	}
+	if (k == KEY_UP && sy () > 0)
+	{
+		int s = sy () - step; if (s < 0) s = 0;
+		pendDir = -1; pendX = h.x + h.w / 2; pendY = h.y + h.h / 2 + (sy () - s);
+		sy () = s; invalidate (true); return true;
+	}
+	hot = -1; curOn = false; invalidate (true);			// (the focus goes: the rail, the bar)
+	return false;
+}
+
+// A / Enter on the cursor's piece: a song's row plays from it; anything else is clicked.
+void Content::key_press ()
+{
+	const Hit h = hits.h[hot];
+	if (h.kind == H_ROW) { ensure_sel (); reset_selection (); sel[h.a] = 1; anchorRow = h.b; play_list (rows, h.b, false); invalidate (true); return; }
+	int cx = h.x + h.w / 2, cy = h.y + h.h / 2;
+	onMouse (cx, cy, 1, 0, 0, 0);
+	onMouse (cx, cy, 0, 0, 0, 0);
 }
 
 // ---- dialogs -------------------------------------------------------------------------------------------------
@@ -1599,7 +1709,7 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 	}
 	const Hit *ht = in ? hits.at (mx, my) : 0;
 	int nh = ht ? (int) (ht - hits.h) : -1;
-	if (nh != hot) { hot = nh; invalidate (true); }
+	if (nh != hot) { hot = nh; curOn = false; invalidate (true); }	// (the mouse: the keys' cursor forgotten)
 	if (br && in && !pressed)
 	{	// a right click: the row's menu (the selection, if it is in it)
 		pressed = true;
@@ -1692,6 +1802,12 @@ bool Content::onMouse (int mx, int my, int bl, int br, int, int wheel)
 }
 bool Content::onKey (long k)
 {
+	if (uk_keys_drive ())					// (pocket, console: the keys' cursor)
+	{
+		if (k == KEY_UP || k == KEY_DOWN || k == KEY_LEFT || k == KEY_RIGHT) return key_move (k);
+		if (k == KEY_ENTER && curOn && hot >= 0 && hot < hits.n) { key_press (); return true; }
+		if (k == KEY_BACKSPACE && g_hpos > 0) { go_back (); return true; }
+	}
 	if (k == UK_CTRL ('A')) { ensure_sel (); for (int i = 0; i < rows.n; i++) sel[rows.v[i]] = 1; invalidate (true); return true; }
 	if (k == KEY_ENTER) { IntList ids; selected_ids (ids); if (ids.n == 1) { int r = rows.find (ids.v[0]); play_list (rows, r, false); } else if (ids.n) play_list (ids, 0, false); return true; }
 	if (k == KEY_PGDN || k == KEY_PGUP || k == KEY_HOME || k == KEY_END)
@@ -2324,6 +2440,14 @@ static void layout_parts ()
 		return;
 	}
 	g_side->hidden = g_top->hidden = g_content->hidden = g_now->hidden = false;
+	g_content->canFocus = uk_keys_drive ();				// (the keys' cursor: pocket, console -- known by now)
+	{								// (pocket, console: the hint line at the foot; the desktop: none)
+		static const UkPadHint HN[] = { { "+", TRN ("choose") }, { "A", TRN ("open, play") }, { "[Space]", TRN ("pause") },
+						{ "[Tab]", TRN ("section") }, { "[Bksp]", TRN ("back") } };
+		static UkPadHint HL[5];
+		for (int i = 0; i < 5; i++) { HL[i].glyphs = HN[i].glyphs; HL[i].word = TR (HN[i].word); }
+		H -= uk_hint_line (g_root, HL, 5);
+	}
 	g_top->left = 0; g_top->top = 0; g_top->resizeTo (W, TOP_H);			// (the bar across the window, the sidebar under it)
 	side_build ();
 	g_side->place (0, TOP_H, SIDE_W, H - TOP_H - NOW_H);			// (whole, a rail, a drawer: what it takes at its side)

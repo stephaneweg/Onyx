@@ -119,6 +119,8 @@ KAPI_FN unsigned long long kapi_table_slot (unsigned slot);
 #define KEY_DEL			0x108
 #define KEY_F1			0x110	// .. KEY_F12 = 0x11B (KEY_F1 + n - 1)
 #define KEY_F12			0x11B
+#define KEY_PRTSC		0x11C	// (2026-10-26) Print Screen and Pause: HELD keys only (kapi_key_held), no key event
+#define KEY_PAUSE		0x11D	//   -- the PocketTerm35's Select and Start, mapped in the Gamepad applet
 
 // --- windowing ---------------------------------------------------------------
 // The windows are UIKit's (2026-10-08): uk_win_create, uk_win_present, uk_win_menu_set, uk_win_list... in
@@ -356,7 +358,8 @@ KAPI_FN int kapi_sound_instrument (int voice, const struct kapi_fm_instrument *i
 
 // Held keys (ABI v48), for games (key events only report presses): 1 while `key` is held
 // and this window has the keyboard. key = KEY_UP/DOWN/LEFT/RIGHT, KEY_ENTER, 27 (Esc), ' ',
-// 'a'..'z' (US position of the key on a USB keyboard), '0'..'9'. Returns 0 on an older kernel.
+// 'a'..'z' (US position of the key on a USB keyboard), '0'..'9'; since 2026-10-26 also KEY_BACKSPACE, KEY_TAB,
+// KEY_HOME/END/PGUP/PGDN/DEL, KEY_F1..KEY_F12, KEY_PRTSC, KEY_PAUSE. Returns 0 on an older kernel.
 KAPI_FN int kapi_key_held (int key);
 KAPI_FN void kapi_inject_key_held (int key, int down);
 // Run a program under another process name (ABI v49): a runner running an app is named

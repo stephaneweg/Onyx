@@ -328,7 +328,7 @@ static void open_app (const char *name)
 	}
 	int t = task_of (name);
 	if (t >= 0) uk_shell_front (g_tasks[t].id, 1);
-	else lx_launch (name, 0);
+	else { display_follow_launch (&g_follow, name); lx_launch (name, 0); }	// (its own screen size before it starts)
 	recent_add (name);
 }
 

@@ -310,7 +310,7 @@ output folder, twelve of them here as `pt-keys-*.png`).
 | **Text Editor** | **ok** (typing; everything else is the Menu's) | — | — |
 | **File Viewer** | **ok**: Down, A into a folder, Bksp out, Right into the next column | *Double-click to run* reads *Enter runs it* | — |
 | **PDF Viewer** | **ok** now | its drawer (Pages / Contents / Find) was a pointer's: Left / Right its three parts, Up / Down the pages, the contents' entries, the results | "+" alone does not zoom (Ctrl + "+" does): as on the desktop |
-| **Media Player** | **pointer**: only the search field takes the keys (Down, typing, A searches); the library's cards and rows, the rail, the transport are hit-tested by hand | — | a cursor over the library's grid and lists, the rail as L / R places, the transport's keys said: **medium, a day** |
+| **Media Player** | **ok** now (2026-10-26) | the page's cards, rows and buttons by a cursor (UIKit's objnav, a ring), A / Enter clicks, Bksp back, Space plays, Tab the rail's places, a hint line (`pocket640.sh keys`: `mediacur`) | the bar of what plays: Space and the Menu's Play menu only |
 | **Image Viewer** | **not driven with a picture** — the PC's build of the simulator has no ImageKit (it stops on a picture); without one: Ctrl + O opens the file chooser, B closes it | — | to drive on the device |
 | **Icon Editor** | **ok** now | the grid was a pointer's: a pixel's frame by the arrows, A the tool, shapes stretched by the arrows, runs with Shift, the colour by `,` `.`; a hint line | the palette's 33 swatches are stepped, not chosen in the grid: fine for an icon |
 | **FM Tracker** | **ok**: the pattern's cursor, Tab the next channel, Space | — | its pattern list and transport buttons are the Menu's |

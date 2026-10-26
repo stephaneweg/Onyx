@@ -2047,8 +2047,10 @@ reads InputKit itself: `in_poll`, `in_key_action`.
 > host tests: `sh tools/tests/run_fms_test.sh`).
 > **Held keys (ABI v48)**: key events only report presses; an action game polls
 > `kapi_key_held (KEY_LEFT)` (also `KEY_RIGHT/UP/DOWN`, `KEY_ENTER`, 27, `' '`, `'a'..'z'` = the
-> US position of the key, `'0'..'9'`) every frame — 1 while held and your window has the
-> keyboard (USB keyboard and VNC). Returns 0 on an older kernel.
+> US position of the key, `'0'..'9'`; since 2026-10-26 `KEY_BACKSPACE`, `KEY_TAB`, `KEY_HOME/END/PGUP/PGDN/DEL`,
+> `KEY_F1`..`KEY_F12`, and **`KEY_PRTSC`, `KEY_PAUSE`** -- held keys only, they make no key event) every frame — 1
+> while held and your window has the keyboard (USB keyboard and VNC). Returns 0 on an older kernel. `gamepad.h`'s
+> `[keyboard]` names them `prtsc`, `pause`, `f1`..`f12`, `backspace`, `tab`... (the Gamepad applet maps them).
 > **USB gamepads (ABI v50)**: `#include "gamepad.h"` — `pad_buttons (-1)` = the `PAD_*` buttons held
 > on every pad (or `0..3` for one): `PAD_UP/DOWN/LEFT/RIGHT`, `PAD_A` (bottom face button), `PAD_B`
 > (right), `PAD_X` (left), `PAD_Y` (top), `PAD_L/R/L2/R2`, `PAD_SELECT/START`, `PAD_L3/R3`,

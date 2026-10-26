@@ -116,3 +116,7 @@
 110 display_game_ask
 111 display_save_option
 112 display_saved_option
+113 display_follow_init
+114 display_follow_launch
+115 display_follow_ask
+116 display_follow_tick

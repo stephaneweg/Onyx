@@ -4,7 +4,7 @@
 // buttons of user/Include/gamepad.h, on a drawn pad), and "Map Buttons..." -- press each button when
 // asked -- which writes the pad model's section of SD:/etc/gamepad.ini.
 //
-//   * Pads 1-4: click the tabs or keys 1-4. Keyboard (the 5th tab, key 5): the keyboard as pad 1 in the emulators --
+//   * Pads 1-4: click the tabs, keys 1-4, or Tab / Shift+Tab (round). Keyboard (the 5th tab, key 5): the keyboard as pad 1 in the emulators --
 //     a key for each button (gamepad.h's [keyboard]): a row chosen, Enter or a click, then the key (Esc: cancel). Map Buttons... (M), Forget Mapping (the pad's
 //     section removed: back to the built-in / [default] mapping), Reload gamepad.ini: the
 //     buttons at the bottom (and the Pad menu when it is a window of its own).
@@ -154,7 +154,7 @@ static void kbd_draw (Canvas &c, int width, int height)
 	}
 	int y = KY0 + KROWS * KRH + 8;
 	if (g_kwait) { char s[160]; int n = 0; s[0] = 0; cat (s, &n, sizeof s, TR ("Press the key for ")); cat (s, &n, sizeof s, TR (KROW[g_ksel])); cat (s, &n, sizeof s, TR ("   (Esc: cancel)")); uk_text_l (c, 14, y, 16, s, uk_tone (C_ACCENT, 84), 2); }
-	else c.text (14, y, TR ("Up / Down: a button   Enter or a click: its key   Forget: the keys of the start"), C_DIS);
+	else c.text (14, y, TR ("Up / Down: a button   Enter: its key   Tab: the pads   Forget: the keys of the start"), C_DIS);
 	(void) width; (void) height;
 }
 
@@ -282,11 +282,13 @@ public:
 				}
 				invalidate (true); return true;
 			}
+			// (the list has the keys: a button that had them -- the focus ring, pocket -- would take Enter)
+			if (k == KEY_UP || k == KEY_DOWN || k == KEY_LEFT || k == KEY_RIGHT) setFocus ();
 			if (k == KEY_UP && g_ksel > 0) { g_ksel--; invalidate (true); return true; }
 			if (k == KEY_DOWN && g_ksel < PAD_KEYS - 1) { g_ksel++; invalidate (true); return true; }
 			if (k == KEY_LEFT && g_ksel >= KROWS) { g_ksel -= KROWS; invalidate (true); return true; }
 			if (k == KEY_RIGHT && g_ksel + KROWS < PAD_KEYS) { g_ksel += KROWS; invalidate (true); return true; }
-			if (k == KEY_ENTER || k == '\n') { g_kwait = true; invalidate (true); return true; }
+			if (k == KEY_ENTER || k == '\n') { setFocus (); g_kwait = true; invalidate (true); return true; }
 		}
 		if (g_mapping)
 		{
@@ -294,6 +296,14 @@ public:
 			if (k == KEY_BACKSPACE) { g_mapping = false; int n = 0; g_msg[0] = 0; cat (g_msg, &n, sizeof g_msg, TR ("Mapping cancelled.")); invalidate (true); return true; }
 		}
 		if (k >= '1' && k <= '5') { g_pad = (int) (k - '1'); g_mapping = false; g_kwait = false; invalidate (true); return true; }
+		if (k == KEY_TAB && !g_mapping)			// (2026-10-26) the next pad, round (Shift: the one before)
+		{
+			int n = PAD_MAX + 1;
+			g_pad = (g_pad + ((kapi_get_modifiers () & MOD_SHIFT) ? n - 1 : 1)) % n;
+			g_kwait = false;
+			if (g_pad == PAD_MAX) setFocus ();		// (the keyboard's list has the keys)
+			invalidate (true); return true;
+		}
 		if (k == 'm' || k == 'M') { map_start (); invalidate (true); return true; }
 		return Root::onKey (k);
 	}
@@ -353,6 +363,23 @@ int main (void)
 			unsigned h = 0;
 			for (int i = 0; i < PAD_KEYS; i++) if (g_pad_kbd[i] && kapi_key_held (g_pad_kbd[i])) h |= 1u << i;
 			if (h != lastHeld) { lastHeld = h; root.invalidate (true); }
+			// the keys that make no key event (Print Screen, Pause: the PocketTerm35's Select and Start; the F-keys
+			// Circle's map gives none) taken while waiting, from the held keys
+			if (g_kwait)
+			{
+				static const int QUIET[] = { KEY_PRTSC, KEY_PAUSE, KEY_F1, KEY_F1 + 1, KEY_F1 + 2, KEY_F1 + 3, KEY_F1 + 4,
+							     KEY_F1 + 5, KEY_F1 + 6, KEY_F1 + 7, KEY_F1 + 8, KEY_F1 + 9, KEY_F1 + 10, KEY_F12 };
+				for (unsigned q = 0; q < sizeof QUIET / sizeof QUIET[0]; q++)
+					if (kapi_key_held (QUIET[q]))
+					{
+						g_kwait = false;
+						for (int i = 0; i < PAD_KEYS; i++) if (i != g_ksel && g_pad_kbd[i] == QUIET[q]) g_pad_kbd[i] = 0;
+						g_pad_kbd[g_ksel] = QUIET[q];
+						kbd_save ();
+						root.invalidate (true);
+						break;
+					}
+			}
 		}
 		map_poll ();
 		if (g_there != lastThere || g_pad != lastPad || (g_there && g_raw.seq != lastSeq))
