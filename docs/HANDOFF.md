@@ -87,7 +87,10 @@ DWHCI on the Pi 4 beside the xHCI, the USB library choosing by each device's hos
 `cmdline.txt usbc=1` starts it. The user's card (D:) has this kernel, `usbc=1`, the maker's overlay line and no
 `otg_mode`; backups `kernel8-rpi4_avant_usbc.img`, `config.txt.avant_usbc`, `cmdline.txt.avant_usbc`. **Waiting for
 the test on the device**; if it hangs: remove `usbc=1`; if the keyboard does not answer: `kmsg` (`dwhci`, `usb`
-lines: host running? a `ukbd` found?). The branch was merged with `main` of 2026-10-19 the same day (conflicts:
+lines: host running? a `ukbd` found?). **Then (same day):** the DWC OTG host works -- the RP2040 is found on the
+USB-C socket -- but its keyboard is a composite HID interface (`int3-0-0`) that Circle took as a mouse (and that
+mouse took `mouse1` from the USB-A mouse): Circle reads such a keyboard from its report descriptor now (docs/05 §34;
+the descriptor in `kmsg`, `usbkbd`). The user wants the layout QWERTY: `keyb US` in `SD:/etc/autostart` (was BE). The branch was merged with `main` of 2026-10-19 the same day (conflicts:
 3DForge's TR words, Console Home's French).
 
 **Update, 2026-10-11 (the user's decision; `docs/COMPACT-SHELL-STUDY.md` section 20.7 has the table):** Start and

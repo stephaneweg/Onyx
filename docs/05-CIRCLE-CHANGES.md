@@ -1123,6 +1123,27 @@ DWHCI is not supported (`usbsoundbasedevice` is xHCI's). Fork commit `1ba908d7`.
 `af3c5667`): the Pi 4 B hung at boot when its registers were read (that controller is the CM4's); reverted
 (`85e3c7d7`).
 
+## 34. A keyboard read from its HID report descriptor (a composite interface)
+
+**Why.** The PocketTerm35's RP2040 is not a boot keyboard: its one HID interface is `int3-0-0`, a **composite**
+report descriptor (a keyboard and a mouse at least, with report IDs). Circle's factory sent such an interface to
+`CUSBMouseDevice` (it saw Usage (Mouse)), which ignores the keyboard's reports -- and its `mouse1` then took the place
+of a real USB mouse (the kernel follows `mouse1` alone).
+
+**What.**
+- `usbdevicefactory.cpp`, `GetGenericHIDDevice ()`: the whole report descriptor is looked at first; a Generic
+  Desktop Usage (Keyboard) makes it **`CUSBKeyboardDevice`**'s, then a Usage (Mouse) `CUSBMouseDevice`'s, else the
+  gamepad's (the digitizer still goes to the touch screen at once).
+- `CUSBKeyboardDevice::Configure ()`: an interface that is not a boot keyboard (subclass 1, protocol 1) is
+  configured from its report descriptor (`ConfigureFromReportDescriptor ()`): the descriptor written to the log
+  (`usbkbd`, debug, hex), its keyboard page's input fields decoded (`DecodeReportDescriptor ()`: report IDs,
+  Push / Pop, arrays and bitmaps -- NKRO --, up to 8 fields), the transfer sized for the interface's largest input
+  report, the LEDs' output report (its ID). `ReportHandler ()` turns each report of a keyboard field's ID into a
+  boot report (`TranslateReport ()`: modifiers E0-E7, six keys), then goes on as before; the interface's other
+  reports (its mouse, consumer keys) are ignored. Boot keyboards are unchanged.
+
+Not yet tried on the device (2026-10-26). The interface's mouse and any gamepad in it are not driven.
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on
