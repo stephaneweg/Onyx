@@ -216,6 +216,9 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   too), **Start** Pause -- the device's own controller sends them so; Onyx cannot tell them from those keys. So in
   pocket mode the categories of the home and a window's tabs follow **Tab** (Shift+Tab back), and the screenshot is
   **Shift+Select** (Shift+Print Screen); Select alone is a game's key.
+  Its built-in speaker (8 Ohm 2 W) and its 3.5 mm output are fed by the Pi's own headphone jack (PWM): the Sound
+  applet's **Automatic** (or **Headphone jack**) plays there (checked by the user, 2026-10-26); the device sets their
+  volume itself too (Fn + W mute, Fn + E / R down / up).
 - **`keylog`**: `keylog=1` writes every keyboard report to the kernel log (`kmsg`, lines `keylog:` -- the modifiers
   and the HID codes of the keys held): to learn what a new keyboard or a device's buttons send. **Off by default:
   it logs what is typed** (passwords too); remove it after use.
