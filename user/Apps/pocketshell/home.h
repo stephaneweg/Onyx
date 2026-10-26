@@ -433,13 +433,12 @@ static int chip (Canvas &cv, int x, int y, int h, const char *name, unsigned dot
 static void draw_chips (Canvas &cv, const Lay &L)
 {
 	int x = L.cx, y = L.cy, h = L.ch, right = L.cx + L.cw - D (40);
-	if (uk_flat ())						// L and R at the row's ends: the buttons that change the category
-	{
+	if (uk_flat ())						// the Tab key at the row's end: it changes the category, round
+	{							// (the PocketTerm35's L and R type letters -- the user, 2026-10-26)
 		UkFaceScope f (F (13));
 		int ph = D (22);
-		x += uk_pad_glyph (cv, x, y + (h - ph) / 2, ph, 'L') + D (8);
-		int rw = uk_pad_glyph (cv, 0, 0, ph, 'R', true);
-		uk_pad_glyph (cv, L.cx + L.cw - rw, y + (h - ph) / 2, ph, 'R');
+		int rw = uk_pad_key (cv, 0, 0, ph, "Tab", true);
+		uk_pad_key (cv, L.cx + L.cw - rw, y + (h - ph) / 2, ph, "Tab");
 		right = L.cx + L.cw - rw - D (8);
 	}
 	if (g_tab < g_tabFirst) g_tabFirst = g_tab;
@@ -669,7 +668,7 @@ static void draw_strip_flat (Canvas &cv, const Lay &L)
 	cv.fillRect (L.M + D (8), ly, g_aw - 2 * L.M - D (16), 1, UK_N_LINE);
 	static UkPadHint H[4];
 	if (g_stripFocus >= 0) { H[0] = { "-", TR ("choose") }; H[1] = { "A", TR ("bring it") }; H[2] = { "X", TR ("close") }; H[3] = { "B", TR ("back") }; }
-	else { H[0] = { "+", TR ("choose") }; H[1] = { "A", TR ("open") }; H[2] = { "LR", TR ("category") }; H[3] = { "[CMD]", TR ("menu") }; }
+	else { H[0] = { "+", TR ("choose") }; H[1] = { "A", TR ("open") }; H[2] = { "[Tab]", TR ("category") }; H[3] = { "[CMD]", TR ("menu") }; }
 	UkFaceScope f (F (13));
 	int hw = uk_pad_hints (cv, 0, 0, D (18), H, 4, 0, true);
 	uk_pad_hints (cv, (g_aw - hw) / 2, ly + D (13), D (18), H, 4, UK_N_TEXT2);

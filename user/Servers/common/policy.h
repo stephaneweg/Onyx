@@ -65,6 +65,11 @@ struct ws_policy
 	// kapi_key_held, the pads), given the window manager's -> the one to tell (PocketUI: its shell while its
 	// overlay grabs the keys -- the console's menu over a game takes the pad, the game reads none).
 	unsigned (*focus) (unsigned pid);
+
+	// (2026-10-26) The screenshot (Print Screen) wants Shift held too: the PocketTerm35's Select button sends Print
+	// Screen (its Fn + Select the same), so in pocket and console Print Screen alone is a game's key and Shift +
+	// Select the screenshot (the user's choice). Elegant: 0, Print Screen alone, as on any keyboard.
+	int screenshot_shift;
 };
 #define WS_POLICY_HAS_FOCUS	1
 #define WS_POLICY_HAS_MODS	1		// (the hook above: a test built against both revisions knows it)

@@ -157,22 +157,28 @@ if want input; then
 	# ANOTHER TABBED WINDOW, with no code of its own for it: the gallery (a TabStrip): R, Ctrl+Page Down, then L
 	$CXX $INC -Iuser/Kits/fontkit -I$FT/include -o "$OUT/pocket_gallery" "$OUT/obj/pocket"/*.o "$OUT/fakekapi.o" $S/adaptive.cpp "$OUT/libuikit_pocket.a" "$OUT/libft.a" -lpthread
 	G="$WWW;$WW;move 320 300;$W;dump $OUT/in-gal-0.elsm;pad $PR;$W;$W;pad 0;$W;$W;dump $OUT/in-gal-r.elsm;pad $PL;$W;$W;pad 0;$W;$W;dump $OUT/in-gal-l.elsm;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/in-gal-pgdn.elsm"
+	# (2026-10-26) Tab that no control takes steps the tabs (the PocketTerm35's L and R type letters): Tab, then Shift+Tab
+	G="$G;key 0x09;$W;$W;dump $OUT/in-gal-tab.elsm;mods 2;key 0x09;mods 0;$W;$W;dump $OUT/in-gal-stab.elsm"
 	run pocket_gallery in-gallery "$G" SIM_SCREEN=640x480 SIM_APPNAME=gallery SIM_APP=gallery SIM_WRITES=$WR
-	for p in 0 r l pgdn; do png in-gal-$p >/dev/null; done
+	for p in 0 r l pgdn tab stab; do png in-gal-$p >/dev/null; done
 	same in-gal-0 in-gal-r 0 60 640 100 no "gallery: the pad's R shows the next tab"
 	same in-gal-0 in-gal-l 0 60 640 100 yes "gallery: the pad's L comes back"
 	same in-gal-r in-gal-pgdn 0 60 640 100 yes "gallery: Ctrl+Page Down is the pad's R"
+	same in-gal-pgdn in-gal-tab 0 60 640 100 no "gallery: Tab shows the next tab"
+	same in-gal-pgdn in-gal-stab 0 60 640 100 yes "gallery: Shift+Tab comes back"
 	# THE SHELL'S HOME: the pad's Right moves the focus as the Right key does; R changes the category as Ctrl+Page Down
 	ftapp pocket pocketshell uikit_pocket
 	mkdir -p "$WR/etc/pocket"; printf 'terminal\ntinypad\nletters\nfileviewer\ntinycalc\ncalendar\n' > "$WR/etc/pocket/recent"
 	H="$W;$W;expect home 1;dump $OUT/in-home-0.elsm;key $RIGHT;$W;$W;dump $OUT/in-home-key.elsm;key $LEFT;$W;$W;pad $PRIGHT;wait;pad 0;$W;$W;dump $OUT/in-home-pad.elsm"
 	H="$H;pad $PR;$W;$W;pad 0;$W;$W;dump $OUT/in-home-r.elsm;pad $PL;$W;$W;pad 0;$W;mods 1;key 0x107;mods 0;$W;$W;dump $OUT/in-home-pgdn.elsm"
+	H="$H;key 0x09;$W;$W;dump $OUT/in-home-tab.elsm"
 	run pocket_pocketshell in-home "$H" SIM_SCREEN=640x480 SIM_APPNAME=pocketshell SIM_APP=pocketshell SIM_WRITES=$WR
-	for p in 0 key pad r pgdn; do png in-home-$p >/dev/null; done
+	for p in 0 key pad r pgdn tab; do png in-home-$p >/dev/null; done
 	same in-home-0 in-home-key 0 0 640 480 no "home: the Right key moves the focus"
 	same in-home-key in-home-pad 0 0 640 480 yes "home: the pad's Right does the same"
 	same in-home-pad in-home-r 0 0 640 480 no "home: the pad's R changes the category"
 	same in-home-r in-home-pgdn 0 0 640 480 yes "home: Ctrl+Page Down is the pad's R"
+	same in-home-pgdn in-home-tab 0 0 640 480 no "home: Tab changes the category"
 	if grep -q "a pad's buttons reach the shell (InputKit)" "$OUT/log.txt"; then echo "  home: the pad read through InputKit: ok"; else echo "  home: the pad through InputKit: FAILED (no line in the log)"; FAIL=1; fi
 	cp "$OUT/in-term-pgup.png" "$OUT/pt-terminal-tabs-640.png"; if [ -n "$SHOTS_PNG" ]; then mkdir -p "$SHOTS_PNG"; cp "$OUT/pt-terminal-tabs-640.png" "$SHOTS_PNG/"; fi
 fi

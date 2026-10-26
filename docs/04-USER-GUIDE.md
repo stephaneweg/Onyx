@@ -213,7 +213,9 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
   `otg_mode=1`. `kmsg` says `USB-C socket: DWC OTG host running`, or why not; the USB-A sockets work either way.
   Tried on the device (2026-10-26): its keyboard types. Its game buttons are keys of that keyboard, the same codes as
   letters: **A** `a`, **B** `b`, **X** `x`, **Y** `y`, **L** `l`, **R** `r`, **Select** Print Screen (Fn + Select
-  too), **Start** Pause -- the device's own controller sends them so; Onyx cannot tell them from those keys.
+  too), **Start** Pause -- the device's own controller sends them so; Onyx cannot tell them from those keys. So in
+  pocket mode the categories of the home and a window's tabs follow **Tab** (Shift+Tab back), and the screenshot is
+  **Shift+Select** (Shift+Print Screen); Select alone is a game's key.
 - **`keylog`**: `keylog=1` writes every keyboard report to the kernel log (`kmsg`, lines `keylog:` -- the modifiers
   and the HID codes of the keys held): to learn what a new keyboard or a device's buttons send. **Off by default:
   it logs what is typed** (passwords too); remove it after use.
@@ -1094,7 +1096,11 @@ language. Back to the desktop: *Settings* › **Mode**, or `session switch deskt
 
 *The console home at 1920 × 1080.*
 
-No workspaces in pocket; Print Screen, the wheel's speed, full-screen games and emulators as on the desktop. Back to
+No workspaces in pocket; the wheel's speed, full-screen games and emulators as on the desktop; the screenshot is
+**Shift+Print Screen** in pocket and console (Print Screen alone is a game's key there: the PocketTerm35's Select
+sends it -- Shift+Select takes the screenshot). **Tab** steps a window's tabs in pocket and console (Shift+Tab back,
+round) where no control takes it (an editor, the Terminal keep it); a window without tabs: the focus moves, as
+before; on the home, Tab changes the category. Back to
 the desktop: the Control Panel's **Mode** applet, or `session switch desktop` in a Terminal (below). PocketUI gives
 the apps their pocket UIKit (`SD:/lib/pocket/uikit.so`, under the name `SD:/lib/uikit.so`): the same apps, the same
 binaries.
@@ -2250,7 +2256,8 @@ folder would leave it unmapped. **Adding a layout never needs a kernel rebuild**
 applet.
 
 **Print Screen** is the system's: it starts a capture with **Screenshot** (its last mode and delay);
-**Alt+Print Screen** takes the window in front at once (§12, *Screenshot*).
+**Alt+Print Screen** takes the window in front at once (§12, *Screenshot*). In pocket and console: **Shift+Print
+Screen** (on the PocketTerm35: Shift+Select), Shift+Alt+Print Screen the window.
 
 Accented letters (`é è à ç ù`…, the Latin-1 characters of the layout) can be typed in every
 text field and editor (from a PC's keyboard -- VNC, Onyx Remote -- AltGr arrives as Ctrl + Alt: it types its

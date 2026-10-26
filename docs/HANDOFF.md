@@ -90,7 +90,11 @@ kernel panic); DTR raised on a CDC port's first use only (the RP2040 blocked, th
 SoC's internal xHCI (`otg_mode=1`) hung the Pi 4 B at boot: reverted. `cmdline.txt keylog=1` (off by default) logs
 the raw key codes. **Its game buttons send letters** (A `a`, B `b`, X `x`, Y `y`, L `l`, R `r`, Select Print Screen
 -- Fn + Select the same --, Start Pause; read with keylog): the RP2040's firmware (not published) does it, Onyx cannot
-tell them from the keys -- the user's decision is pending (docs/04 `cmdline.txt` usbc). The user's card: `usbc=1`,
+tell them from the keys. **The user's choice, built the same day:** in pocket and console a Tab that no control takes
+steps the window's tabs (Shift+Tab back; UIKit `internal::tab_steps`), the home's categories follow Tab (a Tab cap at
+the chips' end, "Tab category"), and the screenshot is Shift+Select (PocketUI's policy `screenshot_shift`: Shift +
+Print Screen); tested in the server simulator (`pocketterm.sh input`: Tab / Shift+Tab in the gallery, Tab on the
+home). docs/COMPACT-SHELL-STUDY.md section 20.4, docs/04. The user's card: `usbc=1`,
 `keyb US` (QWERTY), the maker's overlay line, no `otg_mode`, and **`keylog=1` still on: remove it**. The branch was
 merged with `main` the same day and pushed into `main` (the user's request).
 

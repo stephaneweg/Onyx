@@ -79,6 +79,7 @@ void nav_register (Widget *w, int prio, bool (*step) (Widget *, int dir));
 void nav_unregister (Widget *w);
 bool key_first (Root *r, long k);	// a key before the controls (Root::keyEvent): Prev / Next step the window's tabs -> true used
 bool key_fallback (Root *r, long k);	// a key nobody took (Root::keyEvent) -> true used here
+bool tab_steps (Root *r, bool back);	// Tab nobody took (pocket, console): the window's tabs stepped -> true used
 bool tool_ring_key (Root *r, long k);	// F6: the keys' ring on the window's toolbars (uikit/toolbar.cpp) -> true used
 Widget *tool_ring ();			// the tool the ring is on, 0: none
 void focus_ring (Canvas &cv, Widget *c, int x, int y);	// the ring around c, at x, y of cv (Widget::draw)

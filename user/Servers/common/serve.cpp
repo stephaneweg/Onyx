@@ -88,7 +88,8 @@ int el_sys_screen_grab (unsigned *dst, int w, int h)		// (a full-screen program'
 static int s_bLostDisplay = 0;
 
 // Print Screen (the USB keyboards' report: usage 0x46), at its press: the Screenshot app captures the
-// screen -- with Alt, the window that has the keyboard. The running one is told through its service,
+// screen -- with Alt, the window that has the keyboard. PocketUI wants Shift too (policy.h screenshot_shift:
+// the PocketTerm35's Select is Print Screen). The running one is told through its service,
 // else the app is started with what to capture ("--now" / "--window <id>"). (It was the kernel's: it
 // no longer knows the windows.)
 static void print_screen (const char *held, unsigned mods)
@@ -99,6 +100,7 @@ static void print_screen (const char *held, unsigned mods)
 	int pressed = now && !s_bHeld;
 	s_bHeld = now;
 	if (!pressed) return;
+	if (g_pWsPolicy != 0 && g_pWsPolicy->screenshot_shift && !(mods & 2)) return;	// (2: Shift)
 	unsigned id = (mods & 4) ? el_core_active_id () : 0;		// (4: Alt)
 	char msg[32], args[32], d[12];
 	int n = 0, a = 0, i = 0;

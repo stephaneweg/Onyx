@@ -381,6 +381,17 @@ bool uk_nav_key (Root *r, long key)
 
 namespace internal {
 
+// TAB THAT NO CONTROL TOOK (pocket and console; Widget::handleKey, before it moves the focus): the window's tabs stepped
+// -- Tab the next one, Shift+Tab the one before, round (the user, 2026-10-26: a thumb keyboard's buttons type letters,
+// the PocketTerm35's L and R among them, so its Tab key steps the tabs). A window without tabs: the focus moves, as
+// before; a control that takes Tab (an editor, the Terminal) keeps it.
+bool tab_steps (Root *r, bool back)
+{
+	if (!ring_on () || r == 0) return false;
+	if (kapi_get_modifiers () & (MOD_CTRL | MOD_ALT)) return false;
+	return nav_step (r, back ? -1 : 1);
+}
+
 bool key_fallback (Root *r, long k)
 {
 	if (!ring_on ()) return false;				// (the desktop: nothing more than today)

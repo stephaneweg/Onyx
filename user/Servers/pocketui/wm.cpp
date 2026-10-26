@@ -1619,5 +1619,6 @@ static const struct ws_policy s_Pocket =
 	Mods,
 	Pointer,						// (P6: the viewport)
 	Focus,							// (P9: the shell's overlay has the pads)
+	1,							// (the screenshot: Shift + Print Screen)
 };
 const struct ws_policy *g_pWsPolicy = &s_Pocket;

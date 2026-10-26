@@ -2001,6 +2001,14 @@ PocketTerm Simulator on a PC sends (`pc/dist/PocketTermSim.buttons.ini`), throug
   the buttons, Enter (A) does the ringed one, Left / Right move the volume;
 - the hint lines of the home, the switcher and the Menu show the device's buttons (`uikit/padhint.h`).
 
+**The device itself (2026-10-26).** On the real PocketTerm35 the buttons are keys of its keyboard -- the same codes as
+letters (A `a`, B `b`, X `x`, Y `y`, L `l`, R `r`), Select Print Screen (Fn + Select too), Start Pause (read with the
+kernel's `keylog=1`) -- so they cannot be told from those keys and no `.key` line can claim them. The user's choice:
+the home's categories and a window's tabs follow **Tab** (Shift+Tab back, round; UIKit's `internal::tab_steps`: a Tab
+no control took, before it moves the focus), the home shows a Tab cap at the chips' end and "Tab category" in its
+hint line, and the screenshot is **Shift+Select** (PocketUI's policy `screenshot_shift`: Shift + Print Screen; Select
+alone is a game's key). A USB gamepad still drives everything as above.
+
 **Not built**: X's "second action" inside the apps (it is the Delete key there), Y's options on the home, the
 pointer moved by Ctrl + the arrows (the user's plan), a lock screen. A pad message in `rdpd`'s protocol (the remote
 client sending real buttons) needs a pad-injection call in the kernel: left for later.

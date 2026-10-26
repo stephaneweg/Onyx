@@ -2050,7 +2050,8 @@ The terminal thus chains the `stdout` of one stage to the `stdin` of the next vi
 >   2026-10-08 the window calls are **UIKit's** (`uk_win_*`, `uikit/win.h`; the protocol
 >   `user/Kits/uikit/port/elegant.h`), AppKit's removed (§8 *The window API moves to UIKit*).
 > - **Print Screen** and **the wheel's speed** are the graphics server's too (§2's input task;
->   `user/Servers/common/serve.cpp`).
+>   `user/Servers/common/serve.cpp`). A server's policy may want Shift with Print Screen (`policy.h`
+>   `screenshot_shift`: PocketUI, 2026-10-26 -- the PocketTerm35's Select sends Print Screen).
 >
 > **The server per mode (v97, 2026-10-08; `docs/POCKETUI-TECH-STUDY.md` §3.8, §8):** the kernel reads
 > `SD:/etc/system.ini` **`shell =`** (`sys/wsrv.cpp` `ShellRead`, at the boot and at each switch):

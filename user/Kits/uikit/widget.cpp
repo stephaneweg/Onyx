@@ -163,7 +163,10 @@ bool Widget::handleKey (long k)
 	for (Widget *c = firstChild; c; c = c->nextSib)
 		if (!c->hidden && c->hasFocus && c->handleKey (k)) return true;
 	if (onKey (k)) return true;
-	return k == KEY_TAB && !parent && tabFocus ((kapi_get_modifiers () & MOD_SHIFT) != 0, true);
+	if (k != KEY_TAB || parent) return false;
+	bool back = (kapi_get_modifiers () & MOD_SHIFT) != 0;
+	if (internal::tab_steps ((Root *) this, back)) return true;	// (pocket, console: the window's tabs first)
+	return tabFocus (back, true);
 }
 
 // ---- Tab ---------------------------------------------------------------------

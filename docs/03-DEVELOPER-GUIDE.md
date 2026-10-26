@@ -1868,6 +1868,9 @@ all its navigation from it — in every `Root`, with no code in the app:
   of the highest priority: a `TabStrip`, else a navigation `SidePanel`'s sections. In pocket and console
   `Root::keyEvent` tries them **before** the focused control (`key_first`), so they work while a view that takes
   every key has the focus;
+- **Tab** that no control took (pocket, console; `Widget::handleKey` at the root, `internal::tab_steps`): the
+  window's tabs stepped, Shift+Tab back -- before it would move the focus, which it still does in a window without
+  tabs; Ctrl / Alt with it: not this (2026-10-26: the PocketTerm35's L and R type letters, its Tab steps the tabs);
 - **Alt2** (Y; Shift+F10): a right click at the focused control's middle — its context menu;
 - the desktop with a mouse and a keyboard is unchanged; a pad there acts on the focused control the same way.
 
