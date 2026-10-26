@@ -1116,7 +1116,8 @@ Pi 1-3 only, and the USB library chooses xHCI or DWHCI when it is built (`RASPPI
   `BUS_ADDRESS` (the first GB, `HEAP_LOW` buffers), as the gadget driver does on the Pi 4.
 
 The kernel calls `EnableDWHCI ()` for `cmdline.txt usbc=1` (docs/02 §1, docs/04 `cmdline.txt`). USB audio on the
-DWHCI is not supported (`usbsoundbasedevice` is xHCI's). **Not yet tried on the device** (2026-10-26).
+DWHCI is not supported (`usbsoundbasedevice` is xHCI's). Fork commit `1ba908d7`. **Not yet tried on the device**
+(2026-10-26).
 
 *History:* a first try the same morning drove the SoC's **internal xHCI** instead (`config.txt otg_mode=1`, fork
 `af3c5667`): the Pi 4 B hung at boot when its registers were read (that controller is the CM4's); reverted
