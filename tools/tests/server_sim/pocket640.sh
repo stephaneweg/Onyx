@@ -626,11 +626,11 @@ if want pocketqi; then
 	echo "pocket640: PocketQI"
 	mkdir -p "$OUT/pqi"
 	for f in groq_proto pocket_humeur pocket_visage; do gcc -O2 -w -c user/Apps/pocketqi/core/$f.c -o "$OUT/pqi/$f.o"; done
-	ftapp pocket pocketqi uikit_pocket -DPOCKETQI_NO_TLS $BAS "$OUT"/pqi/*.o -lm
+	ftapp pocket pocketqi uikit_pocket -DPOCKETQI_NO_TLS $BAS user/Apps/notes/notesmodel.cpp user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp "$OUT"/pqi/*.o -lm -Wl,--unresolved-symbols=ignore-all
 	# its LLM a server of its own (config.ini url), whose answer is canned (SIM_NET: a chat completion)
 	WR=$(langdir ""); mkdir -p "$WR/apps/pocketqi.app"
 	printf 'provider = mistral\nurl = http://llm.local/v1/chat/completions\n' > "$WR/apps/pocketqi.app/config.ini"
-	b='{"id":"sim","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"1\"]}, {\"app\": \"say\", \"args\": [\"Sunny all day in Lyon, from 12 to 21 degrees: a light jacket for the morning.\"]}]}"},"finish_reason":"stop"}]}'
+	b='{"id":"sim","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"1\"]}, {\"app\": \"say\", \"args\": [\"This week: the dentist on Tuesday at 14:00, and badminton on Thursday evening.\"]}]}"},"finish_reason":"stop"}]}'
 	NET=$(printf 'HTTP/1.1 200 OK\\r\\nContent-Type: application/json\\r\\nContent-Length: %d\\r\\n\\r\\n%s' "$(printf '%s' "$b" | wc -c)" "$b")
 	K () { echo "key $1;$W;"; }
 	PQ="$P640 SIM_APPNAME=pocketqi SIM_APP=pocketqi SIM_SLEEP=1 SIM_WRITES=$WR"

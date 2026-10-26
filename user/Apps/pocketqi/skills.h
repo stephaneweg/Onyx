@@ -18,9 +18,14 @@
 //   [METHOD ]http(s)://...   the web: FOR INPUT reads the answer (GET), FOR OUTPUT writes the body sent at CLOSE
 //               (POST); HEADERS: the request's header lines, STATUS: the last HTTP code, RESPONSE: its body
 //   LANG:       read: the system's language ("en", "fr") -- Onyx's own device
+//   PRINTER:    OPEN "PRINTER:LIST" FOR INPUT: a line a printer, name TAB model TAB kind (ipp, pdf) TAB address;
+//               OPEN "PRINTER:<name>" FOR OUTPUT, PRINT # a text file's path, CLOSE: the file printed through PrinterKit
+//               (natives.h's print_lines; the default printer when <name> is empty or names none); STATUS: 202 sent,
+//               404 no such file, 415 a PDF (not printed: PrinterKit draws pages, it does not read a PDF), 503 no
+//               printer or no print service; RESPONSE: the sentence
 // LINE INPUT asks the person (the conversation's field): what is typed comes back. A skill is stopped after 10 s of its
-// own work (the time waiting for an answer or the network does not count). MAIL:, PRINTER:, SCREEN: and TOUCH:
-// (PocketQI's mail, printing and drawing) are not in this version: STATUS: says 501 and the screen is "0 0".
+// own work (the time waiting for an answer, the network or the printer does not count). MAIL:, SCREEN: and TOUCH:
+// (PocketQI's mail and drawing) are not in this version: STATUS: says 501 and the screen is "0 0".
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -56,6 +61,7 @@ struct Skill
 	std::string dir;
 	std::vector<SkillAction> actions;
 	std::vector<std::string> cron;		// the actions the cron may run again ("cron = status")
+	bool native = false;			// run in C++ on an Onyx app's data (natives.h), not in the VM
 };
 
 // What a running skill needs from the rest of the app (the brain): its words said, the person asked.
@@ -69,36 +75,52 @@ struct SkillIo
 };
 
 // ---- the manifests ----------------------------------------------------------------------------------------------
+// a manifest's lines into a: name, description, cron, llm.<action>
+static void skill_parse (Skill &a, const std::string &txt)
+{
+	for (auto &l0 : split (txt, '\n'))
+	{
+		std::string l = trim (l0);
+		if (l.empty () || l[0] == '#') continue;
+		size_t eq = l.find ('=');
+		if (eq == std::string::npos) continue;
+		std::string k = lower (trim (l.substr (0, eq))), val = trim (l.substr (eq + 1));
+		if (k == "name") a.name = val;
+		else if (k == "description") a.description = val;
+		else if (k == "cron") { for (auto &c : split (val, ' ')) if (!c.empty ()) a.cron.push_back (lower (c)); }
+		else if (k.compare (0, 4, "llm.") == 0 && k.size () > 4)
+		{
+			SkillAction act;
+			act.name = k.substr (4);
+			size_t c = val.find (':');
+			for (auto &t : split (trim (val.substr (0, c)), ' ')) if (!t.empty ()) act.types.push_back (lower (t));
+			if (c != std::string::npos) act.description = trim (val.substr (c + 1));
+			a.actions.push_back (act);
+		}
+	}
+}
+
+} // namespace pq
+
+#include "Apps/pocketqi/natives.h"		// (the native skills: Onyx's own apps)
+
+namespace pq {
+
+// the skills: the native ones, then the BASIC ones of <home>/apps/ (one named as a native one is left out: the
+// native agenda and todo take the place of PocketQI's)
 static std::vector<Skill> skills_scan (const std::string &home)
 {
-	std::vector<Skill> v;
+	std::vector<Skill> v = native_skills ();
 	for (auto &d : sub_dirs (home + "/apps"))
 	{
 		Skill a;
 		a.id = lower (d);
 		a.dir = home + "/apps/" + d;
+		bool taken = false;
+		for (auto &n : v) if (n.id == a.id) taken = true;
 		std::string txt;
-		if (!read_file (a.dir + "/app.txt", txt) || !file_exists (a.dir + "/main.bas")) continue;
-		for (auto &l0 : split (txt, '\n'))
-		{
-			std::string l = trim (l0);
-			if (l.empty () || l[0] == '#') continue;
-			size_t eq = l.find ('=');
-			if (eq == std::string::npos) continue;
-			std::string k = lower (trim (l.substr (0, eq))), val = trim (l.substr (eq + 1));
-			if (k == "name") a.name = val;
-			else if (k == "description") a.description = val;
-			else if (k == "cron") { for (auto &c : split (val, ' ')) if (!c.empty ()) a.cron.push_back (lower (c)); }
-			else if (k.compare (0, 4, "llm.") == 0 && k.size () > 4)
-			{
-				SkillAction act;
-				act.name = k.substr (4);
-				size_t c = val.find (':');
-				for (auto &t : split (trim (val.substr (0, c)), ' ')) if (!t.empty ()) act.types.push_back (lower (t));
-				if (c != std::string::npos) act.description = trim (val.substr (c + 1));
-				a.actions.push_back (act);
-			}
-		}
+		if (taken || !read_file (a.dir + "/app.txt", txt) || !file_exists (a.dir + "/main.bas")) continue;
+		skill_parse (a, txt);
 		if (!a.actions.empty ()) v.push_back (a);
 	}
 	return v;
@@ -125,7 +147,8 @@ static std::string skills_prompt (const std::vector<Skill> &skills)
 	}
 	if (!s.empty ())
 		s += "Types : date AAAA-MM-JJ (ou un marqueur de date tel quel, {anniversaire} : Pocket le convertit), "
-		     "heure HH:MM, nombre en chiffres, texte de 60 caracteres au plus ; [entre crochets] : facultatif.";
+		     "heure HH:MM, nombre en chiffres, texte de 60 caracteres au plus, long : un texte jusqu'a 1000 caracteres (lignes "
+		     "separees par \\n) ; [entre crochets] : facultatif.";
 	return s;
 }
 
@@ -216,9 +239,9 @@ static const Skill *skills_check (const std::vector<Skill> &skills, groq_outcome
 			if (!d.empty ()) snprintf (o.args[i + 1], sizeof o.args[i + 1], "%s", d.c_str ());
 		}
 		const std::string v = o.args[i + 1];
-		if (v.find_first_of ("\t\r\n") != std::string::npos) { why = "a forbidden character in an argument"; return 0; }
+		if (v.find_first_of (t == "long" ? "\t\r" : "\t\r\n") != std::string::npos) { why = "a forbidden character in an argument"; return 0; }
 		if (v.empty () && act->types[i][0] == '[') continue;	// (an optional argument may be empty)
-		bool ok = t == "date" ? is_date (v) : t == "heure" ? is_time (v)
+		bool ok = t == "date" ? is_date (v) : t == "heure" ? is_time (v) : t == "long" ? (!v.empty () && v.size () <= 1100)
 			: t == "nombre" ? (!v.empty () && v.find_first_not_of ("0123456789") == std::string::npos)
 			: (!v.empty () && v.size () <= 120);
 		if (!ok) { why = "argument " + num ((long) i + 1) + " (" + t + ") not valid: \"" + v + "\""; return 0; }
@@ -346,7 +369,15 @@ public:
 		else if (starts_ci (p, "RESPONSE:")) d = response;
 		else if (starts_ci (p, "STATUS:")) d = num (status) + "\r\n";
 		else if (starts_ci (p, "HEADERS:")) d = headers;
-		else if (starts_ci (p, "MAIL:") || starts_ci (p, "PRINTER:"))
+		else if (starts_ci (p, "PRINTER:LIST"))
+		{
+			static PrintPrinter pr[16];
+			int n = print_printers (pr, 16);
+			for (int i = 0; i < n; i++) d += to_cp437 (std::string (pr[i].name) + "\t" + pr[i].model + "\t" + pr[i].kind + "\t" + pr[i].uri) + "\r\n";
+			status = n > 0 ? 200 : 503;
+			response = n > 0 ? std::string () : to_cp437 (TR ("No printer is set up: the Control Panel's Printers applet adds one."));
+		}
+		else if (starts_ci (p, "MAIL:"))
 		{
 			status = 501;
 			response = to_cp437 ("Ce service n'est pas disponible sur Onyx.");
@@ -398,7 +429,28 @@ public:
 			return true;
 		}
 		if (starts_ci (p, "SCREEN:")) return true;
-		if (starts_ci (p, "MAIL:") || starts_ci (p, "PRINTER:"))
+		if (starts_ci (p, "PRINTER:"))
+		{
+			// the first line written: the file to print
+			std::string f = trim (split (from_cp437 (text), '\n')[0]), body;
+			unsigned t0 = kapi_get_ticks ();
+			PrintSetup s;
+			if (f.empty () || !read_file (path (to_latin1 (f).c_str ()), body)) { status = 404; response = to_cp437 (fmt (TR ("I cannot find the file to print: %s."), f)); }
+			else if (body.compare (0, 5, "%PDF-") == 0) { status = 415; response = to_cp437 (TR ("I cannot print a PDF from here: open it in the PDF Viewer to print it.")); }
+			else if (!printer_setup (trim (from_cp437 (std::string (p + 8))), s)) { status = 503; response = to_cp437 (TR ("No printer is set up: the Control Panel's Printers applet adds one.")); }
+			else
+			{
+				std::vector<PrintLine> lines;
+				for (auto &l : split (from_cp437_if_needed (body), '\n')) { std::string x = l; if (!x.empty () && x.back () == '\r') x.pop_back (); lines.push_back ({ x, false }); }
+				size_t slash = f.find_last_of ("/\\:");
+				int job = print_lines (s, slash == std::string::npos ? f : f.substr (slash + 1), lines);
+				status = job > 0 ? 202 : 503;
+				response = to_cp437 (job > 0 ? fmt (TR ("Sent to %s."), s.printer) : std::string (TR ("The printing could not start: is the print service running?")));
+			}
+			endTicks += kapi_get_ticks () - t0;		// (the printing's time does not count)
+			return true;
+		}
+		if (starts_ci (p, "MAIL:"))
 		{
 			status = 501;
 			response = to_cp437 ("Ce service n'est pas disponible sur Onyx.");
@@ -428,7 +480,8 @@ public:
 		if (starts_ci (p, "CRON:")) return cronStop != 0;
 		if (starts_ci (p, "RESPONSE:") || starts_ci (p, "STATUS:") || starts_ci (p, "HEADERS:") || starts_ci (p, "MOOD:")
 		    || starts_ci (p, "LLM:") || starts_ci (p, "LANG:")) return true;
-		if (starts_ci (p, "MAIL:") || starts_ci (p, "PRINTER:") || starts_ci (p, "SCREEN:") || starts_ci (p, "TOUCH:")) return false;
+		if (starts_ci (p, "PRINTER:")) return true;
+		if (starts_ci (p, "MAIL:") || starts_ci (p, "SCREEN:") || starts_ci (p, "TOUCH:")) return false;
 		return file_exists (path (p));
 	}
 	bool remove (const char *p) override { return kapi_remove (path (p).c_str ()) == 0; }
@@ -509,6 +562,7 @@ static bas::Program *skill_program (const std::string &home, const Skill &app, s
 static int skill_run (const std::string &home, const Skill &app, const groq_outcome &o, SkillIo *io, std::string &err,
 		      std::vector<std::string> *llmOut, bool askinfo = false, bool *cronStop = 0, unsigned maxMs = 10000)
 {
+	if (app.native) return native_run (home, app, o, io);
 	bas::Program *p = skill_program (home, app, err);
 	if (!p) return -1;
 	SkillHost h;

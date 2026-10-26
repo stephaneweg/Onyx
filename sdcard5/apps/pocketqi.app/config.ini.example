@@ -1,0 +1,18 @@
+# PocketQI's settings -- Pocket > Settings writes them in config.ini (this folder); you may also copy this file to
+# config.ini and fill it in. config.ini holds your API keys: keep it private (it is never packaged nor committed).
+#
+# provider     the model asked first: mistral or groq (the other one is the fallback when it has a key)
+# mistral_key  your Mistral API key (free: console.mistral.ai)
+# groq_key     your Groq API key (free: console.groq.com)
+# model        another model than the provider's default (ministral-14b-latest, qwen/qwen3.8-27b); empty: the default
+# url          a server of your own: an OpenAI-compatible chat/completions address (http://192.168.1.20:8080/v1/chat/completions);
+#              when set, it is the only one asked
+# url_key      its key, if it wants one
+# character    Pocket's character: 0 serious, 1 calm, 2 warm, 3 playful, 4 mischievous
+provider = mistral
+mistral_key =
+groq_key =
+model =
+url =
+url_key =
+character = 0

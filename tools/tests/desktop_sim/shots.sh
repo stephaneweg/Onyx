@@ -164,7 +164,7 @@ build () {
 		mkdir -p "$OUT/pqi"
 		for f in groq_proto pocket_humeur pocket_visage; do gcc -O2 -w -c user/Apps/pocketqi/core/$f.c -o "$OUT/pqi/$f.o" || return 1; done
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DPOCKETQI_NO_TLS -o "$OUT/pocketqi" "$OUT/fakekapi.o" user/Apps/pocketqi/main.cpp user/Libs/basic/bascomp.cpp \
-			user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp "$OUT"/pqi/*.o "$OUT/libuikit.a" "$OUT/libft.a" -lpthread -lm; return
+			user/Libs/basic/basvm.cpp user/Libs/basic/basnum.cpp user/Libs/basic/basbax.cpp user/Apps/notes/notesmodel.cpp user/Apps/clock/alarms.cpp user/Apps/clock/clocktime.cpp "$OUT"/pqi/*.o "$OUT/libuikit.a" "$OUT/libft.a" -lpthread -lm -Wl,--unresolved-symbols=ignore-all; return
 	fi
 	if [ "$1" = courier ]; then			# (newlib-like: FreeType; no TLS on the PC)
 		$CXX -Iuser/Kits/fontkit -I$FT/include -DCOURIER_NO_TLS -o "$OUT/courier" "$OUT/fakekapi.o" user/Apps/courier/main.cpp "$OUT/libuikit.a" "$OUT/libft.a" -lpthread; return
@@ -813,11 +813,11 @@ if want pocketqi; then			# (PocketQI: a sentence typed, the LLM's answer canned 
 	}
 	W20="$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W;$W"
 	if [ "$SHOTS_LANG" = fr ]; then
-		A=$(llm_answer '{\"langue\": \"fr\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"agenda\", \"args\": [\"write\", \"2026-09-29\", \"rendez-vous chez le dentiste\", \"14:00\"]}, {\"app\": \"say\", \"args\": [\"C'"'"'est noté.\"]}]}')
-		Q='Note le dentiste demain a 14h'
+		A=$(llm_answer '{\"langue\": \"fr\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"agenda\", \"args\": [\"write\", \"2026-09-29\", \"Dentiste\", \"14:00\"]}, {\"app\": \"notes\", \"args\": [\"add\", \"Courses\", \"lait\"]}, {\"app\": \"say\", \"args\": [\"C'"'"'est noté.\"]}]}')
+		Q='Note le dentiste demain a 14h, et du lait pour les courses'
 	else
-		A=$(llm_answer '{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"retenir\", \"args\": [\"nom\", \"Lea\"]}, {\"app\": \"say\", \"args\": [\"Nice to meet you, {nom}! I will remember your name. What can I do for you today?\"]}]}')
-		Q='Hello Pocket, my name is Lea'
+		A=$(llm_answer '{\"langue\": \"en\", \"outcomes\": [{\"app\": \"humeur\", \"args\": [\"joyeux\", \"2\"]}, {\"app\": \"agenda\", \"args\": [\"write\", \"2026-09-29\", \"Dentist\", \"14:00\"]}, {\"app\": \"notes\", \"args\": [\"add\", \"Shopping\", \"milk\"]}, {\"app\": \"say\", \"args\": [\"Both noted.\"]}]}')
+		Q='Note the dentist tomorrow at 2pm, and milk for the shopping'
 	fi
 	sim pocketqi pocketqi "wait;wait;$(typ "$Q");key 13;$W20;$W20;$W20;$W20" $P SIM_SLEEP=1 SIM_NET="$A"; png pocketqi
 	rm -rf "$PQ"

@@ -28,7 +28,8 @@ PI4_ONLY = ["kernel8-rpi4.img", "kernel8-rpi4.img.old", "start4.elf", "fixup4.da
 	    "firmware/brcmfmac*-sdio.txt", "firmware/brcmfmac*-sdio.clm_blob", "var/pkg/db/*"]
 # the card's own state and the user's private files: neither copied over nor removed (as .gitignore's)
 KEEP = ["etc/wpa_supplicant.conf", "etc/clock", "etc/ftpfs.ini", "etc/mail/*", "mail/*", "var/*",
-	"apps/lisa.app/config.ini", "apps/gamelib.app/config.ini", "apps/gamelib.app/thumbs/*",
+	"apps/lisa.app/config.ini", "apps/pocketqi.app/config.ini", "apps/pocketqi.app/etc/*", "apps/pocketqi.app/tmp/*",
+	"apps/pocketqi.app/apps/courses/liste.txt", "apps/gamelib.app/config.ini", "apps/gamelib.app/thumbs/*",
 	"res/wallpaper.*", "doom/savegame/*", "doom/*.cfg", "apps/antigrav.app/times.txt", "kernel_2712.img", "kernel_2712.img.old"]
 
 def match (rel, pats): return any (fnmatch.fnmatchcase (rel, p) for p in pats)

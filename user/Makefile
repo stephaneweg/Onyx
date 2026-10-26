@@ -594,16 +594,19 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard Libs/mail/*.h)
 # PocketQI, Pocket the family's desk assistant (Apps/pocketqi: the user's PocketQI, github.com/stephaneweg/PocketQI,
 # ported): a newlib app as Courier (FreeType's text through uikit, mbedTLS for https:// -- NetKit's http.hpp over
 # ../tls/onyx_tls.hpp), Onyx BASIC's compiler and VM built in for its skills, PocketQI's own C cores (core/: the LLM's
-# protocol, the moods, the face) compiled as C.
+# protocol, the moods, the face) compiled as C; Notes', the Clock's, the Calendar's and Cardfile's models for its native
+# skills (Apps/pocketqi/natives.h: Pocket writes in Onyx's own apps), PrinterKit for its printing.
 PQI_MBEDTLS ?= ../third_party/mbedtls-3.6.3
 PQI_CORE = Apps/pocketqi/core/groq_proto.o Apps/pocketqi/core/pocket_humeur.o Apps/pocketqi/core/pocket_visage.o
 Apps/pocketqi/core/%.o: Apps/pocketqi/core/%.c $(wildcard Apps/pocketqi/core/*.h)
 	$(CC) $(NL_CFLAGS) -fno-math-errno -c $< -o $@
-pocketqi.elf: Apps/pocketqi/main.cpp $(wildcard Apps/pocketqi/*.h) $(PQI_CORE) Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
+PQI_NATIVE = Apps/notes/notesmodel.cpp Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
+pocketqi.elf: Apps/pocketqi/main.cpp $(wildcard Apps/pocketqi/*.h) $(PQI_CORE) $(PQI_NATIVE) Apps/notes/notesmodel.h Apps/clock/alarms.h Apps/clock/clocktime.h \
+	      Apps/calendar/model.h Apps/calendar/agendafiles.h Apps/cardfile/model.h lib/printerkit.imp.a Kits/printerkit/printerkit.h Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
 	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h Libs/basic/basfont.h Kits/netkit/http.hpp Libs/tls/onyx_tls.hpp \
 	      lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include -I$(PQI_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp $(PQI_CORE) lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a \
+	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp $(PQI_CORE) $(PQI_NATIVE) lib/printerkit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a \
 	       -L$(PQI_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lstdc++ -lm -o $@
 
 # Telegram, the instant messenger in the way of Windows Live Messenger (Apps/telegram: docs/04 "Telegram"): a newlib app as

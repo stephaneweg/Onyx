@@ -2760,7 +2760,7 @@ screen, ^G the page's field, Ctrl+Tab the next tab.
 | **telegram** | **Telegram**, the instant messenger in the way of **Windows Live Messenger**: your contact list on the left (your picture in its glass frame and your status, Favourites, Conversations with their last message and unread count, Contacts and who is online), the conversation on the right ("Alice says:", the times and the read ticks, the display pictures, **emoticons** drawn as pictures — the picker, or typed `:)` `;)` `(Y)` `<3`), notifications for the other conversations; each conversation in **a window of its own** (or beside the list: **View** menu). Your real Telegram account (phone number, code, cloud password); `telegram --demo` to look without one. Files: `config.ini`, `session.dat`, `cache/` in `SD:/apps/telegram.app`. See *Telegram, the instant messenger* below. Needs the network up (see §3). |
 | **jet** (Jet Browser) | **Jet Browser**, the Onyx web browser, on **WebKit** (the dock's Internet drawer, or `run jet [address]`): `http://` and `https://`, JavaScript, video and sound, one page per window — its own section below, *Jet Browser (`jet`)*. (Until 2026-10-04 Jet was a NetSurf port, and this browser was the package **web**: `pkg update jet` brings the new one; `pkg delete web` then removes the old copy.) |
 | **wpaconf** (Wi-Fi Settings) | A Control Panel applet (alone: a window of its own). Editor for the WLAN credentials in `SD:/etc/wpa_supplicant.conf`. Fields: SSID — a combo box: **Scan** lists the networks around (about 3 s), pick one with its arrow (or Down / Up) and the proto / key mgmt follow its security (an open network gets `key_mgmt=NONE`, no password) — password (masked — **Show password** reveals it), country, proto, key&nbsp;mgmt; `Tab` moves between fields. **Save** adds the network to the known ones in the file (or updates its password; since 2026-10-09 the other known networks are kept — NetKit's `wifi.h`, the menu bar's Wi-Fi menu and the console's Wi-Fi page the same — the one saved last joined first) and joins it at once when the Wi-Fi is up; **Save & Reboot** writes it then restarts; **Reload** re-reads the file. The password is stored in clear text on the card (the radio needs it) — keep the card private. |
-| **PocketQI** (`pocketqi`) | **Pocket, the family's desk assistant**: type a sentence, a large language model (Mistral, Groq, or a server of your own) decides what Pocket says and does; its **face** (two big eyes) shows its mood; **skills** in Onyx BASIC note appointments, to-dos and shopping, give the weather; it **remembers** names on the device only. **Enter** sends, Page Up / Down scroll, Esc skips Pocket's question; Pocket ▸ New Conversation (^N), What Pocket Remembers..., Skills..., Settings... (the API keys); Edit ▸ Copy Last Answer, Copy Conversation (see *PocketQI* below). Files: `SD:/apps/pocketqi.app/config.ini`, `etc/memoire.txt`, `apps/<skill>/`. |
+| **PocketQI** (`pocketqi`) | **Pocket, the family's desk assistant**: type a sentence, a large language model (Mistral, Groq, or a server of your own) decides what Pocket says and does; its **face** (two big eyes) shows its mood; it writes in **Onyx's own apps** -- the Calendar's appointments and tasks, Notes, a message prepared in Mail, the Clock's alarms, the contacts -- and its **skills** in Onyx BASIC keep a shopping list and give the weather; it **remembers** names on the device only. **Enter** sends, Page Up / Down scroll, Esc skips Pocket's question; Pocket ▸ New Conversation (^N), What Pocket Remembers..., Skills..., Settings... (the API keys); Edit ▸ Copy Last Answer, Copy Conversation (see *PocketQI* below). Files: `SD:/apps/pocketqi.app/config.ini`, `etc/memoire.txt`, `apps/<skill>/`. |
 | **Lisa** | A chat with an AI assistant (a modern *Eliza*), through the **Groq** API over HTTPS. Type in the box at the bottom: **Enter** sends, **Shift+Enter** starts a new line; Lisa's answer appears in the conversation above (word-wrapped; "Lisa is thinking..." meanwhile). Every request sends Lisa's **role** and the **whole conversation**, so she keeps the context. Menus: **Chat** ▸ New Conversation (^N), Save Transcript... (^S); **Edit** ▸ Copy (the selected text), Paste, Copy Last Answer; **Settings** ▸ Edit Configuration... (opens `config.ini` in tinypad). **Setup**: get a free API key at console.groq.com and put it in `SD:/apps/lisa.app/config.ini` as `key = gsk_...` (see `config.ini.example` in the same folder: `model`, `role`, `temperature`, `max_tokens`). That file holds your key: keep it private — it is never committed. Needs the network up (see §3). |
 | **voronoy** | The wallpaper's painter (launched at boot, and by the Theme applet's Apply; no window): Voronoi cells, a gradient, bubbles, a colour, a picture, or a grey pattern of `SD:/wallpapers` coloured by the gradient, as `SD:/etc/wallpaper.ini` says (§11). |
 
@@ -2974,7 +2974,7 @@ header copied (*Tour · Temps du tour · Total*); `alarms.txt` keeps the same En
 ### PocketQI, Pocket the desk assistant (`pocketqi`)
 
 ![PocketQI](../screenshots/pocketqi.png)
-*PocketQI: "Hello Pocket, my name is Lea" -- Pocket smiles, remembers the name (on the device) and answers.*
+*PocketQI: one sentence, two of Onyx's apps -- the dentist written in the Calendar (and the desktop's agenda), the milk in a note of Notes.*
 
 **Pocket** is a small assistant for the family's desk: you write to it as you would speak to it, it answers in a few
 words, and it acts through its **skills** -- small apps in Onyx BASIC that keep the agenda, the to-do list and the
@@ -2995,9 +2995,14 @@ answers on the left, and between them small grey lines saying what Pocket does (
 conversation is empty, **three questions to try**; the **field** and **Send**. The window can be resized; in the pocket
 mode it fills the screen (on a 640 x 480 PocketTerm35 too: the face smaller, a line of hints at the foot).
 
+![PocketQI in the pocket mode](../screenshots/pocket/pocketqi-640.png)
+*The pocket mode at 640 x 480 (the PocketTerm35): a question to try chosen with the D-pad and asked with A.*
+
 **Talking to Pocket**: type and press **Enter** (or Send). Pocket answers in your language (it is told to). Things to try:
-*My name is Lea* (it remembers it), *Note the dentist tomorrow at 2 pm* (the agenda), *What do I have this week?*,
-*I must call the plumber* (the to-do list), *Add milk and eggs to the shopping list*, *What's the weather in Lyon?*,
+*My name is Lea* (it remembers it), *Note the dentist tomorrow at 2 pm* (Onyx's Calendar), *What do I have this week?*,
+*I must call the plumber* (the Calendar's tasks), *Add milk to my shopping note* (Notes), *Write to Paul that I will be
+late* (Mail), *What is Julie's phone number?* (the contacts), *Wake me at 7 tomorrow* (the Clock), *Print my shopping
+list* (the printer), *What's the weather in Lyon?*,
 *Who was Marie Curie?* (it reads Wikipedia's summary first), *Tell me a story* (in pieces: every three, *Shall I go
 on?*; *continue yesterday's story* takes up an interrupted one), *Warn me at 8 pm to take the laundry out* (a
 reminder, while PocketQI is open). When Pocket **asks you something** (*At what time?*), the status line says it waits:
@@ -3031,17 +3036,31 @@ the skills' descriptions. **What Pocket remembers never leaves the device**: the
 name back before showing it. The conversation sent is forgotten after ten minutes without a word. The server's
 certificate is not checked yet (as `/bin/llm`).
 
-**The skills** (`SD:/apps/pocketqi.app/apps/<skill>/`: `main.bas`, its manifest `app.txt`, its data): **agenda**
-(write, read, delete, move an appointment), **todo** (add, plan, done, list, edit, clear), **courses** (the shopping
-list: add, remove, change a quantity, list, clear), **meteo** (the weather now, a day, the week -- Open-Meteo, free and
-without a key, data CC BY 4.0; the town: the one named, else the one Pocket remembers as *ville*), **humeur** (a tour of
-the face's moods). They are PocketQI's own and **speak French** for now. A skill is a folder: copy one in and Pocket
-knows it at the next sentence (the manifest's `llm.<action> = <types> : <what it does>` lines are what the model is
-told); they are written in Onyx BASIC with the library `lib/galo.bi` (`Say`, `Arg$`, `Web$`, `JsonText$`, `SetMood`,
+**Pocket in Onyx's own apps** (its native skills, in your language): what Pocket notes is where you look for it.
+
+| Skill | Onyx's app | What Pocket does |
+|---|---|---|
+| **agenda** | the **Calendar** (and the desktop's agenda widget) | writes an appointment (a time: a reminder 15 minutes before, as the Calendar's own; no time: all day; an end, a place when you say them), reads a day or a period, deletes one, moves one. A Calendar open shows the change within two seconds |
+| **todo** | the **Calendar**'s tasks | adds a task (a due date when you give a delay), ticks one off, deletes one, lists those to do |
+| **notes** | **Notes** (and Stickies, for a pinned note) | writes a new note, adds a line to a note (its title's words; made when there is none: *add milk to my shopping note*), reads a note, lists them |
+| **mail** | **Mail** | prepares a message -- the address from your contacts, the text written by the model -- and opens it in Mail: **you read it and press Send** (Pocket never sends a mail itself). Mail must be closed first (Pocket says so) |
+| **contacts** | the **address book** (`SD:/Documents/Contacts.card`: Mail's contacts, Cardfile) | says a person's phone, mobile, e-mail, address, birthday |
+| **reveil** | the **Clock**'s alarms | sets an alarm (the next time, or the day you say; a label), lists them, deletes one; the Clock must be closed first, its service `clockd` rings them |
+| **imprimer** | the **printers** (Control Panel ▸ Printers: a network printer by IPP, or the PDF printer) | prints a note, the agenda of a day or a period (the days as headings), the Calendar's tasks, the shopping list -- on the default printer, or the one you name (*print the agenda on the Canon*); says the printers there are. The print service does the rest: the job is in its queue, a notification says when it is done |
+
+**The BASIC skills** (`SD:/apps/pocketqi.app/apps/<skill>/`: `main.bas`, its manifest `app.txt`, its data): **courses**
+(the shopping list: add, remove, change a quantity, list, clear), **meteo** (the weather now, a day, the week -- Open-Meteo,
+free and without a key, data CC BY 4.0; the town: the one named, else the one Pocket remembers as *ville*), **humeur** (a
+tour of the face's moods). They are PocketQI's own and **speak French** for now. A skill prints a text file with the
+`PRINTER:` device, as on PocketQI's other devices (`OPEN "PRINTER:" FOR OUTPUT`, the file's path, `CLOSE`; `PRINTER:LIST`
+the printers). A skill is a folder: copy one in and
+Pocket knows it at the next sentence (the manifest's `llm.<action> = <types> : <what it does>` lines are what the model
+is told); they are written in Onyx BASIC with the library `lib/galo.bi` (`Say`, `Arg$`, `Web$`, `JsonText$`, `SetMood`,
 `Ask$`...; docs/03 *PocketQI* says how to write one). A skill is stopped after ten seconds of its own work.
 
 **Not in this version** (PocketQI has them on its other devices): the microphone and the wake word *dis Pocket*
-(Onyx has no sound input yet), Pocket's voice, its drawings on the screen, the mail, printing and address-book skills.
+(Onyx has no sound input yet), Pocket's voice, its drawings on the screen, sending a mail by itself, printing a PDF
+(a PDF is printed from the PDF Viewer).
 
 **Files** (all in `SD:/apps/pocketqi.app/`):
 
@@ -3051,10 +3070,13 @@ told); they are written in Onyx BASIC with the library `lib/galo.bi` (`Say`, `Ar
 | `etc/memoire.txt` | what Pocket remembers, `name = value` a line |
 | `etc/cron.txt` | the reminders and the tasks watched (*warn me...*) |
 | `etc/histoires.txt` | the stories and explanations left halfway (10 at most) |
-| `apps/<skill>/` | the skills; their data beside them (`agenda/agenda.txt`, `todo/todo.txt`, `courses/liste.txt`) |
+| `apps/<skill>/` | the BASIC skills; their data beside them (`courses/liste.txt`) |
 | `lib/galo.bi` | the skills' library |
 | `prompt/<name>.txt` | (optional) a text of the model's instructions changed without rebuilding -- PocketQI's mechanism |
-| `tmp/` | a text the model wrote for a skill |
+| `tmp/` | a text the model wrote for a skill; `mail-draft.txt`, the message handed to Mail |
+
+What the native skills write is the apps' own: `SD:/apps/calendar.app/calendar.ics` (with `agenda.txt` and
+`reminders.txt`), `SD:/Notes/`, `SD:/apps/clock.app/alarms.txt`; they read `SD:/Documents/Contacts.card`.
 
 ### Letters, the word processor (`letters`)
 
@@ -4207,7 +4229,7 @@ UID, are skipped; its categories added); **File ▸ Export iCalendar...** writes
 European summer time; `view` = day, week or month at the start). For the desktop the Calendar
 also writes `agenda.txt` (the month's appointments, for the agenda widget) and `reminders.txt`
 (the month's reminders). The notes of the former calendar (in `agenda.txt`) become appointments
-the first time. An argument `YYYYMMDD` opens that day (the agenda widget's clicks).
+the first time. An argument `YYYYMMDD` opens that day (the agenda widget's clicks). When another program changes `calendar.ics` -- **PocketQI**'s Pocket notes appointments and tasks there -- the Calendar open reads it again within two seconds (not while one of its dialogs is open).
 
 ### Photos, the photo library (`photos`)
 
@@ -4399,7 +4421,7 @@ or where *Save … As* was told). Licence: WebKit's LGPL-2.1
 Mail reads and sends your e-mail: **Gmail**, **Outlook.com / Hotmail / Live**, **iCloud**, **Yahoo**,
 and **any IMAP or POP3 account** (with SMTP to send). Start it from the dock or the app list
 (*Internet*); a `.eml` file opened from the File Viewer is shown on its own; `mail --attach <list>` opens a
-new message with the files the list names attached (Photos' *Send by Mail*).
+new message with the files the list names attached (Photos' *Send by Mail*), `mail --compose <draft>` a new message filled from a draft -- `To:`, `Cc:`, `Subject:` lines, a blank line, the text -- to read and send (PocketQI's Pocket prepares mails this way).
 
 **Adding an account** (the *Add an account* button the first time, *File > Add an Account...*, or
 *Accounts and settings*): your name and your address. Mail recognises the big providers by the address

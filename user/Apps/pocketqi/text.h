@@ -133,6 +133,22 @@ static std::string utf8_file_to_cp437 (const std::string &s)
 	return multi ? to_cp437 (s) : s;
 }
 
+// A file a skill wrote (its strings are CP437) in UTF-8 -- unless it is valid UTF-8 already (one the app wrote)
+static std::string from_cp437_if_needed (const std::string &s)
+{
+	for (size_t i = 0; i < s.size (); i++)
+	{
+		unsigned char c = (unsigned char) s[i];
+		if (c < 0x80) continue;
+		int n = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2 : (c & 0xF8) == 0xF0 ? 3 : -1;
+		if (n < 0) return from_cp437 (s);
+		for (int k = 1; k <= n; k++)
+			if (i + k >= s.size () || ((unsigned char) s[i + k] & 0xC0) != 0x80) return from_cp437 (s);
+		i += (size_t) n;
+	}
+	return s;
+}
+
 static void url_encode (const char *in, std::string &out)
 {
 	static const char hex[] = "0123456789ABCDEF";

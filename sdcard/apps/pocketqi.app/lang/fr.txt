@@ -84,3 +84,96 @@ What is on my agenda this week?	Qu'est-ce que j'ai dans mon agenda cette semaine
 Tell me a short story	Raconte-moi une petite histoire
 Hello! I am Pocket. Ask me a question, or tell me what to note in your agenda or your lists.	Bonjour ! Je suis Pocket. Pose-moi une question, ou dis-moi quoi noter dans ton agenda ou tes listes.
 Pocket could not start its thread.	Pocket n'a pas pu démarrer son fil d'exécution.
+# the native skills (natives.h): Onyx's agenda, tasks, notes, mail, contacts, alarms
+Sunday	dimanche
+Monday	lundi
+Tuesday	mardi
+Wednesday	mercredi
+Thursday	jeudi
+Friday	vendredi
+Saturday	samedi
+January	janvier
+February	février
+March	mars
+April	avril
+May	mai
+June	juin
+July	juillet
+August	août
+September	septembre
+October	octobre
+November	novembre
+December	décembre
+today	aujourd'hui
+tomorrow	demain
+yesterday	hier
+ at 	 à 
+(No title)	(Sans titre)
+ (tomorrow)	 (demain)
+ (today)	 (aujourd'hui)
+The agenda could not be written on the card.	L'agenda n'a pas pu être écrit sur la carte.
+Noted in the agenda: %s, %s.	C'est noté dans l'agenda : %s, %s.
+Nothing in the agenda %s.	Rien dans l'agenda %s.
+Nothing in the agenda for those days.	Rien dans l'agenda pour ces jours-là.
+One appointment:	Un rendez-vous :
+%s appointments:	%s rendez-vous :
+I find no appointment like that in the agenda.	Je ne trouve pas ce rendez-vous dans l'agenda.
+Several appointments match: which one?	Plusieurs rendez-vous correspondent : lequel ?
+Deleted from the agenda: %s, %s.	Supprimé de l'agenda : %s, %s.
+Moved: %s, %s.	Déplacé : %s, %s.
+The tasks could not be written on the card.	Les tâches n'ont pas pu être écrites sur la carte.
+Added to your tasks: %s, by %s.	Ajouté à tes tâches : %s, pour %s.
+Added to your tasks: %s.	Ajouté à tes tâches : %s.
+I find no task like that.	Je ne trouve pas cette tâche.
+Done: %s.	C'est fait : %s.
+Deleted from your tasks: %s.	Retiré de tes tâches : %s.
+Nothing left to do in your tasks.	Plus rien à faire dans tes tâches.
+One task to do:	Une tâche à faire :
+%s tasks to do:	%s tâches à faire :
+%s, by %s.	%s, pour %s.
+The note could not be written on the card.	La note n'a pas pu être écrite sur la carte.
+I wrote the note "%s" in Notes.	J'ai écrit la note « %s » dans Notes.
+I made the note "%s" in Notes, with: %s.	J'ai créé la note « %s » dans Notes, avec : %s.
+That note cannot be read.	Cette note ne peut pas être lue.
+Added to the note "%s": %s.	Ajouté à la note « %s » : %s.
+I find no note like that.	Je ne trouve pas cette note.
+There is no note yet.	Il n'y a pas encore de note.
+Your notes: %s.	Tes notes : %s.
+I find no %s in your contacts.	Je ne trouve pas %s dans tes contacts.
+, phone %s	, téléphone %s
+, mobile %s	, portable %s
+, e-mail %s	, e-mail %s
+, address %s	, adresse %s
+, birthday %s	, anniversaire %s
+Mail is open: close it, then ask me again, and I will open the message in it.	Mail est ouvert : ferme-le, puis redemande-moi, et j'y ouvrirai le message.
+The message could not be written on the card.	Le message n'a pas pu être écrit sur la carte.
+Mail could not be started.	Mail n'a pas pu être lancé.
+Your message is ready in Mail, but I did not find %s's address in your contacts: type it, then press Send.	Ton message est prêt dans Mail, mais je n'ai pas trouvé l'adresse de %s dans tes contacts : tape-la, puis appuie sur Envoyer.
+Your message to %s is ready in Mail: read it, then press Send.	Ton message pour %s est prêt dans Mail : relis-le, puis appuie sur Envoyer.
+The Clock is open: close it, then ask me again.	L'Horloge est ouverte : ferme-la, puis redemande-moi.
+The Clock has 20 alarms already.	L'Horloge a déjà 20 réveils.
+The alarms could not be written on the card.	Les réveils n'ont pas pu être écrits sur la carte.
+Alarm set for %s, %s.	Réveil réglé à %s, %s.
+ every week	 chaque semaine
+Your alarms: %s.	Tes réveils : %s.
+No alarm is set.	Aucun réveil n'est réglé.
+There is no alarm at %s.	Il n'y a pas de réveil à %s.
+The alarm at %s is deleted.	Le réveil de %s est supprimé.
+# printing (natives.h's imprimer, skills.h's PRINTER:)
+I am printing %s on %s.	J'imprime %s sur %s.
+the PDF printer	l'imprimante PDF
+The printing could not start: is the print service running?	L'impression n'a pas pu démarrer : le service d'impression tourne-t-il ?
+No printer is set up: the Control Panel's Printers applet adds one.	Aucune imprimante n'est configurée : l'applet Imprimantes du Panneau de configuration en ajoute une.
+ (by default)	 (par défaut)
+Your printers: %s.	Tes imprimantes : %s.
+all day	toute la journée
+Agenda	Agenda
+the agenda	l'agenda
+Tasks	Tâches
+your tasks	tes tâches
+The shopping list is empty.	La liste de courses est vide.
+Shopping list	Liste de courses
+the shopping list	la liste de courses
+I cannot find the file to print: %s.	Je ne trouve pas le fichier à imprimer : %s.
+I cannot print a PDF from here: open it in the PDF Viewer to print it.	Je ne sais pas imprimer un PDF d'ici : ouvre-le dans la Visionneuse PDF pour l'imprimer.
+Sent to %s.	Envoyé à %s.
