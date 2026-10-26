@@ -177,3 +177,24 @@ the shopping list	la liste de courses
 I cannot find the file to print: %s.	Je ne trouve pas le fichier à imprimer : %s.
 I cannot print a PDF from here: open it in the PDF Viewer to print it.	Je ne sais pas imprimer un PDF d'ici : ouvre-le dans la Visionneuse PDF pour l'imprimer.
 Sent to %s.	Envoyé à %s.
+name	nom
+e-mail	e-mail
+other e-mail	autre e-mail
+phone	téléphone
+mobile	portable
+company	société
+address	adresse
+birthday	anniversaire
+notes	notes
+Whose card? Tell me the name.	La fiche de qui ? Dis-moi son nom.
+Cardfile is open: close it, then ask me again.	Cardfile est ouvert : ferme-le, puis redemande-moi.
+Your address book (SD:/Documents/Contacts.card) is not a Cardfile form: I leave it alone.	Ton carnet d'adresses (SD:/Documents/Contacts.card) n'est pas une fiche Cardfile : je n'y touche pas.
+Several people match %s: %s. Which one?	Plusieurs personnes correspondent à %s : %s. Laquelle ?
+I could not write the address book.	Je n'ai pas pu écrire le carnet d'adresses.
+I removed %s from your contacts.	J'ai retiré %s de tes contacts.
+What should I change on %s's card?	Que dois-je changer sur la fiche de %s ?
+I could not read: %s.	Je n'ai pas pu lire : %s.
+I added %s to your contacts.	J'ai ajouté %s à tes contacts.
+I added %s to your contacts: %s.	J'ai ajouté %s à tes contacts : %s.
+I changed %s's card: %s.	J'ai modifié la fiche de %s : %s.
+, at %s	, chez %s

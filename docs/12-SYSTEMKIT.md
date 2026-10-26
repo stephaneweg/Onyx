@@ -31,7 +31,7 @@ SystemKit is what a program says to the system and to the other programs: notifi
 |---|---|
 | Include | `#include "systemkit/systemkit.h"` |
 | Link | `lib/systemkit.imp.a` (C++) or `lib/systemkit.imp_c.a` (C) |
-| Library | `SD:/lib/systemkit.so` — 117 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
+| Library | `SD:/lib/systemkit.so` — 119 entries in its table (`user/Kits/systemkit/systemkit.abi`, append-only) |
 | Sources | `user/Kits/systemkit/` |
 
 ## Using it
@@ -266,6 +266,8 @@ Everything the headers declare, in their order — the details are in each heade
 | `volume_output_word` | An output's word in sound.ini (KAPI_SND_OUT_*). | `volume.h` |
 | `volume_save` | An output's word in sound.ini (KAPI_SND_OUT_*). | `volume.h` |
 | `volume_set_output` | The output chosen (KAPI_SND_OUT_*) | `volume.h` |
+| `volume_input_word` | (v99) The input, a microphone | `volume.h` |
+| `volume_set_input` | The input chosen (KAPI_SND_IN_*, -1 | `volume.h` |
 | `mixer_set` | The channel's volume and mute set now (-1 | `volume.h` |
 | `volume_restore` | the saved volume -> the kernel (no file | `volume.h` |
 | `Wallpaper` | (a type) | `wallpaper.h` |
@@ -629,6 +631,18 @@ The output chosen (KAPI_SND_OUT_*): applied now, kept in the file -> sound_outpu
 
 ```cpp
 int volume_set_output (int out);
+```
+
+(v99) The input, a microphone: "input = auto | none | usb | i2s" and "input_gain = <dB>" in the same file.
+
+```cpp
+const char *volume_input_word (int in);
+```
+
+The input chosen (KAPI_SND_IN_*, -1: kept) and its gain (dB 0..48, -1: kept): the kernel's from the next recording, kept in the file -> sound_input's SELECT result (-KAPI_ENOSYS: a kernel before v99).
+
+```cpp
+long volume_set_input (int in, int gain_db);
 ```
 
 ### the mixer (kapi v85): a program's own volume

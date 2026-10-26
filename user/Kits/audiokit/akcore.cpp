@@ -269,6 +269,73 @@ extern "C" int ak_out_write (const short *frames, int n)
 }
 extern "C" void ak_out_close (void)				{ if (s_out == 1) { s_out = 0; kapi_sound_release (); } }
 
+// ---- the system's input: a microphone (kapi v99) ---------------------------------------------------------
+// The kernel records at the device's rate (the one asked if it has it); the samples are converted here to the
+// rate the program asked for (linear: a voice, a level meter -- enough).
+static int s_inDev, s_inAsk;				// the device's rate, the program's (0: closed)
+static unsigned s_inStep, s_inPhase;			// 16.16: device samples an output sample, the place past s_inX0
+static short s_inX0;
+static short s_inTmp[2048];
+
+extern "C" int ak_in_open (int rate)
+{
+	if (rate <= 0) rate = 16000;
+	if (s_inAsk != 0) ak_in_close ();
+	long r = kapi_sound_input (KAPI_SND_IN_OPEN, rate, 0);
+	if (r == -KAPI_EBUSY) return 0;
+	if (r <= 0) return -1;
+	s_inDev = (int) r; s_inAsk = rate;
+	s_inStep = (unsigned) (((unsigned long long) s_inDev << 16) / (unsigned) rate);
+	s_inPhase = 0; s_inX0 = 0;
+	return rate;
+}
+
+extern "C" int ak_in_read (short *out, int max)
+{
+	if (s_inAsk == 0 || out == 0 || max <= 0) return -1;
+	if (s_inDev == s_inAsk)
+	{
+		long n = kapi_sound_input (KAPI_SND_IN_READ, (long) out, max);
+		return n < 0 ? -1 : (int) n;
+	}
+	int done = 0;
+	while (done < max)
+	{
+		long want = (long) ((((unsigned long long) (max - done - 1) * s_inStep) >> 16));
+		if (want < 1) want = 1;
+		if (want > (long) (sizeof s_inTmp / sizeof s_inTmp[0])) want = sizeof s_inTmp / sizeof s_inTmp[0];
+		long n = kapi_sound_input (KAPI_SND_IN_READ, (long) s_inTmp, want);
+		if (n < 0) return done > 0 ? done : -1;
+		if (n == 0) break;
+		for (;;)
+		{
+			unsigned p = s_inPhase >> 16;
+			if (p >= (unsigned) n || done >= max) break;
+			int a = p == 0 ? s_inX0 : s_inTmp[p - 1], b = s_inTmp[p];
+			out[done++] = (short) (a + (((b - a) * (int) (s_inPhase & 0xFFFF)) >> 16));
+			s_inPhase += s_inStep;
+		}
+		// the next sample's place past the last one read (the out buffer full first, rarely: the rest dropped)
+		s_inPhase = (s_inPhase >> 16) >= (unsigned) n ? s_inPhase - ((unsigned) n << 16) : 0;
+		s_inX0 = s_inTmp[n - 1];
+	}
+	return done;
+}
+
+extern "C" void ak_in_close (void)
+{
+	if (s_inAsk == 0) return;
+	kapi_sound_input (KAPI_SND_IN_CLOSE, 0, 0);
+	s_inAsk = s_inDev = 0;
+}
+
+extern "C" int ak_in_peak (const short *s, int n)
+{
+	int m = 0;
+	for (int i = 0; i < n; i++) { int v = s[i] < 0 ? -s[i] : s[i]; if (v > m) m = v; }
+	return m > 32767 ? 32767 : m;
+}
+
 // ---- the player: a thread, a file and the live synthesizer mixed -------------------------------------------
 
 #define P_CHUNK		512				// frames a pass

@@ -9,12 +9,13 @@
 //   notes     Notes' notes (notes/notesmodel.cpp: SD:/Notes), Stickies told to read them again
 //   mail      a message prepared in Mail (`mail --compose <draft>`) for the person to check and send -- Pocket never
 //             sends a mail itself; the address from the contacts
-//   contacts  the address book Mail and Cardfile share (SD:/Documents/Contacts.card, cardfile/model.h), read only
+//   contacts  the address book Mail and Cardfile share (SD:/Documents/Contacts.card, cardfile/model.h): a person
+//             found, added, changed, removed (Mail's form made when there is no file yet)
 //   reveil    the Clock's alarms (clock/alarms.cpp: SD:/apps/clock.app/alarms.txt), clockd told to read them again
 //   imprimer  a note, the agenda, the tasks, the shopping list printed through PrinterKit (printerkit.h: the print
 //             service printd sends it to the printer -- IPP --, or writes it as a PDF), on the default printer or the
 //             one named; skills.h's PRINTER: device prints a skill's text file the same way
-// The Clock and Mail keep their files while they run: open, Pocket asks to close them first. The native skills speak
+// The Clock, Mail and Cardfile keep their files while they run: open, Pocket asks to close them first. The native skills speak
 // the window's language (TR); the BASIC ones PocketQI's French. Included by skills.h, after Skill and SkillIo.
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
@@ -134,7 +135,13 @@ static const char *const NATIVE_MANIFESTS[] = {
 	"contacts",
 	"name = Contacts\n"
 	"description = le carnet d'adresses d'Onyx (Mail et Cardfile)\n"
-	"llm.find = texte : les coordonnees d'une personne (telephone, e-mail, adresse, anniversaire) ; avec askinfo pour une question, sinon les dire\n",
+	"llm.find = texte : les coordonnees d'une personne (telephone, e-mail, adresse, anniversaire) ; avec askinfo pour une question, sinon les dire\n"
+	"llm.add = texte [texte] [texte] [texte] [texte] : ajouter une personne au carnet (son nom, puis chaque coordonnee dite, une par argument "
+	"\"champ: valeur\" ; les champs : email, telephone, portable, adresse, anniversaire (AAAA-MM-JJ), societe, notes) ; si elle y est deja, "
+	"sa fiche est completee\n"
+	"llm.edit = texte texte [texte] [texte] [texte] : modifier la fiche d'une personne (les mots de son nom, puis chaque coordonnee changee "
+	"\"champ: valeur\", les memes champs et nom pour la renommer ; \"champ:\" sans valeur l'efface)\n"
+	"llm.delete = texte : retirer une personne du carnet, seulement si on te le demande clairement\n",
 	"reveil",
 	"name = Reveil\n"
 	"description = les reveils (alarmes) de l'Horloge d'Onyx\n"
@@ -389,44 +396,195 @@ static void do_notes (const groq_outcome &o, SkillIo *io)
 }
 
 // ---- contacts: the address book -------------------------------------------------------------------------------
-struct Person { std::string name, email, phone, mobile, address, birthday; };
+// Mail's form (Apps/mail/contacts.h makes the same at its first use): its columns, and the words the LLM may give
+// for them ("champ: valeur", folded: lower case, no accent, no blank)
+#define CONTACTS_CARD "SD:/Documents/Contacts.card"
+enum { CT_NAME, CT_EMAIL, CT_EMAIL2, CT_PHONE, CT_MOBILE, CT_COMPANY, CT_ADDRESS, CT_BIRTHDAY, CT_NOTES, CT_COUNT };
+static const char *const CT_COLS[CT_COUNT] = { "name", "email", "email2", "phone", "mobile", "company", "address", "birthday", "notes" };
+static const char *const CT_SAID[CT_COUNT] = { TRN ("name"), TRN ("e-mail"), TRN ("other e-mail"), TRN ("phone"), TRN ("mobile"),
+					       TRN ("company"), TRN ("address"), TRN ("birthday"), TRN ("notes") };
+static const char *const CT_KEYS[CT_COUNT] = {
+	" nom name prenom nomcomplet ",
+	" email e-mail mail courriel adressemail adresseemail adresseelectronique ",
+	" autreemail autremail email2 secondemail ",
+	" telephone tel phone fixe telephonefixe ",
+	" portable mobile gsm cellulaire telephoneportable natel ",
+	" societe entreprise company employeur ",
+	" adresse address domicile adressepostale ",
+	" anniversaire naissance datedenaissance birthday ",
+	" notes note remarque remarques " };
 
-// the person the words name in SD:/Documents/Contacts.card (Latin-1); false: none
+// UTF-8 -> Latin-1 folded (lower case, no accent: "Léa" -> "lea"); fold_key also drops the blanks and the dashes
+static std::string fold_text (const std::string &s)
+{
+	std::string o;
+	for (char c : to_latin1 (s)) o += (char) cf::fold ((unsigned char) c);
+	return o;
+}
+static std::string fold_key (const std::string &s)
+{
+	std::string o;
+	for (char c : fold_text (s)) if (c != ' ' && c != '-' && c != '_' && c != '.' && c != '\'') o += c;
+	return o;
+}
+
+// the address book, read and written with Cardfile's model (the file Latin-1, the words here UTF-8)
+struct Book
+{
+	cf::Doc d; int col[CT_COUNT];
+	Book () { cf::doc_init (d); }
+	~Book () { cf::doc_clear (d); }
+	// false: a file that is not a Cardfile form (left alone); no file yet: Mail's form
+	bool load ()
+	{
+		std::string b;
+		if (read_file (CONTACTS_CARD, b)) { if (!cf::doc_read (d, &b[0], (int) b.size (), 0)) return false; }
+		else
+		{
+			cf::scpy (d.title, "Contacts", sizeof d.title);
+			cf::scpy (d.info, "The people Mail writes to (Onyx Mail and Cardfile share this file)", sizeof d.info);
+			static const char *const LABEL[CT_COUNT] = { "Name", "E-mail", "Other e-mail", "Phone", "Mobile", "Company", "Address", "Birthday", "Notes" };
+			for (int i = 0; i < CT_COUNT; i++)
+				cf::field_init (d.f[i], LABEL[i], CT_COLS[i], i == CT_ADDRESS || i == CT_NOTES ? cf::FT_MEMO : i == CT_BIRTHDAY ? cf::FT_DATE : cf::FT_TEXT);
+			d.nf = CT_COUNT; d.sort = 0;
+		}
+		for (int i = 0; i < CT_COUNT; i++) { col[i] = -1; for (int k = 0; k < d.nf; k++) if (!strcmp (d.f[k].column, CT_COLS[i])) col[i] = k; }
+		if (col[CT_NAME] < 0 && d.nf) col[CT_NAME] = 0;
+		return d.nf > 0;
+	}
+	bool save ()
+	{
+		cf::Out o;
+		cf::doc_write (d, o);
+		make_dirs ("SD:/Documents");
+		return write_file (CONTACTS_CARD, std::string (o.b ? o.b : "", (size_t) o.n));
+	}
+	std::string get (int i, int c) const { return col[c] >= 0 ? from_latin1 (d.r[i][col[c]]) : std::string (); }
+	// false: the form has no such field, or the value is not one of its type (a date)
+	bool set (int i, int c, const std::string &v)
+	{
+		if (col[c] < 0) return false;
+		char *n = cf::value_new (d.f[col[c]], to_latin1 (v).c_str (), 0, true);
+		if (!n) return false;
+		cf::value_set (d.r[i][col[c]], n);
+		return true;
+	}
+	// the card of that very name (case, accents and blanks aside), -1 none
+	int exact (const std::string &name) const
+	{
+		std::string f = fold_key (name);
+		for (int i = 0; i < d.nr; i++) if (fold_key (from_latin1 (d.r[i][col[CT_NAME]])) == f) return i;
+		return -1;
+	}
+	// the person the words name: the index, -1 none, -2 several as likely (*names: theirs)
+	int find (const std::string &words, std::string *names = 0) const
+	{
+		int c = col[CT_NAME], best = exact (words), bs = 0, ties = 0;
+		if (best >= 0) return best;
+		std::string w = fold_text (words);
+		for (int i = 0; i < d.nr; i++)
+		{
+			int sc = match_score (fold_text (from_latin1 (d.r[i][c])), w);
+			if (sc > bs) { bs = sc; best = i; ties = 0; }
+			else if (sc == bs && sc > 0) ties++;
+		}
+		if (best < 0 || !ties) return best;
+		if (names)
+			for (int i = 0, k = 0; i < d.nr && k < 6; i++)
+				if (match_score (fold_text (from_latin1 (d.r[i][c])), w) == bs) *names += (k++ ? ", " : "") + from_latin1 (d.r[i][c]);
+		return -2;
+	}
+};
+
+// "champ: valeur" -> the field (and *v the value); a value said without its field: an address with '@' the e-mail,
+// digits a phone number, else a note
+static int contact_field (const std::string &a, std::string &v)
+{
+	size_t p = a.find_first_of (":=");
+	if (p != std::string::npos && p < 40)
+	{
+		std::string k = " " + fold_key (a.substr (0, p)) + " ";
+		for (int i = 0; i < CT_COUNT; i++)
+			if (strstr (CT_KEYS[i], k.c_str ())) { v = trim (a.substr (p + 1)); return i; }
+	}
+	v = trim (a);
+	if (v.find ('@') != std::string::npos && v.find (' ') == std::string::npos) return CT_EMAIL;
+	int digits = 0; bool phone = true;
+	for (char c : v) { if (c >= '0' && c <= '9') digits++; else if (!strchr (" +./-()", c)) phone = false; }
+	return phone && digits >= 6 ? CT_PHONE : CT_NOTES;
+}
+
+struct Person { std::string name, email, phone, mobile, company, address, birthday; };
+
+// the person the words name in the address book; false: none
 static bool contact_find (const std::string &words, Person &p)
 {
-	std::string b;
-	if (!read_file ("SD:/Documents/Contacts.card", b)) return false;
-	cf::Doc d;
-	cf::doc_init (d);
-	if (!cf::doc_read (d, &b[0], (int) b.size (), 0)) { cf::doc_clear (d); return false; }
-	auto col = [&] (const char *c) { for (int k = 0; k < d.nf; k++) if (!strcmp (d.f[k].column, c)) return k; return -1; };
-	int cn = col ("name"), ce = col ("email"), cp = col ("phone"), cm = col ("mobile"), ca = col ("address"), cb = col ("birthday");
-	if (cn < 0) cn = 0;
-	int best = -1, bs = 0;
-	std::string w = to_latin1 (words);
-	for (int i = 0; i < d.nr; i++)
-	{
-		int sc = match_score (d.r[i][cn], w);
-		if (sc > bs) { bs = sc; best = i; }
-	}
-	bool ok = best >= 0;
-	if (ok)
-	{
-		auto v = [&] (int k) { return k >= 0 ? from_latin1 (d.r[best][k]) : std::string (); };
-		p.name = v (cn); p.email = v (ce); p.phone = v (cp); p.mobile = v (cm); p.address = v (ca); p.birthday = v (cb);
-	}
-	cf::doc_clear (d);
-	return ok;
+	Book b;
+	if (!file_exists (CONTACTS_CARD) || !b.load ()) return false;
+	int i = b.find (words);
+	if (i < 0) return false;
+	p.name = b.get (i, CT_NAME); p.email = b.get (i, CT_EMAIL); p.phone = b.get (i, CT_PHONE); p.mobile = b.get (i, CT_MOBILE); p.company = b.get (i, CT_COMPANY);
+	p.address = b.get (i, CT_ADDRESS); p.birthday = b.get (i, CT_BIRTHDAY);
+	return true;
 }
 
 static void do_contacts (const groq_outcome &o, SkillIo *io)
 {
+	std::string act = lower (arg (o, 0)), who = arg (o, 1);
+	if (act == "add" || act == "edit" || act == "delete")
+	{
+		if (who.empty ()) { io->say (TR ("Whose card? Tell me the name.")); return; }
+		if (app_running ("cardfile")) { io->say (TR ("Cardfile is open: close it, then ask me again.")); return; }
+		Book b;
+		if (!b.load ()) { io->say (TR ("Your address book (SD:/Documents/Contacts.card) is not a Cardfile form: I leave it alone.")); return; }
+		int i;
+		bool fresh = false;
+		if (act == "add")
+		{
+			// the same name (case and accents aside): that card completed; else a new one ("Paul Durand" beside "Paul")
+			i = b.exact (who);
+			if (i < 0) { i = cf::doc_add_record (b.d, -1); b.set (i, CT_NAME, who); fresh = true; }
+		}
+		else
+		{
+			std::string names;
+			i = b.find (who, &names);
+			if (i == -2) { io->say (fmt (TR ("Several people match %s: %s. Which one?"), who, names)); return; }
+			if (i < 0) { io->say (fmt (TR ("I find no %s in your contacts."), who)); return; }
+		}
+		std::string name = b.get (i, CT_NAME);
+		if (act == "delete")
+		{
+			cf::doc_del_record (b.d, i);
+			if (!b.save ()) { io->say (TR ("I could not write the address book.")); return; }
+			io->say (fmt (TR ("I removed %s from your contacts."), name));
+			return;
+		}
+		std::string changed, bad;
+		for (unsigned k = 2; k < o.nargs; k++)
+		{
+			std::string v;
+			int c = contact_field (arg (o, k), v);
+			if (c == CT_EMAIL && act == "add" && !b.get (i, CT_EMAIL).empty () && b.get (i, CT_EMAIL) != v) c = CT_EMAIL2;
+			if (c == CT_NAME && v.empty ()) continue;
+			if (b.set (i, c, v)) { changed += (changed.empty () ? "" : ", ") + std::string (TR (CT_SAID[c])); if (c == CT_NAME) name = v; }
+			else bad += (bad.empty () ? "" : ", ") + std::string (TR (CT_SAID[c])) + " " + v;
+		}
+		if (!fresh && changed.empty ()) { io->say (bad.empty () ? fmt (TR ("What should I change on %s's card?"), name) : fmt (TR ("I could not read: %s."), bad)); return; }
+		if (!b.save ()) { io->say (TR ("I could not write the address book.")); return; }
+		std::string s = fresh ? (changed.empty () ? fmt (TR ("I added %s to your contacts."), name) : fmt (TR ("I added %s to your contacts: %s."), name, changed))
+				      : fmt (TR ("I changed %s's card: %s."), name, changed);
+		if (!bad.empty ()) s += " " + fmt (TR ("I could not read: %s."), bad);
+		io->say (s);
+		return;
+	}
 	Person p;
-	if (!contact_find (arg (o, 1), p)) { io->say (fmt (TR ("I find no %s in your contacts."), arg (o, 1))); return; }
+	if (!contact_find (who, p)) { io->say (fmt (TR ("I find no %s in your contacts."), who)); return; }
 	std::string s = p.name;
 	if (!p.phone.empty ()) s += fmt (TR (", phone %s"), p.phone);
 	if (!p.mobile.empty ()) s += fmt (TR (", mobile %s"), p.mobile);
 	if (!p.email.empty ()) s += fmt (TR (", e-mail %s"), p.email);
+	if (!p.company.empty ()) s += fmt (TR (", at %s"), p.company);
 	if (!p.address.empty ()) { std::string a = p.address; for (char &c : a) if (c == '\n') c = ' '; s += fmt (TR (", address %s"), a); }
 	if (!p.birthday.empty ()) s += fmt (TR (", birthday %s"), p.birthday);
 	io->say (s + ".");

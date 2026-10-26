@@ -34,6 +34,10 @@ int  SoundClientVolume (unsigned nPid, int nVolume, int nMute);		// (v85) 0..100
 void SoundOnProcessGone (unsigned nPid);
 int  SoundVolume (int nVolume, int nMute);		// 0..10, mute 0 / 1 (-1: keep) -> volume | 0x100 if muted
 int  SoundOutput (int nOut);				// (v84) KAPI_SND_OUT_* (-1: ask) -> running | asked << 8 | present << 16
+int  SoundInput (int nIn, int nGain);			// (v99) KAPI_SND_IN_* / dB (-1: kept) -> now | asked << 8 | there << 16 | dB << 24
+int  SoundInputOpen (unsigned nPid, unsigned nRate);	// (v99) -> the rate it records at, -KAPI_E*
+int  SoundInputRead (unsigned nPid, s16 *pOut, unsigned nMax);	// -> the samples taken, -KAPI_E*
+void SoundInputClose (unsigned nPid);
 void SoundPoll (void);					// every 100 ms (the kernel's input task): the USB output follows its device
 int  SoundConfig (unsigned nPid, int nChunkFrames, int nAhead);	// -> latency in frames, -1 not the owner
 #define SND_RING_PAGE	0x10000				// the mapped ring's page (one 64 KB app page)

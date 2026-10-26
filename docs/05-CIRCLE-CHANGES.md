@@ -1171,6 +1171,15 @@ driver (2026-10-26):
 The DWC OTG FIFOs were checked: depth 4080 words, the 3 x 1024 Circle programs fit. Fork commits `09cfd2a3`
 (the frame, the requests) and `d3e518ab` (DTR). Tried on the device: the keyboard types, no disconnection.
 
+## 36. A USB audio device's continuous range of rates
+
+**Why.** `CUSBAudioStreamingDevice::Setup ()` checked a requested rate against the device's ranges as
+`Min >= rate && Max <= rate`: a device with a continuous range (16 to 48 kHz) refused every rate inside it, and
+only a range of one rate worked. PocketQI found it with a USB headset's microphone at 16 kHz.
+
+**What.** `lib/usb/usbaudiostreaming.cpp`: `Min <= rate && Max >= rate` (2026-10-26, Onyx's microphone: kapi
+v99 `sound_input`; PocketQI's patch `11-usb-audio-plage`).
+
 ## Contributions to upstream Circle
 
 The fork's changes useful to every Circle user are prepared as clean pull-request branches on

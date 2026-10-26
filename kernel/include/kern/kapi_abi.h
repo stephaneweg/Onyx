@@ -264,7 +264,12 @@
 //      shaders use the whole register file and have their own VPM output block), + KAPI_GPU_B_NOCLIP (a batch's
 //      vertices are attributes, not clip positions: the kernel leaves them alone, the V3D clips),
 //      + KAPI_GPU_B_INDEXED (such a batch as b.first vertices then b.count 32-bit indices).
-#define KAPI_ABI_VERSION	98
+// v99: the sound's INPUT (sys/sound.cpp): + sound_input (slot 235) -- a microphone, one program at a time:
+//      KAPI_SND_IN_SELECT which one (a USB device's input, an I2S microphone on GPIO 18..20, auto: USB if there is
+//      one; SD:/etc/sound.ini "input =", "input_gain =") and its gain; _OPEN at a rate -> the rate it records at;
+//      _READ 16-bit mono samples, never waiting; _CLOSE (the process gone: closed). Reached through AudioKit
+//      (ak_in_*), the Sound applet chooses the input.
+#define KAPI_ABI_VERSION	99
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -1307,6 +1312,22 @@ struct kapi_ws_input
 #define KAPI_SND_OUT_NOW(r)	((r) & 0xFF)		// sound_output's result: what plays now (0: nothing)
 #define KAPI_SND_OUT_ASKED(r)	(((r) >> 8) & 0xFF)	// ... what is asked for
 #define KAPI_SND_OUT_HAS(r, o)	((((r) >> 16) >> (o)) & 1)	// ... is output o there
+
+// (v99) The sound's input (sound_input (op, a0, a1); SD:/etc/sound.ini "input = auto | none | usb | i2s",
+// "input_gain = <dB 0..48>", "input_right = 1": an I2S microphone's right channel).
+#define KAPI_SND_IN_AUTO	0		// a USB audio device's input if there is one, else none
+#define KAPI_SND_IN_NONE	1
+#define KAPI_SND_IN_USB		2		// a USB microphone, a headset's
+#define KAPI_SND_IN_I2S		3		// an I2S microphone on the header: GPIO 18 clock, 19 frame, 20 data
+#define KAPI_SND_IN_SELECT	0		// (input or -1, gain dB or -1) -> now | asked << 8 | there << 16 | gain << 24
+#define KAPI_SND_IN_OPEN	1		// (rate Hz) -> the rate it records at, -KAPI_EBUSY another's, -KAPI_ENODEV
+#define KAPI_SND_IN_READ	2		// (short *out, max) -> the samples taken (16-bit mono), 0 none yet, -KAPI_EIO
+#define KAPI_SND_IN_CLOSE	3		// () -> 0
+#define KAPI_SND_IN_NOW(r)	((r) & 0xFF)		// SELECT's result: what records now (0: nothing)
+#define KAPI_SND_IN_ASKED(r)	(((r) >> 8) & 0xFF)	// ... what is asked for
+#define KAPI_SND_IN_HAS(r, i)	((((r) >> 16) >> (i)) & 1)	// ... is input i there
+#define KAPI_SND_IN_GAIN(r)	(((r) >> 24) & 0xFF)	// ... the gain, dB
+#define KAPI_SND_IN_GAIN_SET(r)	(((r) >> 23) & 1)	// ... set ("input_gain"), not the device's default
 #define KAPI_IMG_PATH_MAX	256
 
 // (v81) set_cursor: the pointer's shapes (kernel/gui/cursors.inc, drawn by tools/gui/gen_cursors.py).
@@ -2160,6 +2181,8 @@ struct TKApiTable
 	// again (same path), replaced by another path; another server started: dropped. image_unload of the
 	// alias: -KAPI_EBUSY. The order in a server's start: KAPI_WS_REGISTER, lib_open_as, KAPI_WS_DISPLAY.
 	const void *(*lib_open_as) (const char *path, const char *alias, unsigned min_version, int *err);
+	// (v99) The microphone (KAPI_SND_IN_*): op SELECT / OPEN / READ / CLOSE -> as each says, or -KAPI_E*.
+	long (*sound_input) (int op, long a0, long a1);
 
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
@@ -2395,6 +2418,7 @@ KAPI_CHECK_SLOT (vol_eject, 231);
 KAPI_CHECK_SLOT (vol_mount, 232);
 KAPI_CHECK_SLOT (vol_format, 233);
 KAPI_CHECK_SLOT (lib_open_as, 234);
+KAPI_CHECK_SLOT (sound_input, 235);
 
 #ifdef __cplusplus
 }

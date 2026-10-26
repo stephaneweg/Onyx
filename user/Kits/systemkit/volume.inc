@@ -19,9 +19,30 @@ SK_FN const char *volume_output_word (int out)
 {
 	return out == KAPI_SND_OUT_JACK ? "jack" : out == KAPI_SND_OUT_USB ? "usb" : out == KAPI_SND_OUT_HDMI ? "hdmi" : "auto";
 }
+SK_FN const char *volume_input_word (int in)
+{
+	return in == KAPI_SND_IN_NONE ? "none" : in == KAPI_SND_IN_USB ? "usb" : in == KAPI_SND_IN_I2S ? "i2s" : "auto";
+}
 SK_FN void volume_save (int vol, int mute)
 {
-	char b[200]; int n = 0;
+	char b[640]; int n = 0;
+	bool right = false;				// (an I2S microphone's right channel: a line written by hand, kept)
+	{
+		char old[1024]; void *f = kapi_open (VOLUME_INI); int k = 0;
+		if (f != 0) { k = kapi_read (f, old, sizeof old - 1); kapi_close (f); if (k < 0) k = 0; }
+		old[k] = 0;
+		static const char key[] = "input_right";
+		for (int i = 0; i + 11 < k; i++)
+		{
+			if (i > 0 && old[i - 1] != '\n') continue;
+			int m = 0; while (m < 11 && old[i + m] == key[m]) m++;
+			if (m == 11)
+			{
+				int j = i + 11; while (old[j] == ' ' || old[j] == '=') j++;
+				right = old[j] == '1';
+			}
+		}
+	}
 	const char *h = "; the master volume (0..10) and mute: the menu bar and /bin/volume\nvolume = ";
 	for (int i = 0; h[i]; i++) b[n++] = h[i];
 	if (vol >= 10) { b[n++] = '1'; b[n++] = '0'; } else b[n++] = (char) ('0' + (vol < 0 ? 0 : vol));
@@ -37,6 +58,23 @@ SK_FN void volume_save (int vol, int mute)
 		for (int i = 0; w[i]; i++) b[n++] = w[i];
 		b[n++] = '\n';
 	}
+	long in = kapi_sound_input (KAPI_SND_IN_SELECT, -1, -1);	// (v99: the microphone, its gain)
+	if (in >= 0)
+	{
+		const char *t = "; the input (a microphone): auto (a USB one if there is one), none, usb, i2s (GPIO 18 clock, 19 frame, 20 data)\ninput = ";
+		for (int i = 0; t[i]; i++) b[n++] = t[i];
+		const char *w = volume_input_word (KAPI_SND_IN_ASKED (in));
+		for (int i = 0; w[i]; i++) b[n++] = w[i];
+		b[n++] = '\n';
+		if (KAPI_SND_IN_GAIN_SET (in))
+		{
+			const char *g = "input_gain = ";
+			for (int i = 0; g[i]; i++) b[n++] = g[i];
+			n += ax_itoa ((int) KAPI_SND_IN_GAIN (in), b + n);
+			b[n++] = '\n';
+		}
+		if (right) { const char *r = "input_right = 1\n"; for (int i = 0; r[i]; i++) b[n++] = r[i]; }
+	}
 	kapi_save_file (VOLUME_INI, b, (unsigned) n);
 }
 SK_FN int volume_set_output (int out)
@@ -45,6 +83,13 @@ SK_FN int volume_set_output (int out)
 	int r = kapi_sound_volume (-1, -1);
 	if (o >= 0) volume_save (r & 0xFF, (r & 0x100) ? 1 : 0);
 	return o;
+}
+SK_FN long volume_set_input (int in, int gain_db)
+{
+	long r = kapi_sound_input (KAPI_SND_IN_SELECT, in, gain_db);
+	int v = kapi_sound_volume (-1, -1);
+	if (r >= 0) volume_save (v & 0xFF, (v & 0x100) ? 1 : 0);
+	return r;
 }
 SK_FN int mixer_set (const struct kapi_sound_client *c, int volume, int mute)
 {

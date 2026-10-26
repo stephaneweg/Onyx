@@ -57,7 +57,7 @@ using namespace uikit;
 // TR: Panel
 // TR: The dock's drawers and launchers; the workspaces
 // TR: Sound
-// TR: The volume, mute, a test sound
+// TR: Where the sound plays, the microphone, the volume
 // TR: Preload
 // TR: The programs loaded at boot and kept in memory
 // TR: Keyboard & Mouse

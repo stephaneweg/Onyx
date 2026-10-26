@@ -34,6 +34,8 @@
 #include <circle/sound/pwmsoundbasedevice.h>
 #include <circle/sound/usbsoundbasedevice.h>
 #include <circle/sound/hdmisoundbasedevice.h>
+#include <circle/sound/i2ssoundbasedevice.h>		// (v99) the input: an I2S microphone
+#include <circle/usb/usbaudiostreaming.h>		// (the USB devices' directions: an output, a microphone)
 #include <circle/sound/soundcontroller.h>
 #include <circle/devicenameservice.h>
 #include <circle/machineinfo.h>
@@ -44,6 +46,7 @@
 #include <circle/spinlock.h>
 #include <circle/synchronize.h>
 #include <circle/logger.h>
+#include <circle/string.h>
 #include <circle/new.h>
 #include <circle/util.h>
 #endif
@@ -369,9 +372,22 @@ protected:
 	}
 };
 
+// A USB audio streaming interface of that direction (uaudio1-1, -2...: a headset has one each way, a USB
+// microphone only an input -- it must not take the output from the jack).
+static boolean UsbAudio (boolean bOutput)
+{
+	for (unsigned i = 1; i <= 8; i++)
+	{
+		CString Name;
+		Name.Format ("uaudio1-%u", i);
+		CUSBAudioStreamingDevice *p = (CUSBAudioStreamingDevice *) CDeviceNameService::Get ()->GetDevice (Name, FALSE);
+		if (p != 0 && (p->GetDeviceInfo ().IsOutput ? TRUE : FALSE) == bOutput) return TRUE;
+	}
+	return FALSE;
+}
 static boolean UsbPresent (void)
 {
-	return CDeviceNameService::Get ()->GetDevice (USB_AUDIO_NAME, FALSE) != 0;
+	return UsbAudio (TRUE);
 }
 static boolean HasJack (void)				// the Pi 400 has none, nor the Pi 5 / Pi 500
 {
@@ -560,9 +576,225 @@ int SoundOutput (int nOut)
 
 // Every 100 ms, from the kernel's input task (kernel.cpp, beside the USB plug-and-play): the USB
 // output follows its device.
+static void InputPoll (void);
 void SoundPoll (void)
 {
 	if (s_bStarted) OutputUpdate ();
+	InputPoll ();
+}
+
+// ---- the input (v99): a microphone ------------------------------------------------------------------
+//
+// ONE program records at a time (sound_input's OPEN; its process gone: closed). Which microphone:
+// SD:/etc/sound.ini's "input = auto | none | usb | i2s" (auto: a USB one if there is one), changed by
+// sound_input's SELECT (the Sound applet), applied at the next OPEN:
+//
+//   usb  a USB audio device's input (a headset's microphone, a USB microphone) -- beside the output,
+//        which may be the same headset's: two Circle devices, one each way. At the rate asked if the
+//        device has it, else 48, 44.1, 32 or 16 kHz (the rate is said; AudioKit converts).
+//   i2s  an I2S microphone on the header (an INMP441, an SPH0645: GPIO 18 the bit clock, 19 the frame,
+//        20 the data, its L/R pin to the ground: the left channel; "input_right = 1" for the right),
+//        the Pi the master of the clocks; its pins kept from the programs while it records.
+//
+// The samples: 16-bit mono, the DC taken away (a first-order high-pass at ~20 Hz) and the gain applied
+// ("input_gain" dB, 0..48; by default 0 for USB, 24 for I2S: a MEMS microphone gives about -26 dBFS at
+// 94 dB SPL, a voice is far quieter), from the device's 24 bits.
+#define IN_QUEUE_MS	500				// Circle's read queue (what a program may leave unread)
+#define I2S_CHUNK	1024				// words a DMA transfer (512 frames: 32 ms at 16 kHz)
+#define I2S_PIN_FIRST	18
+#define I2S_PIN_LAST	21
+
+static int s_nInCfg = KAPI_SND_IN_AUTO;			// what is asked for
+static int s_nInGainCfg = -1;				// dB, -1: the device's default
+static boolean s_bInRight = FALSE;
+static boolean s_bInCfgRead = FALSE;
+static int s_nInNow = 0;				// what records (KAPI_SND_IN_USB / _I2S), 0: nothing
+static unsigned s_nInOwner = 0, s_nInRate = 0;
+static CSoundBaseDevice *s_pIn = 0;
+static boolean s_bInGone = FALSE;			// the device went (a USB one pulled out): READ says so
+static s32 s_nInGain = 65536;				// 16.16
+static int s_nHpX = 0, s_nHpY = 0;
+
+static void ReadInConfig (void)
+{
+	if (s_bInCfgRead) return;
+	s_bInCfgRead = TRUE;
+	FIL File;
+	if (f_open (&File, "SD:/etc/sound.ini", FA_READ) != FR_OK) return;
+	static char Text[1024];
+	UINT nRead = 0;
+	if (f_read (&File, Text, sizeof Text - 1, &nRead) != FR_OK) nRead = 0;
+	f_close (&File);
+	Text[nRead] = '\0';
+	for (const char *p = Text; *p != '\0'; )
+	{
+		while (*p == ' ' || *p == '\t') p++;
+		const char *v = p;
+		while (*v != '\0' && *v != '\n' && *v != '=') v++;
+		if (*v == '=') v++;
+		while (*v == ' ' || *v == '\t') v++;
+		if (strncmp (p, "input_gain", 10) == 0)
+		{
+			int n = 0; boolean bAny = FALSE;
+			while (*v >= '0' && *v <= '9') { n = n * 10 + (*v++ - '0'); bAny = TRUE; }
+			if (bAny) s_nInGainCfg = n > 48 ? 48 : n;
+		}
+		else if (strncmp (p, "input_right", 11) == 0) s_bInRight = *v == '1';
+		else if (strncmp (p, "input", 5) == 0)
+			s_nInCfg = strncmp (v, "none", 4) == 0 ? KAPI_SND_IN_NONE : strncmp (v, "usb", 3) == 0 ? KAPI_SND_IN_USB
+				 : strncmp (v, "i2s", 3) == 0 ? KAPI_SND_IN_I2S : KAPI_SND_IN_AUTO;
+		while (*p != '\0' && *p != '\n') p++;
+		if (*p == '\n') p++;
+	}
+}
+
+static int InputWanted (void)
+{
+	switch (s_nInCfg)
+	{
+	case KAPI_SND_IN_AUTO:
+	case KAPI_SND_IN_USB:	return UsbAudio (FALSE) ? KAPI_SND_IN_USB : 0;
+	case KAPI_SND_IN_I2S:	return KAPI_SND_IN_I2S;
+	default:		return 0;
+	}
+}
+
+static int InputGainDB (void)
+{
+	return s_nInGainCfg >= 0 ? s_nInGainCfg : s_nInNow == KAPI_SND_IN_I2S || InputWanted () == KAPI_SND_IN_I2S ? 24 : 0;
+}
+
+static void InputApplyGain (void)
+{
+	s32 g = 65536;						// 10^(dB / 20): 1.122 a dB (16.16)
+	for (int d = InputGainDB (); d > 0; d--) g = (s32) (((s64) g * 73533) >> 16);
+	s_nInGain = g;
+}
+
+static void InputStop (void)
+{
+	CSoundBaseDevice *p = s_pIn;
+	if (p != 0)
+	{
+		s_pIn = 0;
+		p->Cancel ();
+		for (unsigned n = 0; p->IsActive () && n < 100; n++) CScheduler::Get ()->MsSleep (5);
+		delete p;
+	}
+	if (s_nInNow == KAPI_SND_IN_I2S) GpioKernelPins (I2S_PIN_FIRST, I2S_PIN_LAST, FALSE);
+	s_nInNow = 0;
+}
+
+static boolean InputStartOn (CSoundBaseDevice *p)
+{
+	if (p == 0) return FALSE;
+	if (!p->AllocateReadQueue (IN_QUEUE_MS)) { delete p; return FALSE; }
+	p->SetReadFormat (SoundFormatSigned24_32, 1, !s_bInRight);
+	if (!p->Start ()) { delete p; return FALSE; }
+	s_pIn = p;
+	return TRUE;
+}
+
+// (kapi v99) The microphone opened for nPid -> the rate it records at, or -KAPI_E*.
+int SoundInputOpen (unsigned nPid, unsigned nRate)
+{
+	ReadInConfig ();
+	if (s_nInOwner != 0) return s_nInOwner == nPid ? (int) s_nInRate : -KAPI_EBUSY;
+	int nKind = InputWanted ();
+	if (nKind == 0) return -KAPI_ENODEV;
+	if (nRate < 8000) nRate = 8000;
+	if (nRate > 48000) nRate = 48000;
+	if (nKind == KAPI_SND_IN_USB)
+	{
+		static const unsigned Rates[] = { 0, 48000, 44100, 32000, 16000 };
+		for (unsigned i = 0; i < sizeof Rates / sizeof Rates[0] && s_pIn == 0; i++)
+		{
+			unsigned r = i == 0 ? nRate : Rates[i];
+			if (i > 0 && r == nRate) continue;
+			if (InputStartOn (new CUSBSoundBaseDevice (r, CUSBSoundBaseDevice::DeviceModeRXOnly, 0))) nRate = r;
+		}
+	}
+	else
+	{
+		if (!GpioKernelPins (I2S_PIN_FIRST, I2S_PIN_LAST, TRUE))
+		{
+			CLogger::Get ()->Write (From, LogWarning, "the I2S microphone: GPIO %u..%u are a program's", I2S_PIN_FIRST, I2S_PIN_LAST);
+			return -KAPI_EBUSY;
+		}
+		if (!InputStartOn (new CI2SSoundBaseDevice (CInterruptSystem::Get (), nRate, I2S_CHUNK, FALSE, 0, 0,
+							      CI2SSoundBaseDevice::DeviceModeRXOnly)))
+			GpioKernelPins (I2S_PIN_FIRST, I2S_PIN_LAST, FALSE);
+	}
+	if (s_pIn == 0)
+	{
+		CLogger::Get ()->Write (From, LogError, "cannot start the microphone (%s)", nKind == KAPI_SND_IN_USB ? "USB" : "I2S");
+		return -KAPI_EIO;
+	}
+	s_nInNow = nKind; s_nInOwner = nPid; s_nInRate = nRate; s_bInGone = FALSE;
+	s_nHpX = s_nHpY = 0;
+	InputApplyGain ();
+	CLogger::Get ()->Write (From, LogNotice, "input: %s, %u Hz, gain %d dB", nKind == KAPI_SND_IN_USB ? "USB" : "I2S",
+				nRate, InputGainDB ());
+	return (int) nRate;
+}
+
+// -> the samples (16-bit mono, nMax at most) taken now, 0: none yet, -KAPI_EIO the device is gone.
+int SoundInputRead (unsigned nPid, s16 *pOut, unsigned nMax)
+{
+	if (nPid == 0 || s_nInOwner != nPid) return -KAPI_EPERM;
+	if (s_bInGone || s_pIn == 0) return -KAPI_EIO;
+	static s32 Raw[256];
+	unsigned nDone = 0;
+	while (nDone < nMax)
+	{
+		unsigned nWant = nMax - nDone;
+		if (nWant > sizeof Raw / sizeof Raw[0]) nWant = sizeof Raw / sizeof Raw[0];
+		int n = s_pIn->Read (Raw, nWant * sizeof (s32));
+		if (n <= 0) break;
+		n /= sizeof (s32);
+		for (int i = 0; i < n; i++)
+		{
+			int x = Raw[i];					// (24 bits)
+			s_nHpY = x - s_nHpX + (int) (((s64) s_nHpY * 8126) >> 13);	// y = x - x1 + 0.992 y1
+			s_nHpX = x;
+			s64 v = ((s64) s_nHpY * s_nInGain) >> 24;		// (24 -> 16 bits, the gain)
+			pOut[nDone + i] = (s16) (v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+		}
+		nDone += (unsigned) n;
+	}
+	return (int) nDone;
+}
+
+void SoundInputClose (unsigned nPid)
+{
+	if (nPid == 0 || s_nInOwner != nPid) return;
+	InputStop ();
+	s_nInOwner = 0; s_nInRate = 0; s_bInGone = FALSE;
+}
+
+// (kapi v99) nIn -1: kept, KAPI_SND_IN_*: that input from the next OPEN; nGain -1: kept, else dB (0..48)
+// -> what records | what is asked << 8 | the inputs there << 16 | the gain set (not the device's default) << 23 |
+// the gain in dB << 24.
+int SoundInput (int nIn, int nGain)
+{
+	ReadInConfig ();
+	if (nIn >= KAPI_SND_IN_AUTO && nIn <= KAPI_SND_IN_I2S) s_nInCfg = nIn;
+	else if (nIn != -1) return -1;
+	if (nGain >= 0) { s_nInGainCfg = nGain > 48 ? 48 : nGain; InputApplyGain (); }	// (heard at once while it records)
+	unsigned nPresent = (1u << KAPI_SND_IN_AUTO) | (1u << KAPI_SND_IN_NONE) | (1u << KAPI_SND_IN_I2S)
+			  | (UsbAudio (FALSE) ? 1u << KAPI_SND_IN_USB : 0);
+	return s_nInNow | (s_nInCfg << 8) | (int) (nPresent << 16) | (s_nInGainCfg >= 0 ? 1 << 23 : 0) | (InputGainDB () << 24);
+}
+
+// A USB microphone pulled out while it records: stopped, the program told by its next READ.
+static void InputPoll (void)
+{
+	if (s_nInNow == KAPI_SND_IN_USB && s_pIn != 0 && !UsbAudio (FALSE))
+	{
+		CLogger::Get ()->Write (From, LogNotice, "the USB microphone is gone");
+		InputStop ();
+		s_bInGone = TRUE;
+	}
 }
 
 #ifdef ARM_ALLOW_MULTI_CORE
@@ -770,7 +1002,7 @@ void SoundRelease (unsigned nPid)
 	s_Lock.Release ();
 }
 
-void SoundOnProcessGone (unsigned nPid) { SoundRelease (nPid); }
+void SoundOnProcessGone (unsigned nPid) { SoundRelease (nPid); SoundInputClose (nPid); }
 
 int SoundWrite (unsigned nPid, const s16 *pFrames, unsigned nFrames)
 {

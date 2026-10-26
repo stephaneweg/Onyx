@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketQI, Pocket the desk assistant (2026-10-26): built, published, NOT run on a Pi yet
+## PocketQI, Pocket the desk assistant (2026-10-26): built, published, run on the Pi by the user
 
 The user asked for an Onyx port of their own project **PocketQI** (github.com/stephaneweg/PocketQI: Pocket, a voice
 assistant -- an LLM decides, BASIC apps act, two animated eyes show the mood -- for a robot, an ESP32 handheld, Windows),
@@ -12,17 +12,23 @@ then, the same day, for Pocket to act in **Onyx's own utility apps**.
 - **The app**: `user/Apps/pocketqi/` (docs/03 "PocketQI" says the layers), `sdcard/apps/pocketqi.app/` (the BASIC
   skills `apps/{courses,meteo,humeur}`, `lib/galo.bi`, `lang/fr.txt`, `config.ini.example`); docs/04 "PocketQI".
   PocketQI's LLM protocol, moods and face are in `core/` unchanged (commit `060b797`); `brain.h` / `skills.h` port its
-  shell and its BASIC host. Typed, not spoken: Onyx has no sound input (no wake word, no voice yet).
+  shell and its BASIC host. Typed, not spoken: no wake word, no voice yet.
 - **The native skills** (`natives.h`): agenda and tasks in the **Calendar** (`calendar/model.h` + the new shared
   `calendar/agendafiles.h`; the Calendar now reads `calendar.ics` again when another program changed it), **Notes**,
-  **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card), the **Clock**'s alarms,
+  **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card: found, added, changed, removed), the **Clock**'s alarms,
   **printing** through PrinterKit (a note, the agenda, the tasks, the shopping list; the BASIC skills' `PRINTER:`).
   Calendar and Mail were rebuilt and published with it.
 - **Tested on the PC**: `shots.sh pocketqi` (EN, FR: a canned LLM answer through `SIM_NET` and `config.ini url =`),
-  `pocket640.sh <out> pocketqi` (640 x 480 by keys). **Not known**: Mistral / Groq over mbedTLS on the Pi (the
+  `pocket640.sh <out> pocketqi` (640 x 480 by keys). **On the Pi** (the user, 2026-10-26): Pocket answers with Mistral
+  and writes in the Calendar. **Not checked by us**: Mistral / Groq over mbedTLS on the Pi (the
   certificate is not verified, as `/bin/llm`), the face's cost at 25 images a second on the Pi 4, a key typed in the
   Settings on the PocketTerm35, a real printer (the PC's test stood PrinterKit in by a stub that logs its calls).
-- **Next ideas**: the voice (PicoTTS, Apache-2.0; or Mistral's TTS), the microphone when the kernel has sound input,
+- **Next** (the user, 2026-10-26): **the voice** -- PocketQI on Circle speaks with PicoTTS (Apache-2.0, `voix=pico`,
+  its "mignon" voice: `system/pi/src/pocketvoice.cpp`) or Mistral's Voxtral TTS (`voix=mistral`: `/v1/audio/speech`,
+  SSE, PCM 24 kHz, a voice per language and mood) --, then **a status bar applet**: Pocket in the background on the
+  microphone (AudioKit `ak_in_*`, kapi v99), "dis Pocket" heard (PocketQI's PocketSphinx keyphrase, BSD-2) opens a
+  small popup at the bottom left with its face alone, the question spoken, the popup gone when Pocket rests.
+  Other ideas:
   `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
   itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.
 
@@ -138,6 +144,23 @@ the device). It is a Goodix GT911 on I2C bus 1 at 0x5D, found with BASIC's `I2CS
   - a sideways scroll: there is no horizontal wheel event (only the data grid takes Shift + wheel);
   - a long press as the right button;
   - a calibration for a screen turned by `display_rotate`.
+
+**Sound input, a microphone** (the user's request, the same day: the PocketTerm35 has none, the user will put an
+I2S one in the case). kapi **v99** `sound_input` (slot 235):
+- the kernel's `sys/sound.cpp` records from a USB microphone (a second Circle device, receive only, beside the
+  output) or an I2S one on GPIO 18-20 (Circle's I2S device, receive only, the Pi the master; GPIO 18-21 kept from
+  GPIOKit: `GpioKernelPins`);
+- the samples are made 16-bit mono, with a high-pass and a gain (`input_gain`; 24 dB by default for I2S);
+- AudioKit has `ak_in_open` / `_read` / `_close` / `_peak` (the rate converted);
+- SystemKit has `volume_set_input`, and `sound.ini` gets `input =` and `input_gain =`;
+- the **Sound applet** has a "Record from" list, a level meter with **Test**, and a **Gain** slider (its mixer now
+  shows 3 rows to make room);
+- `/bin/rec` records to a WAV file or shows the level;
+- Circle fork: a USB audio device's continuous range of rates (docs/05 §36, PocketQI's patch);
+- the output's `auto` now counts only USB devices with an output.
+
+PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Not tried on the
+device yet**: the Pi was off when it was to be deployed; then test USB (a headset) and I2S (once wired).
 
 **The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
 `SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:

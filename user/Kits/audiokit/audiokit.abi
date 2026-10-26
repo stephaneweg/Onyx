@@ -235,3 +235,7 @@
 229 ak_fm_live
 230 ak_fm_silence
 231 ak_tags_read
+232 ak_in_close
+233 ak_in_open
+234 ak_in_peak
+235 ak_in_read
