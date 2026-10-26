@@ -37,6 +37,17 @@ application catalog.
 Copy **all the contents** of the [`sdcard/`](../sdcard/) folder to the **root** of a
 FAT32 card, then insert it into the Pi 4 and power on.
 
+**The Waveshare PocketTerm35** (a handheld around a Pi 4: a 3.5-inch HDMI touch screen, a keyboard, a battery)
+has a ready card (2026-10-26). Make it with `python3 tools/pocketterm35/mkcard.py` after `make -C kernel stage`:
+the folder `SD_PocketTerm35/` is made, and you copy it the same way. It is the whole card (every app, offline), set
+for the device:
+- `cmdline.txt`: `width=800 height=600 usbc=1 touch=1 keyboard=US`;
+- the pocket mode;
+- Setup at the first boot in the pocket look, the US keyboard proposed and kept;
+- Waveshare's `config.txt` lines and `overlays/` (Linux's; Onyx does not need them).
+
+Its `README.md` says the rest: the touch, the keys, the sound.
+
 **A Raspberry Pi 5** has its own card: [`sdcard5/`](../sdcard5/) (or the smallest one, `sdcard5_lite/`), copied the
 same way — its kernel `kernel_2712.img`, its device trees, no boot firmware (the Pi 5's is in the board's EEPROM),
 its packages from the repository's `pi5/` folder. A Pi 4's card does not start a Pi 5, nor the reverse. **First
@@ -222,11 +233,20 @@ width=1920 height=1080 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1
 - **`touch`**: `touch=1` makes a **touch screen the pointer**: the Goodix GT911 on the I2C bus 1, which is the
   **Waveshare PocketTerm35**'s screen. Use it with the maker's `dtparam=i2c_arm=on` in `config.txt`, which is already
   there for the device.
-  - One finger moves the pointer there and holds the left button: **a tap is a click**, a slide drags.
-  - **Two fingers moved up or down scroll**, like the wheel.
+  - One finger moves the pointer there, then works as on a phone:
+    - **a tap is a click**;
+    - **a slide up or down scrolls**, the page following the finger;
+    - **a slide sideways, or a press held 0.4 s then moved, drags** with the left button: a slider, a scroll bar, a
+      selection, a window by its title.
+  - Two fingers moved up or down scroll too.
+  - There is no sideways scroll: Onyx has no horizontal wheel.
 
   It follows the screen's resolution, a game's own included. `kmsg` says `touch: GT911 at 0x5D: ...`, or that none was
   found. Tried on the device (2026-10-26): it works. The USB mouse and the keyboard still work beside it.
+- **`keyboard`**: `keyboard=US` (a keymap's name: `US`, `UK`, `FR`, `DE`...) says the device has **its own keyboard
+  of that layout** -- the PocketTerm35's is US. Setup proposes that layout and keeps it when the country changes, as
+  it does for a Pi 400's or a Pi 500's keyboard, whose layout comes from the firmware (and wins over this line).
+  The list on Setup's page still changes it.
 - **`keylog`**: `keylog=1` writes every keyboard report to the kernel log (`kmsg`, lines `keylog:` -- the modifiers
   and the HID codes of the keys held): to learn what a new keyboard or a device's buttons send. **Off by default:
   it logs what is typed** (passwords too); remove it after use.

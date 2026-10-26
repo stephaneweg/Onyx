@@ -95,6 +95,7 @@ Two weaknesses, worth fixing:
 | MuPDF 1.28.5 (fitz, pdf; the URW base-14 fonts) | `third_party/mupdf-1.28.5`, the PDF Viewer | **AGPL-3.0** (Artifex) | The PDF Viewer under AGPL-3.0, its source available (the repository); keep `COPYING` |
 | jbig2dec | `third_party/mupdf-1.28.5/thirdparty/jbig2dec`, the PDF Viewer | AGPL-3.0 | As MuPDF |
 | OpenJPEG | `third_party/mupdf-1.28.5/thirdparty/openjpeg`, the PDF Viewer | BSD-2 | Keep its `LICENSE` |
+| The PocketTerm35's overlays (`dwc2.dtbo`: Raspberry Pi's firmware; `waveshare-35dpi-*.dtbo`: Waveshare's, the GT911's Linux binding) | `tools/pocketterm35/overlay/overlays/`, the PocketTerm35's card | Linux device-tree overlays (Raspberry Pi's: GPL-2.0 / BSD; Waveshare's: as published in their package `3.5HDMI_E_DTBO.zip`) | Onyx reads none: on the card for Linux only. Taken from the card the user set up from Waveshare's guide |
 | pdfwrite (Onyx) | `user/Libs/pdf/pdfwrite.h`, Letters, the Spreadsheet, Slides | **MIT** (ours) | — |
 | The print system (Onyx) | `user/Kits/printerkit/` (`SD:/lib/printerkit.so`), `user/Apps/printd`, `user/Apps/printconf`, `/bin/ipp`: the Print dialog, the jobs, the page rasteriser, PWG Raster, the IPP client | **MIT** (ours) | — |
 | python-pptx's default template | `tools/tests/slides/powerpoint.pptx` (a test deck, not on the card; made by `make_pptx.py`) | MIT (python-pptx) | — |

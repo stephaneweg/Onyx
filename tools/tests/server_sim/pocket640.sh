@@ -803,6 +803,9 @@ if want setup; then
 	run pocket_setup pt-setup-640 "$SC" $P640 SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
 	for f in 1-welcome 2-region 3-wifi 4-name 4-name-switch 5-ready back; do out pt-setup-640-$f; size pt-setup-640-$f 640x480 "Setup, $f: the whole 640 x 480 screen"; done
 	differ pt-setup-640-1-welcome pt-setup-640-2-region "Setup: A leaves the welcome page"
+	# (800 x 600, the PocketTerm35's card: pocket's look too -- the desktop's 800 x 600 window would not fit)
+	run pocket_setup pt-setup-800 "$WWW;expect kind fill;dump $OUT/pt-setup-800-1-welcome.elsm;$(K 13)dump $OUT/pt-setup-800-2-region.elsm" SIM_SCREEN=800x600 SIM_MODE=pocket SIM_APPNAME=setup SIM_APP=setup SIM_WRITES=$WR
+	for f in 1-welcome 2-region; do out pt-setup-800-$f; size pt-setup-800-$f 800x600 "Setup at 800 x 600, $f: the whole screen"; done
 	differ pt-setup-640-2-region pt-setup-640-3-wifi "Setup: A, the Wi-Fi step"
 	differ pt-setup-640-3-wifi pt-setup-640-4-name "Setup: A after Wi-Fi is the name (no Display, no Appearance step)"
 	differ pt-setup-640-4-name pt-setup-640-4-name-switch "Setup: Down, Down, Space flips a service's switch"

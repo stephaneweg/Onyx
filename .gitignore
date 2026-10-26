@@ -185,3 +185,6 @@ tools/onyxrun/build/
 
 # Cosmo Zoom!: the generated GLB sources of the imported ships (15-25 MB each; their OBJ are committed)
 tools/cosmozoom/models/glb/
+
+# The Waveshare PocketTerm35's card, made again by tools/pocketterm35/mkcard.py from sdcard/
+/SD_PocketTerm35/

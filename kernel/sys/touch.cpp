@@ -4,16 +4,19 @@
 // second (its interrupt and reset pins are the board's, not known here) and gives the window server what a mouse
 // would (WsInputPointer):
 //
-//   * one finger: the pointer at that place, the left button down while it touches -- a tap is a click, a slide
-//     drags (a move without the button first, so that what is under it knows the pointer is there);
-//   * two fingers moved up or down: the wheel (a notch every 24 pixels), no button;
+//   * one finger: the pointer at that place (a move without the button first, so that what is under it knows the
+//     pointer is there), then, as a phone does: a tap is a click; moved up or down, a SCROLL -- the wheel, a notch
+//     every 20 pixels, the page following the finger, no button (the user, 2026-10-26); moved sideways or held still
+//     0.4 s, a DRAG -- the left button down where it touched until it lets go (a slider, a scroll bar, a selection,
+//     a window's title). (No sideways scroll: the system has no horizontal wheel.)
+//   * two fingers moved up or down: the wheel too, no button;
 //   * the controller's coordinates (its configuration's x / y range: 640 x 480 there) scaled to the screen's size
 //     now (it changes: a game's own resolution).
 //
 // The GT911 (its datasheet's "coordinate information"): 0x8140 the product id ("911"), 0x8048 / 0x804A the x / y
 // range (little-endian), 0x814E the status (bit 7: new points; bits 0..3: how many), from 0x814F 8 bytes a point
 // (its track id, x, y, size, a reserved byte); the status is written 0 once read. The bus is shared with the programs
-// through sys/gpio.cpp (GpioI2cKernel*: a lock a transfer).
+// through sys/gpio.cpp (GpioI2cKernel*: no lock needed, the kernel is not preempted).
 //
 // MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors. Permission is hereby
 // granted, free of charge, to any person obtaining a copy of this software and associated
@@ -30,6 +33,7 @@
 #include <kern/gui/window.h>
 #include <circle/sched/task.h>
 #include <circle/sched/scheduler.h>
+#include <circle/timer.h>
 #include <circle/logger.h>
 #include <circle/util.h>
 
@@ -40,7 +44,9 @@ static const char FromTouch[] = "touch";
 #define GT_STATUS	0x814E
 #define GT_POINT1	0x814F
 #define POLL_MS		16
-#define WHEEL_STEP	24			// a wheel's notch: this many pixels of the screen
+#define WHEEL_STEP	20			// a wheel's notch: this many pixels of the screen
+#define SLOP		10			// a finger moved less (pixels) is still
+#define HOLD_US		400000			// a finger held still this long presses the button (a drag follows)
 
 class CTouchTask : public CTask
 {
@@ -61,8 +67,10 @@ public:
 		}
 		CLogger::Get ()->Write (FromTouch, LogNotice, "GT911 at 0x%02X: %u x %u, the pointer", (unsigned) m_ucAddr, m_nXMax, m_nYMax);
 
-		boolean bDown = FALSE, bTwo = FALSE;
-		int nLastX = 0, nLastY = 0, nTwoY = 0, nFails = 0;
+		enum { M_NONE, M_WAIT, M_SCROLL, M_DRAG } nMode = M_NONE;	// one finger: its gesture
+		boolean bTwo = FALSE;
+		int nLastX = 0, nLastY = 0, nTwoY = 0, nFails = 0, nX0 = 0, nY0 = 0, nScrollY = 0;
+		unsigned nT0 = 0;
 		for (;;)
 		{
 			CScheduler::Get ()->MsSleep (POLL_MS);
@@ -85,8 +93,13 @@ public:
 
 			if (nPoints == 0)				// let go
 			{
-				if (bDown) WsInputPointer (nLastX, nLastY, 0, 0);
-				bDown = bTwo = FALSE;
+				if (nMode == M_WAIT)			// touched and let go, still: a click there
+				{
+					WsInputPointer (nX0, nY0, 1, 0);
+					WsInputPointer (nX0, nY0, 0, 0);
+				}
+				else if (nMode == M_DRAG) WsInputPointer (nLastX, nLastY, 0, 0);
+				nMode = M_NONE; bTwo = FALSE;
 				continue;
 			}
 
@@ -96,7 +109,8 @@ public:
 			{
 				int y2 = Scale (Pt[11] | Pt[12] << 8, m_nYMax, g_nScreenHeight);
 				int ym = (y + y2) / 2, xm = (x + Scale (Pt[9] | Pt[10] << 8, m_nXMax, g_nScreenWidth)) / 2;
-				if (bDown) { WsInputPointer (nLastX, nLastY, 0, 0); bDown = FALSE; }	// (the click left)
+				if (nMode == M_DRAG) WsInputPointer (nLastX, nLastY, 0, 0);	// (the drag left)
+				nMode = M_SCROLL;				// (and no click when they let go)
 				if (!bTwo) { bTwo = TRUE; nTwoY = ym; }
 				int nNotches = (ym - nTwoY) / WHEEL_STEP;
 				if (nNotches != 0)
@@ -109,9 +123,35 @@ public:
 			}
 			if (bTwo) continue;				// (one finger left of two: nothing until all let go)
 
-			if (!bDown) WsInputPointer (x, y, 0, 0);	// (there first, then pressed)
-			WsInputPointer (x, y, 1, 0);
-			bDown = TRUE; nLastX = x; nLastY = y;
+			unsigned nNow = CTimer::Get ()->GetClockTicks ();
+			if (nMode == M_NONE)				// touched: the pointer there, the gesture not known yet
+			{
+				WsInputPointer (x, y, 0, 0);
+				nMode = M_WAIT; nX0 = x; nY0 = y; nT0 = nNow; nScrollY = y;
+			}
+			else if (nMode == M_WAIT)
+			{
+				int dx = x - nX0, dy = y - nY0;
+				if (dx < 0) dx = -dx;
+				if (dy < 0) dy = -dy;
+				if (dy > SLOP && dy >= dx) { nMode = M_SCROLL; nScrollY = y; }	// up / down: a scroll
+				else if (dx > SLOP || nNow - nT0 >= HOLD_US)		// sideways, or held: a drag
+				{
+					WsInputPointer (nX0, nY0, 1, 0);		// (pressed where it was touched)
+					nMode = M_DRAG;
+				}
+			}
+			if (nMode == M_SCROLL)
+			{
+				int nNotches = (y - nScrollY) / WHEEL_STEP;
+				if (nNotches != 0)
+				{
+					WsInputPointer (x, y, 0, nNotches);		// (the page follows the finger: down, the wheel forward)
+					nScrollY += nNotches * WHEEL_STEP;
+				}
+			}
+			else if (nMode == M_DRAG) WsInputPointer (x, y, 1, 0);
+			nLastX = x; nLastY = y;
 		}
 	}
 

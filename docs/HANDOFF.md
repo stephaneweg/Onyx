@@ -105,13 +105,33 @@ the device). It is a Goodix GT911 on I2C bus 1 at 0x5D, found with BASIC's `I2CS
 640 x 480, 5 touches.
 - The driver is `sys/touch.cpp`, behind `cmdline.txt touch=1`: a kernel task polls the controller every 16 ms (no
   interrupt line) and feeds `WsInputPointer`.
-  - One finger is the pointer with the left button down: a tap is a click.
-  - Two fingers moved up or down are the wheel.
+  - One finger works as on a phone:
+    - a tap is a click;
+    - up or down scrolls, as the wheel (the user's request, the same day);
+    - sideways, or held 0.4 s, drags with the button.
+  - Two fingers moved up or down are the wheel too.
   - The coordinates are scaled to the screen's size at that moment.
 - The I2C bus is shared with GPIOKit's programs (`GpioI2cKernel*` in `sys/gpio.cpp`; docs/02 §17).
 - Not done yet:
+  - a sideways scroll: there is no horizontal wheel event (only the data grid takes Shift + wheel);
   - a long press as the right button;
   - a calibration for a screen turned by `display_rotate`.
+
+**The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
+`SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:
+- `cmdline.txt`: `width=800 height=600 usbc=1 touch=1 keyboard=US` (the user's 800 x 600);
+- `config.txt`: Waveshare's lines, and their `overlays/` taken from the user's card;
+- the pocket session's file: Setup first, `pocketshell` held back;
+- `system.ini` and the autostart edited by the script: `shell=pocket`, `keyb US`.
+
+Two things were made for it:
+- Setup has the pocket look on any screen the desktop's 800 x 600 window does not fit under PocketUI's band (it was
+  under 800 px wide only). `pocket640.sh setup` checks it at 800 x 600.
+- `cmdline.txt keyboard=<map>`: a device's own keyboard, reported in `kapi_kernel_info`'s `keyboard` line as a Pi
+  400's is. Setup proposes it and keeps it when the country changes.
+
+Not tried yet: the card booted from blank on the device (the user does not want to take the card out; the parts
+were tried one by one).
 
 The user's card: `usbc=1 touch=1`, `keyb US` (QWERTY), the maker's overlay line, no `otg_mode`. `keylog` is off now.
 The kernel was deployed **over the network**:

@@ -1954,7 +1954,7 @@ own traffic (DHCP, DNS, NTP).
 
 | Slot | Entry | What it does |
 |---|---|---|
-| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB), `board` (`pi4` or `pi5`: the distribution the kernel is of, docs/PI5-PORT.md -- `pkg` takes its repository and checks the index by it), and on a board with its own keyboard (the Pi 400, the Pi 500) `keyboard <layout> <code>` (2026-10-10): the country code the firmware reads from the board's OTP (`/chosen/rpi-country-code` in the device tree; Raspberry Pi's codes, as its piwiz: 1 GB, 2 FR, 3 ES, 4 US, 5 DE, 6 IT, 7 JP, 8 PT, 9 NO, 10 SE, 11 DK, 12 RU, 13 TR, 14 IL, 15 HU, 16 KR) and the `SD:/etc/keymaps` layout for it (`UK`... `DK`, `-` none) -- Setup takes it. Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
+| 220 | `kernel_info (buf, cap)` | what the running kernel is, as `key value` lines: `name` (Onyx), `abi` (`KAPI_ABI_VERSION`), `built` (the date and time of the image's link), `rev` (the source's git revision; `+`: built from changed sources), `machine` (aarch64), `model` (the board's name), `ram` (MB), `board` (`pi4` or `pi5`: the distribution the kernel is of, docs/PI5-PORT.md -- `pkg` takes its repository and checks the index by it), and on a board with its own keyboard (the Pi 400, the Pi 500) `keyboard <layout> <code>` (2026-10-10): the country code the firmware reads from the board's OTP (`/chosen/rpi-country-code` in the device tree; Raspberry Pi's codes, as its piwiz: 1 GB, 2 FR, 3 ES, 4 US, 5 DE, 6 IT, 7 JP, 8 PT, 9 NO, 10 SE, 11 DK, 12 RU, 13 TR, 14 IL, 15 HU, 16 KR) and the `SD:/etc/keymaps` layout for it (`UK`... `DK`, `-` none) -- Setup takes it, and keeps it whatever the country; on a board the firmware knows no keyboard of, `cmdline.txt keyboard=<layout>` gives the line with code 0 (`keyboard US 0`: the Waveshare PocketTerm35's, 2026-10-26). Up to `cap` − 1 bytes and a NUL → the text's whole length; `EFAULT`. Keys may be added: a reader looks its keys up. |
 
 The date and the revision are `kernel/buildstamp.cpp`'s, an object that depends on every other
 object and library of the kernel (`kernel/Makefile`): it is compiled again at each link, so the
@@ -3115,9 +3115,16 @@ code that calls it.
     to 0.
 
   The touches go to the window server as a mouse's (`WsInputPointer`):
-  - one finger is the pointer there with the left button down: a tap is a click, a slide drags. A move without the
-    button comes first, so what is under the finger knows the pointer is there;
-  - two fingers moved up or down are the wheel: a notch every 24 pixels, no button.
+  - one finger first moves the pointer there, without the button, so what is under the finger knows the pointer is
+    there. Then it works as on a phone:
+    - a **tap is a click**;
+    - **moved up or down, it scrolls**: the wheel, a notch every 20 pixels, the page following the finger, no button
+      (the user, 2026-10-26);
+    - **moved sideways or held still 0.4 s, it drags**: the left button down where it touched, until the finger lets
+      go (a slider, a scroll bar, a selection, a window's title).
+
+    There is no sideways scroll: the system has no horizontal wheel.
+  - two fingers moved up or down are the wheel too, no button.
 
   The coordinates are scaled to the screen's size at that moment, so a game's own resolution works too. In the log:
   `touch: GT911 at 0x5D: 640 x 480, the pointer`, or why not.

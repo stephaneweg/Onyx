@@ -1,0 +1,32 @@
+#
+# Onyx on the Waveshare PocketTerm35 (a Raspberry Pi 4 inside) -- the boot firmware's settings.
+# Made by tools/pocketterm35/mkcard.py (SD_PocketTerm35/); the rest of the card is Onyx's usual one.
+#
+# No core_freq here: on the Pi 4 the HDMI output's clocks come from the core clock (500 MHz); a lower one gave a
+# black screen on HDMI.
+arm_64bit=1
+kernel_address=0x80000
+initial_turbo=0
+
+# Serial console reliability + remove the firmware rainbow splash
+enable_uart=1
+disable_splash=1
+
+# The PocketTerm35's 3.5-inch screen is an HDMI one: a framebuffer even when the panel answers late.
+hdmi_force_hotplug=1
+
+[pi4]
+armstub=armstub8-rpi4.bin
+kernel=kernel8-rpi4.img
+max_framebuffers=2
+# Waveshare's lines for the PocketTerm35 (its Software Guide), for Linux. Onyx does not need them -- it reads no
+# overlay: the keyboard on the USB-C socket is cmdline.txt's usbc=1, the touch screen (a GT911 on the I2C bus 1)
+# its touch=1 -- but they do no harm, and the card boots Linux's way the same.
+dtparam=i2c_arm=on
+dtoverlay=waveshare-35dpi-4b
+dtoverlay=dwc2,dr_mode=host
+# (no otg_mode=1: it takes the USB-C socket from the DWC OTG controller, where the keyboard is)
+
+[pi5]
+# (this card is the Pi 4's: the PocketTerm35-Pi5 needs the Pi 5's distribution -- docs/PI5-PORT.md)
+kernel=kernel_2712.img

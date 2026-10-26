@@ -1,0 +1,1 @@
+width=800 height=600 init=SD:/bin/init heartbeat=0 sdhs=1 netcore=1 usbc=1 touch=1 keyboard=US
