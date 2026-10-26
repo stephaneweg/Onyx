@@ -177,3 +177,8 @@ Series  ·  S%d E%d	Série  ·  S%d E%d
 Film	Film
 Series	Série
 Clip	Clip
+choose	choisir
+open, play	ouvrir, lire
+pause	pause
+section	rubrique
+back	retour

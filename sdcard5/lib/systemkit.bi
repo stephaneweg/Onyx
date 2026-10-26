@@ -1,13 +1,31 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 113
+kit systemkit 117
 struct PreloadList 4100 PreloadList
 field n 0 i
 struct recent_doc 168 recent_doc
 field path 0 a 160
 field date 160 i
 field time 164 i
+struct display_follow 256 display_follow
+field shell 0 a 16
+field sys_w 16 i
+field sys_h 20 i
+field ours 24 i
+field ask_app 28 a 32
+field ask_w 60 i
+field ask_h 64 i
+field launch 68 a 32
+field launch_t 100 u
+field cache_app 104 a 32
+field cache_w 136 i
+field cache_h 140 i
+field cache_t 144 u
+field fail_w 148 i
+field fail_h 152 i
+field fail_t 156 u
+field said 160 a 96
 clip_clear 0 v - clip_clear
 clip_get 1 b pipiLI clip_get fmt,nf,got,cap,data,len
 clip_get_file 2 i piI clip_get_file buf,cap,cut
@@ -110,3 +128,7 @@ input_wheel_save 109 i i input_wheel_save lines
 display_game_ask 110 i ii display_game_ask w,h
 display_save_option 111 i ss display_save_option key,value
 display_saved_option 112 i spi display_saved_option key,value,cap
+display_follow_init 113 v ps display_follow_init f,shell
+display_follow_launch 114 i ps display_follow_launch f,app
+display_follow_ask 115 v psii display_follow_ask f,front,w,h
+display_follow_tick 116 v pspi display_follow_tick f,front,running,n

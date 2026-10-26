@@ -83,6 +83,6 @@ Saved in SD:/etc/gamepad.ini: the emulators use it now.	Enregistré dans SD:/etc
 The keyboard as pad 1 in the emulators: a key for each button.	Le clavier comme manette 1 dans les émulateurs : une touche par bouton.
 Press the key for 	Appuyez sur la touche de 
    (Esc: cancel)	   (Échap : annuler)
-Up / Down: a button   Enter or a click: its key   Forget: the keys of the start	Haut / Bas : un bouton   Entrée ou un clic : sa touche   Oublier : les touches d'origine
+Up / Down: a button   Enter: its key   Tab: the pads   Forget: the keys of the start	Haut / Bas : un bouton   Entrée : sa touche   Tab : les manettes   Oublier : les touches d'origine
 Keyboard	Clavier
 The keyboard's keys are the first ones again.	Le clavier a de nouveau ses touches d'origine.
