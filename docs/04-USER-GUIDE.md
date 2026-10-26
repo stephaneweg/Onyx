@@ -3002,7 +3002,7 @@ mode it fills the screen (on a 640 x 480 PocketTerm35 too: the face smaller, a l
 **Talking to Pocket**: type and press **Enter** (or Send). Pocket answers in your language (it is told to). Things to try:
 *My name is Lea* (it remembers it), *Note the dentist tomorrow at 2 pm* (Onyx's Calendar), *What do I have this week?*,
 *I must call the plumber* (the Calendar's tasks), *Add milk to my shopping note* (Notes), *Write to Paul that I will be
-late* (Mail), *What is Julie's phone number?* (the contacts), *Wake me at 7 tomorrow* (the Clock), *Print my shopping
+late* (Mail), *What is Julie's phone number?*, *Add Paul to my contacts: paul@example.com* (the contacts), *Wake me at 7 tomorrow* (the Clock), *Print my shopping
 list* (the printer), *What's the weather in Lyon?*,
 *Who was Marie Curie?* (it reads Wikipedia's summary first), *Tell me a story* (in pieces: every three, *Shall I go
 on?*; *continue yesterday's story* takes up an interrupted one), *Warn me at 8 pm to take the laundry out* (a
@@ -3045,7 +3045,7 @@ certificate is not checked yet (as `/bin/llm`).
 | **todo** | the **Calendar**'s tasks | adds a task (a due date when you give a delay), ticks one off, deletes one, lists those to do |
 | **notes** | **Notes** (and Stickies, for a pinned note) | writes a new note, adds a line to a note (its title's words; made when there is none: *add milk to my shopping note*), reads a note, lists them |
 | **mail** | **Mail** | prepares a message -- the address from your contacts, the text written by the model -- and opens it in Mail: **you read it and press Send** (Pocket never sends a mail itself). Mail must be closed first (Pocket says so) |
-| **contacts** | the **address book** (`SD:/Documents/Contacts.card`: Mail's contacts, Cardfile) | says a person's phone, mobile, e-mail, address, birthday |
+| **contacts** | the **address book** (`SD:/Documents/Contacts.card`: Mail's contacts, Cardfile) | says a person's phone, mobile, e-mail, company, address, birthday; **adds** a person (*Add Léa Martin, her mobile is 0470 12 34 56*), **changes** a card (*Léa moved to 12 rue Haute*: a field said empty is cleared), **removes** one when asked plainly; when several names match, Pocket asks which one. Cardfile must be closed first (Pocket says so); with no address book yet, Pocket makes Mail's |
 | **reveil** | the **Clock**'s alarms | sets an alarm (the next time, or the day you say; a label), lists them, deletes one; the Clock must be closed first, its service `clockd` rings them |
 | **imprimer** | the **printers** (Control Panel ▸ Printers: a network printer by IPP, or the PDF printer) | prints a note, the agenda of a day or a period (the days as headings), the Calendar's tasks, the shopping list -- on the default printer, or the one you name (*print the agenda on the Canon*); says the printers there are. The print service does the rest: the job is in its queue, a notification says when it is done |
 

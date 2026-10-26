@@ -20,7 +20,7 @@ The screen's resolution, changed at once	La résolution de l'écran, changée im
 Panel	Dock
 The dock's drawers and launchers; the workspaces	Les tiroirs et les lanceurs du dock ; les bureaux
 Sound	Son
-The volume, mute, a test sound	Le volume, la sourdine, un son d'essai
+Where the sound plays, the microphone, the volume	Où le son est joué, le micro, le volume
 Preload	Préchargement
 The programs loaded at boot and kept in memory	Les programmes chargés au démarrage et gardés en mémoire
 Keyboard & Mouse	Clavier et souris

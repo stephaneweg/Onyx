@@ -4,7 +4,7 @@ Written at the end of a long cloud session so that a new session (e.g. a local o
 user's Windows PC) can continue. Read `CLAUDE.md` first, then this. The user writes in French;
 answer in French. The docs stay in English.
 
-## PocketQI, Pocket the desk assistant (2026-10-26): built, published, NOT run on a Pi yet
+## PocketQI, Pocket the desk assistant (2026-10-26): built, published, run on the Pi by the user
 
 The user asked for an Onyx port of their own project **PocketQI** (github.com/stephaneweg/PocketQI: Pocket, a voice
 assistant -- an LLM decides, BASIC apps act, two animated eyes show the mood -- for a robot, an ESP32 handheld, Windows),
@@ -12,17 +12,23 @@ then, the same day, for Pocket to act in **Onyx's own utility apps**.
 - **The app**: `user/Apps/pocketqi/` (docs/03 "PocketQI" says the layers), `sdcard/apps/pocketqi.app/` (the BASIC
   skills `apps/{courses,meteo,humeur}`, `lib/galo.bi`, `lang/fr.txt`, `config.ini.example`); docs/04 "PocketQI".
   PocketQI's LLM protocol, moods and face are in `core/` unchanged (commit `060b797`); `brain.h` / `skills.h` port its
-  shell and its BASIC host. Typed, not spoken: Onyx has no sound input (no wake word, no voice yet).
+  shell and its BASIC host. Typed, not spoken: no wake word, no voice yet.
 - **The native skills** (`natives.h`): agenda and tasks in the **Calendar** (`calendar/model.h` + the new shared
   `calendar/agendafiles.h`; the Calendar now reads `calendar.ics` again when another program changed it), **Notes**,
-  **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card), the **Clock**'s alarms,
+  **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card: found, added, changed, removed), the **Clock**'s alarms,
   **printing** through PrinterKit (a note, the agenda, the tasks, the shopping list; the BASIC skills' `PRINTER:`).
   Calendar and Mail were rebuilt and published with it.
 - **Tested on the PC**: `shots.sh pocketqi` (EN, FR: a canned LLM answer through `SIM_NET` and `config.ini url =`),
-  `pocket640.sh <out> pocketqi` (640 x 480 by keys). **Not known**: Mistral / Groq over mbedTLS on the Pi (the
+  `pocket640.sh <out> pocketqi` (640 x 480 by keys). **On the Pi** (the user, 2026-10-26): Pocket answers with Mistral
+  and writes in the Calendar. **Not checked by us**: Mistral / Groq over mbedTLS on the Pi (the
   certificate is not verified, as `/bin/llm`), the face's cost at 25 images a second on the Pi 4, a key typed in the
   Settings on the PocketTerm35, a real printer (the PC's test stood PrinterKit in by a stub that logs its calls).
-- **Next ideas**: the voice (PicoTTS, Apache-2.0; or Mistral's TTS), the microphone when the kernel has sound input,
+- **Next** (the user, 2026-10-26): **the voice** -- PocketQI on Circle speaks with PicoTTS (Apache-2.0, `voix=pico`,
+  its "mignon" voice: `system/pi/src/pocketvoice.cpp`) or Mistral's Voxtral TTS (`voix=mistral`: `/v1/audio/speech`,
+  SSE, PCM 24 kHz, a voice per language and mood) --, then **a status bar applet**: Pocket in the background on the
+  microphone (AudioKit `ak_in_*`, kapi v99), "dis Pocket" heard (PocketQI's PocketSphinx keyphrase, BSD-2) opens a
+  small popup at the bottom left with its face alone, the question spoken, the popup gone when Pocket rests.
+  Other ideas:
   `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
   itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.
 

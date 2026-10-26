@@ -1,7 +1,7 @@
 # Sound's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
 # The English is the source's text, exactly (spaces included); a key "context|English" is a TRC's.
 Sound	Son
-Output	Sortie
+Output and input	Sortie et entrée
 Play on	Lire sur
 Automatic	Automatique
 Headphone jack (3.5 mm)	Prise casque (3,5 mm)
@@ -18,3 +18,21 @@ Programs playing	Programmes en lecture
 No program is playing.	Aucun programme ne joue de son.
 This kernel has no mixer.	Ce noyau n'a pas de mixeur.
 Kept in SD:/etc/sound.ini and mixer.ini. The menu bar's speaker changes the master too.	Conservé dans SD:/etc/sound.ini et mixer.ini. Le haut-parleur de la barre de menus agit aussi.
+Record from	Enregistrer depuis
+None	Aucune
+USB microphone / headset	Micro USB / casque
+I2S microphone (GPIO 18, 19, 20)	Micro I2S (GPIO 18, 19, 20)
+This system cannot record yet (its kernel is older).	Ce système ne sait pas encore enregistrer (son noyau est plus ancien).
+Recording now: the USB microphone.	Enregistre en ce moment : le micro USB.
+Recording now: the I2S microphone.	Enregistre en ce moment : le micro I2S.
+No microphone.	Aucun micro.
+An INMP441 or SPH0645 on the header; L/R to the ground.	Un INMP441 ou un SPH0645 sur le connecteur ; L/R à la masse.
+A USB microphone is there.	Un micro USB est branché.
+No USB microphone: plug one in, or choose I2S.	Aucun micro USB : branchez-en un, ou choisissez I2S.
+Test	Tester
+Stop	Arrêter
+Gain	Gain
+Another program is recording.	Un autre programme enregistre.
+No microphone to record from.	Aucun micro pour enregistrer.
+Speak: the bar shows the microphone's level.	Parlez : la barre montre le niveau du micro.
+The microphone is gone.	Le micro a été débranché.
