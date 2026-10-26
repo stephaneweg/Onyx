@@ -149,6 +149,9 @@ all: $(TARGET).img sizecheck apps
 # Apps written in BASIC: compiled on this machine (tools/basc, the same compiler core) to
 # apps/<name>.app/main.bax -- "name=source.bas" pairs.
 BASIC_APPS = arkanoid=$(SDCARD)/basic/examples/arkanoid.bas planets3d=$(SDCARD)/basic/examples/planets3d.bas
+# ... and standalone ones (the editor's Make App > Standalone): apps/<name>.app/main = this build's BASIC runtime
+# with the compiled program attached -- a native program, run in machine code without SD:/bin/basic.
+BASIC_STANDALONE = antigrav=$(SDCARD)/basic/examples/antigrav.bas
 BASC = ../tools/basc/basc
 BASC_SRC = ../tools/basc/basc.cpp ../user/Libs/basic/bascomp.cpp ../user/Libs/basic/basnum.cpp ../user/Libs/basic/basbax.cpp ../user/Libs/basic/basvm.cpp
 $(BASC): $(BASC_SRC) ../user/Libs/basic/bas.h ../user/Libs/basic/basint.h ../user/Libs/basic/bas3d.h ../user/Libs/basic/bas3dscene.h
@@ -195,6 +198,11 @@ endif
 		name=$${pair%%=*}; src=$${pair#*=}; \
 		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main; \
 		$(BASC) $$src $(SDCARD)/apps/$$name.app/main.bax || exit 1; \
+	done
+	@for pair in $(BASIC_STANDALONE); do \
+		name=$${pair%%=*}; src=$${pair#*=}; \
+		mkdir -p $(SDCARD)/apps/$$name.app; rm -f $(SDCARD)/apps/$$name.app/main.bax; \
+		$(BASC) --standalone ../user/BinUtils/basic.elf $$src $(SDCARD)/apps/$$name.app/main || exit 1; \
 	done
 	@echo "  STAGE $(TARGET).img + apps/*.app/main + bin/* + lib/*.so + lib/pocket/*.so + koton/plugins/* -> $(SDCARD)/"
 

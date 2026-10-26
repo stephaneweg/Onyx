@@ -413,6 +413,15 @@ if want circuits; then			# (Circuits, AutoDev round 2: the progress from desktop
 	lang "$SHOTS_LANG"
 	rm -rf "$CQ"
 fi
+if want cosmozoom; then			# (Cosmo Zoom!: its own build and run, tools/tests/cosmozoom/sim.sh -- AudioKit, FileKit, zlib; the
+					#  software renderer at its whole size; a 1920 x 1080 desktop: a 1280 x 720 window; a step = 10 ms)
+	CZ="env SIM_SCREEN=1920x1080 SIM_TMP=$OUT/cz sh tools/tests/cosmozoom/sim.sh"
+	CW=$(printf 'wait;%.0s' $(seq 1500))
+	$CZ "$PNG/cosmozoom.png" "hold 0x100;$CW" window sharp race=skyline
+	$CZ "$PNG/cosmozoom-hangar.png" "$(printf 'wait;%.0s' $(seq 80))" window sharp screen=hangar
+	$CZ "$PNG/cosmozoom-cups.png" "$(printf 'wait;%.0s' $(seq 80))" window sharp screen=cups
+	$CZ "$PNG/cosmozoom-title.png" "$(printf 'wait;%.0s' $(seq 150))" window sharp
+fi
 if want pinball; then			# (Pinball, AutoDev round 4: the top 5s of desktop_sim/pinball/scores.ini and two player's tables
 					#  -- sd/docs/pinball -- in the writes' folder; one script step = 20 ms of the game, 50 waits = 1 s;
 					#  "hold 32" ... "release 32" pulls the plunger, "hold 0x102" raises the left flipper; a taller

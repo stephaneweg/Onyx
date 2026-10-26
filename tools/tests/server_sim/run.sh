@@ -242,6 +242,15 @@ conshots 800x480 800
 conshots 1280x720 720
 conshots 1920x1080 1080
 conshots 640x480 640 fr
+# the apps' on-screen keyboard (consolehome/appkeys.h): a pad plugged in, the app's text field focused (an address: its
+# hint) -> the keyboard comes, a band (the app above it); the d-pad and A type into the app (kapi_inject_key: "e");
+# the field gone -> it goes; Select tapped -> it comes / goes. Pictures: consolehome-keys-<shown|typed>-720.png.
+WR=$(langdir ""); E="SIM_SCREEN=1280x720 SIM_MODE=console SIM_APPNAME=consolehome SIM_APP=consolehome SIM_WRITES=$WR"
+SC="$W;$W;other 1280 720 jet;$W;$W;expect front other;pad 0;$W;hint 3;$W;$W;$W;expect area 0,0,1280,416;dump $OUT/consolehome-keys-shown-720.elsm"
+SC="$SC;pad 8;$W;pad 0;$W;pad 8;$W;pad 0;$W;pad 16;$W;pad 0;$W;$W;dump $OUT/consolehome-keys-typed-720.elsm;hint -1;$W;$W;$W;expect area 0,0,1280,720"
+SC="$SC;pad 4096;$W;pad 0;$W;$W;$W;expect area 0,0,1280,416;pad 4096;$W;pad 0;$W;$W;expect area 0,0,1280,720"
+run pocket_consolehome console-keys "$SC" $E
+for s in shown typed; do png consolehome-keys-$s-720; if [ -n "$CONSOLE_PNG" ]; then cp "$OUT/consolehome-keys-$s-720.png" "$CONSOLE_PNG/"; fi; done
 # the launcher's keys from the start (the Pi's report on 2026.10.126: "the shell does not react to the keyboard"):
 # typing goes to the search (calc), Down / Up choose, Enter opens the result (the Calculator); "qqq" (no app: its only
 # result is to run it) then Esc clears the search, the arrows move in the grid (Right x3, Left: its 3rd app), Enter

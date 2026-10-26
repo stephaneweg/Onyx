@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 110
+kit systemkit 113
 struct PreloadList 4100 PreloadList
 field n 0 i
 struct recent_doc 168 recent_doc
@@ -107,3 +107,6 @@ input_keymap_set 106 i s input_keymap_set code
 input_keymaps 107 i ci input_keymaps out,max
 input_wheel 108 i - input_wheel
 input_wheel_save 109 i i input_wheel_save lines
+display_game_ask 110 i ii display_game_ask w,h
+display_save_option 111 i ss display_save_option key,value
+display_saved_option 112 i spi display_saved_option key,value,cap

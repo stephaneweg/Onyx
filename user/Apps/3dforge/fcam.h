@@ -281,15 +281,15 @@ static bool in_loops (const std::vector<CamLoop> &ls, const V2 &p)
 static bool cam_clearing (const Body &b, const CamSetup &c, CamOp &op, int index, const V3 &lo, const V3 &hi, CamPaths *out)
 {
 	double r = c.tool.dia / 2;
-	if (r < 0.05 || op.stepover < 0.05 || op.stepdown < 0.05) { snprintf (op.err, sizeof op.err, "The tool and the steps must be more than 0"); return false; }
-	if (op.stepover > c.tool.dia) { snprintf (op.err, sizeof op.err, "The step over is wider than the tool"); return false; }
+	if (r < 0.05 || op.stepover < 0.05 || op.stepdown < 0.05) { snprintf (op.err, sizeof op.err, TR ("The tool and the steps must be more than 0")); return false; }
+	if (op.stepover > c.tool.dia) { snprintf (op.err, sizeof op.err, TR ("The step over is wider than the tool")); return false; }
 	double lowest = op.lowestAuto ? cam_lowest_face (b.mesh) : op.lowest; if (lowest < lo.z) lowest = lo.z;
 	CrossSection stock = CrossSection::Square ({hi.x - lo.x + 2 * r, hi.y - lo.y + 2 * r}).Translate ({lo.x - r, lo.y - r});
 	std::vector<CamLoop> zoneIn;				// (one face: its zone, a hair smaller -- what is not on its edge)
 	if (op.useFace)				// only what is above that face, down to it: the walls beside it are kept by the shadow
 	{
 		int g = cam_face (b.mesh, op.facePt); CrossSection shape; double fz = 0;
-		if (g < 0 || !cam_face_shape (b.mesh, g, &shape, &fz)) { snprintf (op.err, sizeof op.err, "Choose a flat face turned up"); return false; }
+		if (g < 0 || !cam_face_shape (b.mesh, g, &shape, &fz)) { snprintf (op.err, sizeof op.err, TR ("Choose a flat face turned up")); return false; }
 		stock = stock ^ shape.Offset (r, CrossSection::JoinType::Round, 2.0, 48); lowest = fz;
 		loops_of (stock.Offset (-0.02, CrossSection::JoinType::Round), &zoneIn);
 	}
@@ -351,12 +351,12 @@ static bool cam_clearing (const Body &b, const CamSetup &c, CamOp &op, int index
 static bool cam_contour (const Body &b, const CamSetup &c, CamOp &op, int index, const V3 &lo, const V3 &hi, CamPaths *out)
 {
 	double r = c.tool.dia / 2;
-	if (r < 0.05 || op.stepdown < 0.05) { snprintf (op.err, sizeof op.err, "The tool and the step down must be more than 0"); return false; }
+	if (r < 0.05 || op.stepdown < 0.05) { snprintf (op.err, sizeof op.err, TR ("The tool and the step down must be more than 0")); return false; }
 	CrossSection shape (b.m.Project ()); double faceZ = 0; bool onFace = false;
 	if (op.useFace)
 	{
 		int g = cam_face (b.mesh, op.facePt);
-		if (g < 0 || !cam_face_shape (b.mesh, g, &shape, &faceZ)) { snprintf (op.err, sizeof op.err, "Choose a flat face turned up"); return false; }
+		if (g < 0 || !cam_face_shape (b.mesh, g, &shape, &faceZ)) { snprintf (op.err, sizeof op.err, TR ("Choose a flat face turned up")); return false; }
 		onFace = true;
 	}
 	std::vector<CamLoop> raw, loops; loops_of (shape, &raw);
@@ -369,10 +369,10 @@ static bool cam_contour (const Body &b, const CamSetup &c, CamOp &op, int index,
 		bool inward = onFace ? op.inside : hole;
 		loops_of (CrossSection (Polygons { p }).Offset (inward ? -r : r, CrossSection::JoinType::Round, 2.0, 96), &loops);
 	}
-	if (loops.empty ()) { snprintf (op.err, sizeof op.err, op.inside ? "No hole the tool fits in" : "The body has no outline"); return false; }
+	if (loops.empty ()) { snprintf (op.err, sizeof op.err, op.inside ? TR ("No hole the tool fits in") : TR ("The body has no outline")); return false; }
 	double top = op.fromAuto ? hi.z : op.from, bottom = b.mesh.lo.z - op.under; if (top > hi.z) top = hi.z;
 	if (onFace) bottom = op.inside ? faceZ : cam_floor_under (b.mesh, faceZ);	// (inside it: to its own height; around it: to the floor)
-	if (top <= bottom) { snprintf (op.err, sizeof op.err, "It starts under where it ends"); return false; }
+	if (top <= bottom) { snprintf (op.err, sizeof op.err, TR ("It starts under where it ends")); return false; }
 	CamEmit e (out, index, hi.z + c.retract, hi.z + c.safe);
 	for (CamLoop &l : loops)
 	{

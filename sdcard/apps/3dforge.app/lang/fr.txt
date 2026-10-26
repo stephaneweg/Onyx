@@ -1,6 +1,646 @@
-# 3DForge's words in French (uikit/lang.h): English<TAB>French, a line each. Only its pocket words so far (the steps'
-# drawer, Display, the hint line, the card): the rest of 3DForge is not translated yet.
-# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+# 3DForge's words in French (uikit/lang.h): English<TAB>French, a line each (\t \n \\ escaped).
+# The English is the sources' text, exactly (spaces included); the formats (%s, %d...) keep their order.
+# 3DForge for Windows reads this file too (pc/dist/3DForge/lang/fr.txt), and its own words in pc/3DForge/lang/fr.txt.
+The tool and the steps must be more than 0	L'outil et les passes doivent être plus grands que 0
+The step over is wider than the tool	La passe latérale est plus large que l'outil
+Choose a flat face turned up	Choisissez une face plane tournée vers le haut
+The tool and the step down must be more than 0	L'outil et la passe verticale doivent être plus grands que 0
+No hole the tool fits in	Aucun trou où l'outil entre
+The body has no outline	Le corps n'a pas de contour
+It starts under where it ends	Il commence sous son point d'arrivée
+Box	Boîte
+Cylinder	Cylindre
+Sketch	Esquisse
+Extrude	Extruder
+Fillet	Congé
+Chamfer	Chanfrein
+Move	Déplacer
+Combine	Combiner
+Pyramid	Pyramide
+Prism	Prisme
+Taper	Tronc
+Torus	Tore
+Sphere	Sphère
+New body	Nouveau corps
+Union	Union
+Subtract	Soustraire
+Intersect	Intersection
+This edge cannot be rounded: only straight edges, circles and arcs	Cette arête ne peut pas être arrondie : seulement les arêtes droites, les cercles et les arcs
+The size must be more than 0	La taille doit être plus grande que 0
+Too large for this edge	Trop grand pour cette arête
+Body %d	Corps %d
+The box has no size	La boîte n'a pas de taille
+The cylinder has no size	Le cylindre n'a pas de taille
+The shape has no size	La forme n'a pas de taille
+The sphere has no size	La sphère n'a pas de taille
+The torus has no size	Le tore n'a pas de taille
+The ring must be larger than its tube	L'anneau doit être plus grand que son tube
+Its sketch is missing	Son esquisse manque
+The sketch has no closed outline	L'esquisse n'a pas de contour fermé
+The extrusion has no height	L'extrusion n'a pas de hauteur
+Its body is missing	Son corps manque
+No edge chosen	Aucune arête choisie
+An edge is no longer there	Une arête n'est plus là
+Nothing would be left of the body	Il ne resterait rien du corps
+The operation failed	L'opération a échoué
+A scale of 0 would leave nothing	Une échelle de 0 ne laisserait rien
+%.17s copy	%.17s copie
+A body is missing	Un corps manque
+Canvas	Calque
+ · cut	 · coupe
+ · intersect	 · intersection
+Ø %s · through%s	Ø %s · traversant%s
+%d sides	%d côtés
+round	rond
+R %s · tube %s%s	R %s · tube %s%s
+%d outline%s%s	%d contour%s%s
+ · open	 · ouvert
+through%s	traversant%s
+R %s · %d edge%s	R %s · %d arête%s
+%s · %d edge%s	%s · %d arête%s
+ · turned	 · tourné
+ · scaled	 · mis à l'échelle
+ · a copy	 · une copie
+There is nothing to print	Il n'y a rien à imprimer
+Shapes	Formes
+Measure	Mesurer
+Setup	Réglage
+Tool	Outil
+Clearing	Évidement
+Contour	Contour
+Simulate	Simuler
+Resin	Résine
+Supports	Supports
+Layers	Couches
+Filament	Filament
+Line	Ligne
+Rectangle	Rectangle
+Circle	Cercle
+Arc	Arc
+3-pt arc	Arc 3 pts
+Spline	Courbe
+Point	Point
+Close	Fermer
+Export	Exporter
+Cancel	Annuler
+Finish sketch	Terminer l'esquisse
+G-code	G-code
+Print file	Impression
+Validate	Valider
+Design	Conception
+Manufacture	Fabrication
+Setup  ·  %s · %s	Réglage  ·  %s · %s
+a filament printer	une imprimante à filament
+Supports  ·  none	Supports  ·  aucun
+Supports  ·  %d pillars%s	Supports  ·  %d piliers%s
+ · a raft	 · un radeau
+Setup  ·  %s · stock %s × %s × %s	Réglage  ·  %s · brut %s × %s × %s
+%s  ·  Ø %s flat · %d min%s	%s  ·  Ø %s plate · %d min%s
+ · one face	 · une face
+  (rolled back)	  (annulé)
+%s · turn %s°	%s · tourne de %s°
+%s · at %s°	%s · à %s°
+through %d points	par %d points
+a mark at %s, %s	un repère en %s, %s
+Ø %s · at %s, %s	Ø %s · en %s, %s
+%s × %s · from its centre	%s × %s · depuis son centre
+back to the start	retour au départ
+The sketch's elements come here, in the order they are drawn.	Les éléments de l'esquisse viennent ici, dans l'ordre où ils sont tracés.
+The steps you make come here: click one to change its values.	Les étapes que vous faites viennent ici : cliquez-en une pour changer ses valeurs.
+%d closed outline%s	%d fermé%s
+%d still open	%d encore ouvert(s)
+none open	aucun ouvert
+%d step%s	%d étape%s
+History	Historique
+Delete	Supprimer
+Edit sketch	Modifier l'esquisse
+Roll back to here	Revenir à cette étape
+Roll to the end	Aller jusqu'au bout
+The part as it was after that step. Drag the bar back to the end for the rest.	La pièce telle qu'elle était après cette étape. Ramenez la barre à la fin pour le reste.
+The whole history again.	Tout l'historique à nouveau.
+Body	Corps
+Process	Procédé
+Resin print	Résine
+Milling	Fraisage
+the body, on the bed	le corps sur le plateau
+Bed	Plateau
+Width	Largeur
+mm	mm
+Depth	Profondeur
+Height	Hauteur
+On the bed	Sur le plateau
+Tilted, X	Incliné, X
+Tilted, Y	Incliné, Y
+Turned	Tourné
+layers, shell, infill	couches et remplissage
+Line's width	Larg. ligne
+Shell	Coque
+Walls	Parois
+Solid above	Pleines haut
+lay.	c.
+Solid below	Pleines bas
+Infill	Remplissage
+Share	Taux
+Lines	Lignes
+Grid	Grille
+Honeycomb	Nid d'abeille
+As	Motif
+Skirt	Jupe
+Loops	Tours
+Away by	Écart
+the nozzle's path	le trajet de la buse
+Show it in the 3D view	La montrer en 3D
+Play draws the layer as the	Lecture trace la couche comme
+printer would, then the next.	l'imprimante, puis la suivante.
+The file for a printer comes	Le fichier pour une imprimante
+later: the path is what is shown.	viendra : on voit le trajet.
+the body, on the plate	le corps, sur la plaque
+Printer	Imprimante
+room %.4g × %.4g × %.4g mm	volume %.4g × %.4g × %.4g mm
+On the plate	Sur la plaque
+Lifted	Levé
+Mirror the picture	Image en miroir
+exposures, the lift	expositions, levée
+Exposure	Exposition
+Light off	Lumière éteinte
+First layers	Premières couches
+How many	Combien
+Then, over	Puis, sur
+Lift, after each layer	Levée, après chaque couche
+Slowly	Lentement
+... at	... à
+Then	Puis
+Back down at	Descente à
+what holds the body	ce qui tient le corps
+Generate	Générer
+Where	Où
+Overhang	Surplomb
+A pillar every	Espacement
+Also under low points	Aussi sous les points bas
+Pillars	Piliers
+Diameter	Diamètre
+Tip	Pointe
+Into the body	Dans le corps
+A raft under it all	Un radeau sous le tout
+Thick	Épaisseur
+Wider by	Plus large de
+Remove them all	Tous les enlever
+what the screen shows	ce que l'écran montre
+Write the print file...	Écrire le fichier...
+%s mm	%s mm
+Line drawn	Ligne tracée
+%.2f m · %.1f cm³	%.2f m · %.1f cm³
+it fits	ça tient
+too large	trop grand
+%d layers of %.3g mm	%d couches de %.3g mm
+Nothing holds the body	Rien ne tient le corps
+No supports	Aucun support
+%d pillars%s	%d piliers%s
+it is lifted off the plate	il est levé de la plaque
+the body lies on the plate	le corps repose sur la plaque
+click the body to add one	clic sur le corps : un de plus
+%d of %d...	%d sur %d...
+%.1f ml	%.1f ml
+%d min	%d min
+Time	Durée
+Checked	Vérifié
+cutting the layers...	découpe des couches...
+It does not fit the printer	Ça ne tient pas dans l'imprimante
+It fits the plate and the room	Ça tient sur la plaque
+The first layers lie on the plate	1res couches sur la plaque
+Nothing lies on the plate	Rien ne touche la plaque
+Each layer rests on the last	Chaque couche est soutenue
+the body, its stock	le corps, son brut
+Stock	Brut
+Around it	Autour
+Fixed size	Taille fixe
+Sides, more	Marge côtés
+Top, more	Marge haut
+Under, more	Marge bas
+Along X	Selon X
+Along Y	Selon Y
+Moved, X	Décalé, X
+Moved, Y	Décalé, Y
+Moved, Z	Décalé, Z
+Origin	Origine
+Axes	Axes
+right	droite
+back	arrière
+left	gauche
+front	avant
+X goes	X va vers
+Y goes %s; Z goes up.	Y va vers %s ; Z monte.
+Heights above the stock	Hauteurs sur le brut
+Safe, above	Sûre, au-dessus
+Safe	Sûre
+Retract, above	Retrait, au-dessus
+Retract	Retrait
+a flat end mill	une fraise plate
+Name	Nom
+Cutting length	Long. de coupe
+Spindle	Broche
+rpm	tr/min
+Cutting feed	Avance de coupe
+/min	/min
+Plunge feed	Avance plongée
+Travel	Déplacement
+Machine	Machine
+Travel X	Course X
+Travel Y	Course Y
+Travel Z	Course Z
+Spindle, most	Broche maxi
+Spindle's wait	Attente broche
+roughing, by levels	ébauche, par niveaux
+the outline, to depth	contour, en profondeur
+On	Sur
+The body	Le corps
+A face	Une face
+the face at height %s	la face à la hauteur %s
+click a flat face turned up	cliquez une face plane vers le haut
+Step over	Passe lat.
+Step down	Passe vert.
+Left on walls	Reste parois
+Left on floors	Reste fonds
+Cut	Coupe
+Climb	Avalant
+Convent.	Oppos.
+To the lowest flat face	Jusqu'à la face plane la plus basse
+Lowest (model Z)	Plus bas (Z modèle)
+Side	Côté
+Outside	Dehors
+Inside	Dedans
+From the stock's top	Depuis le dessus du brut
+From (model Z)	Depuis (Z modèle)
+Under it, by	Dessous, de
+Tabs	Attaches
+Delete this operation	Supprimer cette opération
+Click the flat face, turned up, to work on.	Cliquez la face plane, tournée vers le haut, à usiner.
+OK	OK
+Through the whole body	À travers tout le corps
+Sides	Côtés
+Base radius	Rayon de base
+Top radius	Rayon du haut
+Radius	Rayon
+Ring radius	Rayon de l'anneau
+Tube radius	Rayon du tube
+Size	Taille
+Edges	Arêtes
+%d chosen	%d choisie(s)
+Click an edge of a body	Cliquez une arête d'un corps
+on %s	sur %s
+Along Z	Selon Z
+Turn, about its centre	Tourner, autour du centre
+Around X	Autour de X
+Around Y	Autour de Y
+Around Z	Autour de Z
+Scale (1: as it is)	Échelle (1 : tel quel)
+Clone: the original stays	Cloner : l'original reste
+%s, with another body	%s, avec un autre corps
+Corner X	Coin X
+Centre X	Centre X
+Off the face	Hors face
+Off the plane	Hors du plan
+Joined to	Uni à
+Cut from	Coupé de
+Kept inside	Gardé dans
+Centred on the first click	Centré au 1er clic
+3-point arc	Arc 3 points
+Ends	Extrémités
+Middle	Milieu
+Centre	Centre
+End	Fin
+Start · End	Début · Fin
+selected	sélectionné
+At X	En X
+Starts at X	Part de X
+Starts at	Part de
+the end before	la fin d'avant
+Length	Longueur
+Angle	Angle
+From the line before	Depuis la ligne d'avant
+Centre at	Centre à
++ clockwise, − anticlockwise	+ horaire, − antihoraire
+Enter, or the last point clicked	Entrée, ou le dernier point
+again, ends it.	recliqué, la termine.
+A mark to snap to: it is part	Un repère où s'accrocher : il
+of no outline.	n'est dans aucun contour.
+Corner	Coin
+From its	Depuis son
+Snap to points and angles	Accrocher points et angles
+Each element starts from a	Chaque élément part d'un
+point and keeps its own values.	point et garde ses valeurs.
+Change one: what was drawn	Changez-en un : ce qui a été
+after it follows.	tracé après suit.
+Delete this element	Supprimer cet élément
+its plane	son plan
+Click a flat face of a body,	Cliquez une face plane d'un corps,
+or draw on a plane of the axes:	ou dessinez sur un plan des axes :
+Plane	Plan
+Offset	Décalage
+XY: the ground, seen from above;	XY : le sol, vu de dessus ;
+XZ: upright, seen from the front;	XZ : debout, vu de face ;
+YZ: upright, seen from the right;	YZ : debout, vu de droite ;
+the offset is its height (Z).	le décalage est sa hauteur (Z).
+the offset is along Y.	le décalage est selon Y.
+the offset is along X.	le décalage est selon X.
+Start the sketch	Commencer l'esquisse
+Base	Base
+Ring	Anneau
+Tube	Tube
+Top · Height	Haut · Hauteur
+a canvas, to draw over	un calque où dessiner
+Height (Z)	Hauteur (Z)
+On its plane	Sur son plan
+%s × %s mm	%s × %s mm
+Its size follows its width.	Sa taille suit sa largeur.
+Seen	Affichage
+Opacity	Opacité
+Shown	Visible
+Drag it in the view to move it,	Glissez-le dans la vue pour le
+a corner to size it.	déplacer, un coin pour sa taille.
+Remove this canvas	Enlever ce calque
+rolled back	annulée
+a step of the history	étape de l'historique
+This step could not be made:	Cette étape n'a pas pu être faite :
+Delete this step	Supprimer cette étape
+Body · %d step%s	Corps · %d étape%s
+Colour	Couleur
+Measures	Mesures
+%s × %s × %s mm	%s × %s × %s mm
+%.1f cm³	%.1f cm³
+Volume	Volume
+%.0f cm²	%.0f cm²
+Surface	Surface
+Triangles	Triangles
+Display	Affichage
+See through	Transparence
+Print check	Contrôle d'impression
+Closed solid, ready to print	Solide fermé, imprimable
+Not a closed solid	Pas un solide fermé
+Start with a shape:	Commencez par une forme :
+Box: click, move away, click,	Boîte : cliquez, éloignez-vous,
+move up, click.	cliquez, montez, cliquez.
+Sketch: draw an outline on a	Esquisse : tracez un contour sur
+face, then Extrude it.	une face, puis extrudez-le.
+Each step stays in the history:	Chaque étape reste dans l'historique :
+click it to change its values.	cliquez-la pour changer ses valeurs.
+Top	Dessus
+Bottom	Dessous
+changed	modifié
+Validate to compute	Validez pour calculer
+%.1f m cut · %d min	%.1f m coupés · %d min
+never below Z %s	jamais sous Z %s
+Operation	Opération
+Snap 1 mm	Accroche 1 mm
+Snap off	Sans accroche
+Grid 10 mm	Grille 10 mm
+Grid off	Sans grille
+%d %03d triangles	%d %03d triangles
+%d triangles	%d triangles
+the body	le corps
+on a face	sur une face
+on the ground	sur le sol
+%s · on a face of %s	%s · sur une face de %s
+%s · on the ground	%s · sur le sol
+Pick a tool to start: Box, Cylinder or Sketch. Drag turns the view, the wheel zooms.	Choisissez un outil pour commencer : Boîte, Cylindre ou Esquisse. Glisser tourne la vue, la molette zoome.
+Pick a tool, or click a body, a face or an edge. Drag turns the view, the wheel zooms.	Choisissez un outil, ou cliquez un corps, une face ou une arête. Glisser tourne la vue, la molette zoome.
+Click the centre of the box (a face, or the ground) — or set its values at the right and press OK.	Cliquez le centre de la boîte (une face, ou le sol) — ou donnez ses valeurs à droite et appuyez sur OK.
+Move away to set the width and the depth, then click.	Éloignez-vous pour la largeur et la profondeur, puis cliquez.
+Move up to set the height and click — or type it and press Enter.	Montez pour la hauteur et cliquez — ou tapez-la et appuyez sur Entrée.
+Click the centre (a face, or the ground) — or set its values at the right and press OK.	Cliquez le centre (une face, ou le sol) — ou donnez ses valeurs à droite et appuyez sur OK.
+Move away to set the diameter, then click.	Éloignez-vous pour le diamètre, puis cliquez.
+Pushed into the body: Subtract is chosen. Click to finish.	Enfoncé dans le corps : Soustraire est choisi. Cliquez pour finir.
+Move to set the height and click — or type it and press Enter.	Bougez pour la hauteur et cliquez — ou tapez-la et appuyez sur Entrée.
+Click the centre of the base (a face, or the ground) — or set its values at the right and press OK.	Cliquez le centre de la base (une face, ou le sol) — ou donnez ses valeurs à droite et appuyez sur OK.
+Type the number of sides (0: round), move away to set the base's radius, then click.	Tapez le nombre de côtés (0 : rond), éloignez-vous pour le rayon de la base, puis cliquez.
+Move to set the top's radius (its distance from the centre), then click.	Bougez pour le rayon du haut (sa distance au centre), puis cliquez.
+Move up or down to set the height and click — or type it and press Enter.	Montez ou descendez pour la hauteur et cliquez — ou tapez-la et appuyez sur Entrée.
+Move away to set the ring's radius, then click.	Éloignez-vous pour le rayon de l'anneau, puis cliquez.
+Move off the ring to set the tube's radius and click — or type it and press Enter.	Écartez-vous de l'anneau pour le rayon du tube et cliquez — ou tapez-le et appuyez sur Entrée.
+Click the centre (a face, or the ground) — or set its radius at the right and press OK.	Cliquez le centre (une face, ou le sol) — ou donnez son rayon à droite et appuyez sur OK.
+Move away to set the radius and click — or type it and press Enter.	Éloignez-vous pour le rayon et cliquez — ou tapez-le et appuyez sur Entrée.
+Click the flat face to draw on — or choose a plane at the right and start.	Cliquez la face plane où dessiner — ou choisissez un plan à droite et commencez.
+Click the edges, then drag the arrow or type the size. Enter to finish.	Cliquez les arêtes, puis glissez la flèche ou tapez la taille. Entrée pour finir.
+Click the body to move, turn or scale.	Cliquez le corps à déplacer, tourner ou mettre à l'échelle.
+Move it and click — or type its move, its turns and its scale at the right, then Enter.	Déplacez-le et cliquez — ou tapez son déplacement, ses rotations et son échelle à droite, puis Entrée.
+Click the body to keep.	Cliquez le corps à garder.
+Click the body to cut out of it.	Cliquez le corps à y retirer.
+Click the other body.	Cliquez l'autre corps.
+Click again to measure something else.	Cliquez encore pour mesurer autre chose.
+Click the second point.	Cliquez le second point.
+Click two points to measure between them.	Cliquez deux points pour mesurer entre eux.
+Line: click where it starts.	Ligne : cliquez où elle commence.
+Line: click where it ends — or type its length and angle. Esc ends the run.	Ligne : cliquez où elle finit — ou tapez sa longueur et son angle. Échap termine la suite.
+Rectangle: click its centre.	Rectangle : cliquez son centre.
+Rectangle: click a corner — or type its width and height.	Rectangle : cliquez un coin — ou tapez sa largeur et sa hauteur.
+Rectangle: click a corner.	Rectangle : cliquez un coin.
+Rectangle: click the opposite corner.	Rectangle : cliquez le coin opposé.
+Circle: click its centre.	Cercle : cliquez son centre.
+Circle: click to set its diameter.	Cercle : cliquez pour son diamètre.
+Arc: click its centre.	Arc : cliquez son centre.
+Arc: click where it ends — or type its angle (+ clockwise).	Arc : cliquez où il finit — ou tapez son angle (+ horaire).
+Arc: click the centre. It starts at the end of the last element.	Arc : cliquez le centre. Il part de la fin du dernier élément.
+Arc: click where it starts: that sets its radius.	Arc : cliquez où il commence : cela donne son rayon.
+Arc: click where it starts.	Arc : cliquez où il commence.
+Arc: click where it ends.	Arc : cliquez où il finit.
+Arc: move its middle and click — or type its radius.	Arc : bougez son milieu et cliquez — ou tapez son rayon.
+Spline: click where it starts.	Courbe : cliquez où elle commence.
+Spline: click its points. Enter, or the last point clicked again, ends it.	Courbe : cliquez ses points. Entrée, ou le dernier point recliqué, la termine.
+Point: click to place a mark to snap to. It is part of no outline.	Point : cliquez pour poser un repère où s'accrocher. Il n'est dans aucun contour.
+Extrude needs a sketch: draw one first (Sketch).	Extruder demande une esquisse : tracez-en une d'abord (Esquisse).
+Click an edge first.	Cliquez d'abord une arête.
+Click one of the stock's points to put the origin there.	Cliquez un des points du brut pour y mettre l'origine.
+Setup · stock %s × %s × %s	Réglage · brut %s × %s × %s
+The tool and the machine are remembered: the next part starts with them.	L'outil et la machine sont retenus : la prochaine pièce commence avec eux.
+Tool · %s	Outil · %s
+Clearing: the stock removed level by level around the body. Its values are at the right.	Évidement : le brut retiré niveau par niveau autour du corps. Ses valeurs sont à droite.
+Contour: the tool follows the outline, a pass a step down. Tabs hold the part at the end.	Contour : l'outil suit le contour, une passe par niveau. Des attaches tiennent la pièce à la fin.
+%s · %d min	%s · %d min
+Changed. Validate computes the moves again with these values; Cancel puts them back.	Modifié. Valider recalcule les trajets avec ces valeurs ; Annuler les remet.
+Manufacture needs a body: make one first.	La fabrication demande un corps : faites-en un d'abord.
+The body on the printer's bed: move, tilt or turn it at the right.	Le corps sur le plateau de l'imprimante : déplacez-le, inclinez-le ou tournez-le à droite.
+Setup · a filament printer	Réglage · une imprimante à filament
+The layers, the shell and the infill: they are remembered for the next part.	Les couches, la coque et le remplissage : ils sont retenus pour la prochaine pièce.
+Filament · %.3g mm layers	Filament · couches de %.3g mm
+The nozzle's path, layer by layer. The bar, the wheel; Play draws it as the printer would.	Le trajet de la buse, couche par couche. La barre, la molette ; Lecture le trace comme l'imprimante.
+The body on the printer's plate: move, lift, tilt or turn it at the right.	Le corps sur la plaque de l'imprimante : déplacez-le, levez-le, inclinez-le ou tournez-le à droite.
+Setup · %s	Réglage · %s
+The resin's values are remembered: the next part starts with them.	Les valeurs de la résine sont retenues : la prochaine pièce commence avec elles.
+Resin · %s	Résine · %s
+Generate: pillars where the body hangs. Click the body to add one, a tip to remove it.	Générer : des piliers où le corps surplombe. Cliquez le corps pour en ajouter, une pointe pour l'enlever.
+Supports · none	Supports · aucun
+Supports · %d pillars%s	Supports · %d piliers%s
+The layers as the screen shows them: white is lit. The bar, the wheel, or Play.	Les couches comme l'écran les montre : le blanc est éclairé. La barre, la molette, ou Lecture.
+Computing the paths...	Calcul des trajets...
+Layer %d of %d  ·  %s mm  ·  %.1f m of line	Couche %d sur %d  ·  %s mm  ·  %.1f m de ligne
+outer wall	paroi externe
+inner wall	paroi interne
+solid	plein
+infill	remplissage
+skirt	jupe
+Layer %d of %d  ·  %s mm  ·  %.3g s	Couche %d sur %d  ·  %s mm  ·  %.3g s
+lit: %.1f cm²	éclairé : %.1f cm²
+Cutting the layers...  %d of %d	Découpe des couches...  %d sur %d
+Choose a flat face turned up.	Choisissez une face plane tournée vers le haut.
+Sketches	Esquisses
+Edit	Modifier
+Canvases	Calques
+Bodies	Corps
+Drag the canvas to move it on its plane, a corner to size it; its values are at the right.	Glissez le calque pour le déplacer sur son plan, un coin pour sa taille ; ses valeurs sont à droite.
+TOP	DESSUS
+BOTTOM	DESSOUS
+FRONT	AVANT
+BACK	ARRIÈRE
+RIGHT	DROITE
+LEFT	GAUCHE
+FACE	FACE
+closes the outline	ferme le contour
+top R %s	haut R %s
+tube R %s	tube R %s
+through	traversant
+Save	Enregistrer
+The file could not be written.	Le fichier n'a pas pu être écrit.
+this part	cette pièce
+Open	Ouvrir
+That file is not a 3DForge part (.3df).	Ce fichier n'est pas une pièce 3DForge (.3df).
+Pictures|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|All files|*	Images|*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.webp|Tous les fichiers|*
+That file is not a picture 3DForge can read (PNG, JPEG, BMP, GIF, WebP).	Ce fichier n'est pas une image que 3DForge sait lire (PNG, JPEG, BMP, GIF, WebP).
+A part holds 32 canvases at most.	Une pièce a 32 calques au plus.
+A canvas belongs to Design.	Un calque appartient à la Conception.
+Whole part	Toute la pièce
+Selected body	Corps choisi
+Draft	Brouillon
+Fine	Fin
+Very fine	Très fin
+Front	Avant
+Back	Arrière
+Left	Gauche
+Right	Droite
+As on screen	Comme à l'écran
+Binary file (smaller)	Fichier binaire (plus petit)
+Hidden edges too, dashed	Arêtes cachées aussi, en pointillé
+part	pièce
+Browse...	Parcourir...
+There is nothing to export yet.	Il n'y a encore rien à exporter.
+Format	Format
+What	Quoi
+Curves	Courbes
+%d sides to a circle	%d côtés par cercle
+Seen from	Vu de
+1024 pixels	1024 pixels
+at its size, in mm	à sa taille, en mm
+Folder	Dossier
+%.1f MB	%.1f Mo
+%u KB	%u Ko
+Nothing to export yet	Encore rien à exporter
+%d × %d pixels · %s	%d × %d pixels · %s
+%d lines · %.1f × %.1f mm · %s	%d lignes · %.1f × %.1f mm · %s
+%d triangles · %s · %s	%d triangles · %s · %s
+closed solid	solide fermé
+not closed	non fermé
+Exported.	Exporté.
+There is no operation to write yet.	Il n'y a encore aucune opération à écrire.
+A fast move goes through matter.	Un déplacement rapide traverse la matière.
+No fast move goes through matter.	Aucun déplacement rapide ne traverse la matière.
+The tool cuts into the body.	L'outil entame le corps.
+The body is never cut into.	Le corps n'est jamais entamé.
+The lowest point is Z %s: %s mm under the stock (a spoil board).	Le point le plus bas est Z %s : %s mm sous le brut (un martyr).
+The lowest point is Z %s: %s mm above the stock's underside.	Le point le plus bas est Z %s : %s mm au-dessus du dessous du brut.
+Larger than the machine's travel (%s × %s × %s mm).	Plus grand que la course de la machine (%s × %s × %s mm).
+Within the machine's travel (%s × %s × %s mm).	Dans la course de la machine (%s × %s × %s mm).
+Deeper than the tool's cutting length (%s mm).	Plus profond que la longueur de coupe de l'outil (%s mm).
+Within the tool's cutting length (%s mm).	Dans la longueur de coupe de l'outil (%s mm).
+%d lines · %u KB · %.1f m cut · about %s · %s, %d rpm	%d lignes · %u Ko · %.1f m coupés · environ %s · %s, %d tr/min
+Nothing is written until this is put right.	Rien n'est écrit tant que ce n'est pas corrigé.
+.nc · GRBL, millimetres · try it in the air first	.nc · GRBL, millimètres · essayez-le d'abord à vide
+G-code written. Run it in the air first, the spindle well above the stock.	G-code écrit. Lancez-le d'abord à vide, la broche bien au-dessus du brut.
+It does not fit the printer.	Ça ne tient pas dans l'imprimante.
+It fits the plate and the room.	Ça tient sur la plaque et en hauteur.
+The first layers lie on the plate.	Les premières couches touchent la plaque.
+Nothing lies on the plate: lower the body, or give it supports.	Rien ne touche la plaque : baissez le corps, ou donnez-lui des supports.
+Each layer rests on the one before.	Chaque couche repose sur la précédente.
+%d layers of %.3g mm · %.1f ml of resin · about %s	%d couches de %.3g mm · %.1f ml de résine · environ %s
+%s · %s · %.3g s a layer, %.3g s the first %d	%s · %s · %.3g s par couche, %.3g s les %d premières
+The print file is written.	Le fichier d'impression est écrit.
+Cutting the layers...	Découpe des couches...
+Milling · G-code for a router (GRBL)	Fraisage · G-code pour une fraiseuse (GRBL)
+Filament printing · the nozzle's path	Impression filament · le trajet de la buse
+Resin printing · %s	Impression résine · %s
+Nothing hangs: no support is needed as the body is.	Rien ne surplombe : aucun support n'est nécessaire tel quel.
+Add a clearing or a contour first: there is nothing to simulate.	Ajoutez d'abord un évidement ou un contour : il n'y a rien à simuler.
+What is left of the stock. Play (at the left) runs the cut; drag the bar to go through it. Esc: back to the moves.	Ce qui reste du brut. Lecture (à gauche) déroule la coupe ; glissez la barre pour la parcourir. Échap : retour aux trajets.
+File	Fichier
+New	Nouveau
+Open...	Ouvrir...
+Save As...	Enregistrer sous...
+Export...	Exporter...
+Import Canvas...	Importer un calque...
+Undo	Annuler
+Redo	Rétablir
+Delete Step	Supprimer l'étape
+Del	Suppr
+Roll Back to the Step	Revenir à l'étape
+Roll to the End	Aller jusqu'au bout
+View	Affichage
+Home	Accueil
+Fit	Ajuster
+See Through	Transparence
+Draw with the Processor	Dessiner par le processeur
+Create	Créer
+Tapered Prism	Prisme tronqué
+Modify	Modifier
+Tool and Machine	Outil et machine
+New Clearing	Nouvel évidement
+New Contour	Nouveau contour
+G-code / Print File...	G-code / Fichier d'impression...
+Process: Milling	Procédé : fraisage
+Process: Resin Printing	Procédé : impression résine
+Generate Supports	Générer les supports
+Process: Filament Printing	Procédé : impression filament
+Help	Aide
+About 3DForge	À propos de 3DForge
+3DForge	3DForge
+A small parametric CAD for Onyx.\nGeometry: Manifold (Apache-2.0), Clipper2 (BSL-1.0).	Une petite CAO paramétrique pour Onyx.\nGéométrie : Manifold (Apache-2.0), Clipper2 (BSL-1.0).
+%d parts start in mid-air (at %s mm)	%d parties commencent dans le vide (à %s mm)
+%d part starts in mid-air (at %s mm)	%d partie commence dans le vide (à %s mm)
+%d parts start in mid-air, the first at %s mm: they need a support.	%d parties commencent dans le vide, la première à %s mm : il faut des supports.
+%d part starts in mid-air, at %s mm: it needs a support.	%d partie commence dans le vide, à %s mm : il faut un support.
+A new part	Une nouvelle pièce
+Nothing selected	Rien de sélectionné
+R %s / %s · %d edge%s	R %s / %s · %d arête%s
+%s / %s · %d edge%s	%s / %s · %d arête%s
+Two sizes	Deux tailles
+Radius 2	Rayon 2
+Size 2	Taille 2
+Swap the faces	Inverser les faces
+Midpoint line	Ligne centrée
+Middle X	Milieu X
+Midpoint line: click its middle.	Ligne centrée : cliquez son milieu.
+Midpoint line: click where one end goes — the other goes as far the other way. Or type its length and angle.	Ligne centrée : cliquez où va une extrémité — l'autre va aussi loin de l'autre côté. Ou tapez sa longueur et son angle.
+Construction	Construction
+ · construction	 · construction
+Construction (part of no outline)	Construction (hors des contours)
+Construction: what you draw now is a guide, part of no outline. Construction again to stop.	Construction : ce que vous tracez est un repère, hors des contours. Construction à nouveau pour arrêter.
+Construction off: what you draw makes outlines again.	Construction arrêtée : ce que vous tracez forme à nouveau des contours.
+Loft	Lissage
+From	De
+To	Vers
+The largest closed outline of each	Le plus grand contour fermé de chaque
+sketch, joined by straight lines.	esquisse, reliés par des droites.
+Loft: the solid from one sketch's outline to another's. Choose the two sketches at the right, then OK.	Lissage : le solide d'un contour d'esquisse à un autre. Choisissez les deux esquisses à droite, puis OK.
+A loft needs two sketches with a closed outline: draw them first (Sketch: a plane and its offset).	Un lissage demande deux esquisses à contour fermé : tracez-les d'abord (Esquisse : un plan et son décalage).
+A sketch of the loft has no closed outline	Une esquisse du lissage n'a pas de contour fermé
+An outline of the loft cannot be filled	Un contour du lissage ne peut pas être rempli
+The loft cannot be made: do the outlines or the sides cross?	Le lissage est impossible : les contours ou les côtés se croisent-ils ?
+A sketch of the loft is missing	Une esquisse du lissage manque
+A loft joins two different sketches	Un lissage relie deux esquisses différentes
+Any edge can be rounded:	Toute arête peut être arrondie :
+straight ones, circles and arcs	les droites, cercles et arcs
+exactly, the others followed.	exactement, les autres suivies.
+This edge cannot be rounded here	Cette arête ne peut pas être arrondie ici
+This edge turns from outer to inner: round it in two steps	Cette arête passe de saillante à rentrante : arrondissez-la en deux fois
+The faces are flat across this edge: nothing to round	Les faces sont planes de part et d'autre de cette arête : rien à arrondir
+This edge cannot be rounded here: is the size too large for its curve?	Cette arête ne peut pas être arrondie ici : la taille est-elle trop grande pour sa courbe ?
 No step in this part.	Aucune étape dans cette pièce.
 New steps: in the desktop mode.	Nouvelles étapes : en mode bureau.
 Not in pocket	Pas en mode poche
@@ -18,10 +658,6 @@ zoom	zoom
 views	vues
 export	exporter
 VIEW AND VALUES	VUE ET VALEURS
-Edges	Arêtes
-Grid	Grille
-See through	Transparence
 Steps	Étapes
-Display	Affichage
 value	valeur
 steps	étapes

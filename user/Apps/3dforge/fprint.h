@@ -392,7 +392,7 @@ struct PrintSlicer
 		solid = on_plate; s = setup; job = &j; next = n = 0; secs = 0; prev.clear ();
 		const PrintResin &r = s.resin; const PrintMachine &m = s.machine; PmFile &f = j.file;
 		j = PrintJob (); f.machine = m;
-		if (solid.IsEmpty () || r.layer < 0.005) { snprintf (j.err, sizeof j.err, "There is nothing to print"); job = 0; return false; }
+		if (solid.IsEmpty () || r.layer < 0.005) { snprintf (j.err, sizeof j.err, TR ("There is nothing to print")); job = 0; return false; }
 		auto box = solid.BoundingBox (); double hw = m.resX * m.pixel / 2000, hh = m.resY * m.pixel / 2000;
 		j.tooLarge = box.min.x < -hw - 1e-6 || box.max.x > hw + 1e-6 || box.min.y < -hh - 1e-6 || box.max.y > hh + 1e-6 || box.max.z > m.sizeZ + 1e-6;
 		j.onPlate = box.min.z < r.layer / 2;

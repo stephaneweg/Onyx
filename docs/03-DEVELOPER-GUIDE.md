@@ -168,7 +168,8 @@ make stage     # copie l'image + chaque app + chaque outil vers ../sdcard/
   **`main`** (the "Onyx" layout; an app's other files — `app.txt`, icons, resources — are
   kept in `sdcard/apps/<name>.app/` itself, committed);
 - Koton's plugins (`user/Apps/kp_<name>/`) → `sdcard/koton/plugins/<name>/main` + `plugin.json`;
-- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`;
+- the BASIC apps (`arkanoid`, `planets3d`) compiled by `tools/basc` → `apps/<name>.app/main.bax`, and the standalone ones
+  (`antigrav`) → `apps/<name>.app/main` (`basc --standalone`: the BASIC runtime with the program inside);
 - copies each `../user/BinUtils/<tool>.elf` → `sdcard/bin/<tool>`.
 
 **Executables on the card have no extension**: `.elf` only exists in the build tree
@@ -203,7 +204,7 @@ The sources of user space are sorted by their use, in `user/`:
 | `Runtime/` | what every program is linked with: `crt0.S`, `user.ld`, the libraries' `lib.ld` / `lib.h` / `librt.cpp`, `umm.h`, `onyxpp.hpp`, and `libc/` (newlib's glue, the POSIX library) |
 | `Libs/` | the libraries linked into the programs: `av`, `img`, `zlib`, `tls`, `v3d`, `gpucomp`, `pdf`, `mail`, `pkg`, `basic` (and `demo`, the loader's test library) |
 | `Emulators/` | the emulators' cores (`gb`, `gba`, `nes`, `snes`, `n64`, `gc`, `emucore.h`); their windows are apps |
-| `Ports/` | third-party programs ported: `doom`, `wipeout`, `stk` |
+| `Ports/` | third-party programs ported: `doom`, `stk` |
 | `Include/` | the small headers several programs share (`gamepad.h`, `http.hpp`, `json.hpp`, `trash.h`, `fileassoc.h`, `docguard.h`…) |
 | `Apps/games/` | what the games share (`game.h`, `cards.h`) |
 | `lib/` | the build's outputs for the libraries (not in git) |
@@ -1625,6 +1626,15 @@ pocketshell's catalogue and drawing helpers (`Apps/pocketshell/catalog.h`: `scan
   no app's size is on (`g_ours`): a change made meanwhile (the Display applet) is followed, only a size set by the
   shell is undone. A refusal (`-2`: a full-screen program has the display) is said once and tried again every 2 s.
   The kernel's switch is not simulated by `server_sim` (its stand-in has no `screen_set`).
+- **The apps' on-screen keyboard** (`consolehome/appkeys.h`, 2026-10-14): PocketUI now gives the console's shell the
+  focused field's type too (`wm.cpp`: `UK_SHELL_EV_TEXT` in pocket AND console mode); `ak_hint` shows the keyboard
+  when a pad is plugged in (`g_padKeys`: not over a game) and hides it unless it was asked for (a Select tap:
+  `pad_poll`'s `selTap`, `ak_toggle`). Its window (`W_KEYS`, opaque, the screen's width, on its bottom edge) is a
+  band: the app laid out above it. The pad goes to `ak_pad` while it is up; the keys are `kapi_inject_key` -- no grab
+  (a grab would send the injected keys back to the shell). An app's `app.txt` `pad_y = f1..f12` gives the pad's Y
+  that key instead of Tab (`front_look`; Jet: `f6`, its address bar), `pad_dpad = pointer` makes the d-pad move the pointer
+  (`pad_app`: 2 px a turn, faster after 0.25 s held) instead of typing the arrows (Jet). `server_sim`: `pad BITS` (a known pad with
+  those `PAD_*` held), `hint T` (the latest other's field), `kapi_inject_key` routed (`run.sh`, *console-keys*).
 - **Not done** (the study's §7.5): the quick menu of games (save / load state — the emulators have no common
   call for it yet; the mock-ups' *Run / Favourites / Save states* level), the pointer held at the top edge,
   History and Favourites (Lakka's), `PK_OP_TOOLS`. A full-screen game (the kernel's direct path) hides the
@@ -2865,16 +2875,6 @@ reads InputKit itself: `in_poll`, `in_key_action`.
 > and `DG_music_module` (MUS and MIDI turned into one timed event list, played on the 16 kernel
 > FM voices with the GENMIDI OPL patches converted to `kapi_fm_instrument`). **Host test**:
 > `sh tools/tests/run_doom_test.sh` (headless on a virtual clock: frames, sound effects, FM notes).
-> **wipEout** (`user/Ports/wipeout/`): wipeout-rewrite (`third_party/wipeout-rewrite`, no licence of its own:
-> docs/LICENSING.md; `ONYX.md` lists the `#ifdef ONYX` changes) with its **software renderer** (`render_software.c`), built
-> against newlib like Doom by `user/Ports/wipeout/Makefile` into `user/wipeout.elf`. `wipeout_onyx.c` is the game's
-> `platform.h`: the window (640 × 480) or full screen, the picture drawn at the size `render_set_resolution` asks
-> (240 / 480 lines / the output's, the output's shape) and stretched into it, the keys (`kapi_key_held` + modifiers +
-> key events as taps; the typed text to `input_textinput`), `gamepad.h` (buttons and the sticks as analog), the game's
-> float mixer turned into `ak_out_write` after each frame (1.5 frames ahead, 2048 frames at least), the files under
-> `SD:/` (the game's names begin with `wipeout/`), `save.dat` in `SD:/wipeout`, newlib's `_stat` on `kapi_path_stat`,
-> the game's `die` said in a notification. One thread, at most 60 pictures a second. A GPU renderer (`render.h` on
-> `kapi_gpu_render*`) is not written.
 > **Graphing calculator expressions** (`user/Apps/graphcalc/expr.h`): `gc::Parser::compile (src,
 > program)` → an RPN `gc::Program` (`eval (x)`), `gc::fmt`; the maths of the BASIC core
 > (`basic/basnum.h`). An app computing in `double` builds with FP: in `user/Makefile`,
@@ -2993,7 +2993,7 @@ reads InputKit itself: `in_poll`, `in_key_action`.
 > `--keys <app>` prints an app's words to start a catalogue. **Every new app is translated** (English + French)
 > **from its first version**; the older ones are translated as they are worked on -- done: Setup, the Control
 > Panel and its applets, the Terminal, the menu bar (its own words; the categories of `app.txt` through `TR` where
-> drawn, listed in `// TR:` comments), the Clock, Ledger, Notes and Stickies (the dates' names in the catalogue, the
+> drawn, listed in `// TR:` comments), the Clock, 3DForge (its Windows version too), Ledger, Notes and Stickies (the dates' names in the catalogue, the
 > model's English short dates translated where drawn: `notelist.h`'s `date_tr`), Turtle Quest (its own `L2 (en, fr)` pairs and its levels'
 > `.fr` texts; `locale_language ()` at its start), Circuits (`TR` + `lang/fr.txt`, its packs' `.fr` keys), Pinball (`TR`, the reader's reasons as `// TR:` formats, its tables' `.fr` keys), Critters (the same; its levels' `.fr` keys, a no-break space before the French `:` `?` `!`). `SHOTS_LANG=fr SHOTS_PNG=<folder> sh
 > tools/tests/desktop_sim/shots.sh <app>` renders an app in French on the PC to check that the words fit.
@@ -3378,7 +3378,7 @@ The small CAD (the study, the mock-ups and the user's decisions: `docs/3dforge/R
 
 | File | What |
 |---|---|
-| `fdoc.h` | The document, portable: the **steps** (`Feature`: box, cylinder, sphere, torus, pyramid, prism, taper; sketch, extrude; fillet, chamfer; move — with its turns and scale, `moved ()` —, combine) and their **replay** (`Doc::rebuild`: each step's solid, then its operation on its body; a shape may be off its plane — `z` — and turned about its normal — `turn`); the **sketch** evaluated in order (`sketch_eval`: no solver; lines, arcs — `sweep` positive clockwise in memory, anticlockwise in the file, as it was first —, circles, rectangles from a corner or their centre, splines through their points (Catmull-Rom), points that are only marks); a body's **mesh as the tools want it** (`build_mesh`: the faces — flat patches, curved ones joined when their facets are strips of the same width —, the chains where two faces meet, each known as straight, a circle, an arc, or other; the triangles without area a boolean leaves are given to the face they lie along); the **corner solid** of a fillet or chamfer (`corner_solid`: the profile between the corner and the arc, extruded along a straight edge or revolved around a circle's or an arc's axis; added on an inner edge, cut on an outer one; an outer edge's cut goes on past its ends to the corner a neighbour was cut at — `corner_reach`, probing along the edge's line with `inside_mesh`: a mitre — and, where the edge ends on two faces already rounded, `corner_blend` adds the piece that turns those rounds around it: their profile revolved a quarter turn); the `.3df` text; STL / OBJ. A face or an edge chosen is kept by its place (a plane; a point on the edge, found again by `chain_near`). |
+| `fdoc.h` | The document, portable: the **steps** (`Feature`: box, cylinder, sphere, torus, pyramid, prism, taper; sketch, extrude; fillet, chamfer; move — with its turns and scale, `moved ()` —, combine) and their **replay** (`Doc::rebuild`: each step's solid, then its operation on its body; a shape may be off its plane — `z` — and turned about its normal — `turn`); the **sketch** evaluated in order (`sketch_eval`: no solver; lines, arcs — `sweep` positive clockwise in memory, anticlockwise in the file, as it was first —, circles, rectangles from a corner or their centre, splines through their points (Catmull-Rom), points that are only marks); a body's **mesh as the tools want it** (`build_mesh`: the faces — flat patches, curved ones joined when their facets are strips of the same width —, the chains where two faces meet, each known as straight, a circle, an arc, or other; the triangles without area a boolean leaves are given to the face they lie along); the **corner solid** of a fillet or chamfer (`corner_solid`: the profile between the corner and the arc, extruded along a straight edge or revolved around a circle's or an arc's axis; added on an inner edge, cut on an outer one; an outer edge's cut goes on past its ends to the corner a neighbour was cut at — `corner_reach`, probing along the edge's line with `inside_mesh`: a mitre — and, where the edge ends on two faces already rounded, `corner_blend` adds the piece that turns those rounds around it: their profile revolved a quarter turn); **asymmetric** fillets and chamfers (`Feature::r2` > 0, `swap`; the `r2` line of the `.3df`): `corner_profile` takes a size per face — a chamfer's cut r on the first, r2 on the second; a fillet's setbacks r / tan (phi / 2) and r2 / tan (phi / 2), its section a rational quadratic arc from one tangent point to the other with the corner as control and the weight sin (phi / 2) (the circle itself when r == r2, a quarter ellipse at 90 degrees) —; the first face is `first_face`'s (the normal turned the most up, then +Y, then +X; a circle's flat face), `swap` turns them round; `corner_blend` only for equal sizes (an asymmetric corner is mitred); the **sketch**'s runs drawn apart joined where their ends meet, **construction** elements (`SkEl::cons`, the `cons 1` line) part of no outline; the **loft** (`F_LOFT`, its sketches in `sketch` and `tool`; `loft_solid`: each sketch's largest closed outline in space, turned the same way round the axis between their centres; corner to corner when they have as many corners (a turn of more than 15 degrees; the rotation that puts them the nearest), each stretch between two corners cut at the union of both's places along it, else along their whole lengths from the second's point nearest the first's start; joined by straight lines, the ends triangulated by Manifold's `Triangulate`, the mesh made a `Manifold`; its original id noted in `g_smoothOrig`, so `build_mesh` makes one curved face of its small facets though they fold up to 80 degrees where a straight side meets an arc); **any other edge** rounded or chamfered by `corner_sweep` (the corner's profile, of a fixed number of points, set across the edge at each of its vertices from the two faces' normals there, the profiles joined, the ends closed; one kind, outer or inner, along the whole edge; its facets one face through `g_smoothOrig`); `chain_mid` gives an open edge's point half way along it (an end is shared with the next edge); the `.3df` text; STL / OBJ. A face or an edge chosen is kept by its place (a plane; a point on the edge, found again by `chain_near`). |
 | `frender.h` | The camera (orthographic), a frame as `kapi_gpu_vertex3` triangles in `kapi_gpu_batch` batches (the bodies with a matrix, lit per face; the edges and the grid as thin quads already in clip space, a depth bias toward the eye), drawn by **`kapi_gpu_render`** at twice the size then averaged down — or, without a GPU (and on the PC), by the z-buffer there over the same triangles; `pick` (a ray against the triangles). |
 | (canvases) | `Canvas3` (`fdoc.h`: a picture's path, its plane and offset, its place, width, turn, opacity; the `canvas` / `canvasfile` lines of the `.3df`), drawn by `View::drawCanvases` over the frame — the view has no perspective, so a picture on a plane is an affine map: each pixel under it finds its point of the picture, blended at the canvas' opacity —, moved and sized by `View::canvasMouse`. The picture is read by UIKit's `ui::icon_load` (through ImageKit), reached as `picture_load` by its symbol: the header's namespace `ui` clashes with the app's `ui ()`. |
 | `fview.h` | `App` (the tool and its step, the step being made and its preview, the sketch being drawn, the selection) and the `View` widget: turn / pan / zoom, the tools' clicks and moves, the overlays (values' tags, arrows, the sketch, the cube, the bodies' panel). |
@@ -3396,6 +3396,44 @@ cut into, the G-code's form and its extents, an operation on one face; then `pri
 layers (what is lit is its volume), the file written and read, supports that leave nothing in mid-air, an island
 found — `FORGE_PM_REF=<a file of the printer's slicer>` checks that it is written back the same to the byte; `FORGE_SAMPLE=sdcard/docs/3d/bracket.3df` writes the sample). Screenshots:
 `sh tools/tests/desktop_sim/shots.sh 3dforge` (the scenes: `forge_scene.py` — its clicks are the tools' places in the bar: move a tool, move them). Icon: `tools/icons/3dforge_icon.py`.
+
+### Cosmo Zoom!, a 3D game on the GPU (`user/Apps/cosmozoom`)
+
+The anti-gravity racer (docs/04 "Cosmo Zoom!"; its design: `docs/cosmozoom/DESIGN.md`, its models:
+`docs/cosmozoom/MODELS.md`) is the model of a **3D game on the V3D GPU** without shaders of its own: everything is
+coloured triangles (and a few textures) handed to **`kapi_gpu_render`** (kapi v53/v54: `struct kapi_gpu_vertex3`,
+`struct kapi_gpu_batch` — each batch its 4 × 4 matrix, texture, blending, depth test, culling). One translation unit
+(`main.cpp`) and headers, each a layer that the PC's tests use as they are:
+
+| Header | What it is |
+|---|---|
+| `math3d.h` | vectors, 4 × 4 matrices in the GPU's layout (row by row, clip = M · (x y z 1)), perspective, look-at; y up, a model faces +Z, its left is +X |
+| `mesh.h` | the Wavefront `.obj` / `.mtl` reader (materials `paint1` / `paint2` recoloured, `*_glow` unlit and added, `glass` / `d < 1` see-through, `#@ name x y z` sockets, `o` groups), the soft light (smoothed normals, the creases kept), the black outline (the inverted hull) |
+| `gfx.h` | a frame: vertices and batches in the kernel's layout; the software picture of the same frame (the BASIC's renderer, `user/Libs/basic/bas3d.h`) |
+| `track.h` | a circuit: its `.trk` file, the Catmull-Rom centre line cut into 2 m segments with their frames (banked turns, loops spliced in, twists, tubes rolled down, forks and crossings: two branches with their own place across and height), the surface `surf (s, l, h)` everything stands on (`surfB` on a fork's branch) |
+| `race.h`, `parts.h` | the race (physics in the track's coordinates — along, across, above —, the computer's pilots, the capsules and gadgets, the laps, the places; events for the sounds), the ships' parts and stats, the gadgets' table |
+| `world.h` | the scenery made once per circuit, cut into pieces of 12 segments with a sphere each (only the pieces in front are sent): the road, the rails and force fields, the city, the ground, the sky |
+| `scene.h` | one view's frame: the sky, the visible pieces, the ships (built from their parts, `buildShip`), shadows, trails, flames, sparkles, glow passes; the chase camera |
+| `textures.h`, `audio.h`, `ui.h`, `draw2d.h` | the procedural textures, the music sequencer and the effects (AudioKit), the HUD and the menus' drawing |
+
+Each picture: per player, `Scene::view` fills one `Frame` (≈ 50–120 k vertices, 30–60 batches), then `render3d`
+(`main.cpp`) maps the game's texture numbers to the GPU's handles and calls `kapi_gpu_render` on that player's
+rectangle of the full-screen buffer (`kapi_gpu_frame.pixels` = its first pixel, `stride` the screen's); without a GPU
+(or `kapi_gpu_render` answering -1 / -3) `softRender` draws the same frame at half size. The HUD is drawn after, by
+the processor, on the same buffer (`ui.h`: UIKit's FreeType faces through a `Canvas` adopted on the buffer), then
+`kapi_present_fb`. Files are read through AppKit (`g_fileReader` = `kapi_open` / `kapi_read`); the race runs at a
+fixed 60 Hz step whatever the frame rate.
+
+The tests on the PC, all on the same headers: `tools/tests/cosmozoom/racesim.cpp` (a whole race of the computer's
+pilots: results, events — `g++ -std=gnu++17 -O2 -Iuser -Iuser/Libs`), `racepic.cpp` (pictures of a race by the
+software renderer), `objview.cpp` (a model as the game draws it, four sides: the modeller's preview),
+`trackmap.cpp` (a circuit seen from above), and `tools/tests/cosmozoom/sim.sh OUT.png "SCRIPT" [ARGS]` (the real app
+on the desktop simulator's stand-in kernel: menus, HUD, everything; `SIM_SCREEN=1920x1080` for a 1280 × 720 window).
+The circuits are made by `python3 tools/cosmozoom/trackgen.py [id...]` (each circuit described as a drive -- straights,
+arcs, heights, features at marks -- written as `sdcard/apps/cosmozoom.app/tracks/<id>.trk`: change the generator, not
+the file; `trackmap.cpp` checks a layout, `tracksheet.py` makes `docs/cosmozoom/tracks.png`), the models by Python
+scripts (`python3 tools/cosmozoom/models/build_all.py --sheets`), the icon by
+`tools/icons/cosmozoom_icon.sh`.
 
 ### Screenshot, the capture tool (`user/Apps/screenshot`)
 
@@ -4194,7 +4232,10 @@ Library's systems** come from the same keys (`load_systems`: every app with `gam
 sorted by `order =`); a system whose emulator is not one of the cores it carries (GB, GBA, NES, SNES;
 the N64's label, the GameCube's banner) shows its emulator's icon on the cards. An app written in BASIC and shipped compiled is listed in `BASIC_APPS` of
 `kernel/Makefile`: `make stage` compiles it with `tools/basc` (the host build of the same
-compiler) to `apps/<name>.app/main.bax` (Arkanoid). See *Onyx BASIC* below.
+compiler) to `apps/<name>.app/main.bax` (Arkanoid); one in `BASIC_STANDALONE` becomes a native program,
+`apps/<name>.app/main` = `basc --standalone ../user/BinUtils/basic.elf prog.bas main` (the runtime of this build with
+the program attached, `bas::attachBax`: what the editor's *Make App > Standalone* makes on the Pi) -- Antigrav.
+See *Onyx BASIC* below.
 
 The **app name** is the base name of the `.app` folder (without the suffix). That is what
 you put in `/etc/autostart` and what `kapi_list_apps` returns.
@@ -4770,6 +4811,49 @@ barwidth = 40
   cards: a .NET program cannot export `NvOptimusEnablement`.
   Test: `sh tools/tests/run_nemu_test.sh` (the C API on Linux: each core a few frames, a picture,
   the library pictures; `NEMU_ROMS=<folder>` of ROMs).
+- **3DForge for Windows** (`pc/3DForge`, 2026-10-18): Onyx's 3DForge as a native Windows program, a WPF window
+  (.NET Framework 4.8) over `forgecore.dll` (MinGW-w64, `sh pc/3DForge/build.sh` → `pc/dist/3DForge/`). The DLL
+  is `core/forgecore.cpp` + `user/Apps/3dforge`'s headers **unchanged** (fdoc, fcam, fprint, ffdm, frender,
+  ficons, **fview** — the tools, their gestures, the view's drawing — and fdraw) + Manifold / Clipper2, compiled
+  over `core/shim/` (`appkit/appkit.h`, `uikit/*.h` lead to `forgeshim.h`: UIKit's `vpaint.cpp` itself, the rest —
+  `Canvas`, `uk_rbox`, `uk_tone`, the text by GDI+ in Segoe UI, `ui::icon_load` by GDI+, `kapi_get_ticks` — the
+  shim's). What UIKit drew on Onyx is told to the host: the view draws into the WriteableBitmap's pixels
+  (`fc_view_draw`, `fc_view_mouse`); its frames are drawn by the **graphics card**: frender.h's `scene_show` hands
+  the batches built for the Pi's GPU to `FORGE_HOST_SHOW` (`core/glview.cpp`: OpenGL on a hidden window's context,
+  a multisampled framebuffer the view's size — 8 samples, else 4, the smoothness the CPU gets from drawing twice as
+  large —, resolved, read back into the view's pixels, y turned over by the projection); without OpenGL 3
+  framebuffers (an old driver, a remote desktop, Windows' "GDI Generic") or with `FORGE_SOFT=1`, `kapi_gpu_render`:
+  frender.h's z-buffer cut in bands of rows, one thread a band (a row's span from its edges: a grid line's quad is
+  not tested over its box). frender.h's limits for its GPU path (2048 px, the kernel's vertex count) are
+  `FORGE_GPU_MAX_*`, raised by the shim — past them it used to fall back on one thread: 1.2 s a frame for a
+  maximised window. A view of 1600 × 900: ~15 ms a frame (the CPU's threads: ~30 ms); the shim's `uk_rbox` /
+  `uk_rline` fill a large box's straight parts directly (the painter works over a shape's whole box: the view's
+  frame cost 10 ms); fui.h's right panel is a list of items (`fc_form`: head, labels, fields bound to the
+  values, check boxes, segmented choices, drop-downs, buttons, the operation, the colours, the origin's 27 points,
+  summaries; `forgecore.cpp` lists them) that `FormPanel.cs` makes once for a layout and fills again in place (a
+  field being typed keeps its text while its number is the same); the timeline (`fc_tl_*`, `Timeline.cs`), the
+  bar (`fc_state`), main.cpp's commands (`fc_cmd`) and dialogs (Export, G-code, the print file: computed by the
+  core, `Dialogs.cs`). The icons are ficons.h's, drawn twice by the core (over black, over white) for their alpha.
+  `3DForge.exe --shot out.png [--size WxH] [--do "tool:1;click:x,y;..."]` draws the window **off the screen**,
+  plays the steps (`Shot.cs`), saves its picture and ends — `sh pc/3DForge/tools/shots.sh` makes
+  `screenshots/3dforge-win*.png` so (never a capture of the screen). A change to `user/Apps/3dforge` comes to
+  Windows by rebuilding; a new panel control kind needs its item in `forgecore.cpp` and its class in `FormPanel.cs`.
+  **MCP** (2026-10-18): the window listens on the named pipe `\\.\pipe\3DForge` (`Control.cs`: a JSON request a
+  line, `{"tool", "args"}`, done on the window's thread through the same `fc_*` calls as its controls — the panel's
+  fields found by their names in `fc_form`, never a dialog —, the answer the state after it, a PNG drawn off the screen
+  for `screenshot`); `3DForge.exe --mcp` (`Mcp.cs`, JSON-RPC over stdio, `Json.cs` a small codec) lists the tools
+  (`get_state`, `get_panel`, `screenshot`, `command`, `set_tool`, `set_field`, `set_option`, `press`, `pick`,
+  `view_mouse`, `look`, `key`, `timeline`, `make_shape`, `new_part`, `open_file`, `save_file`, `add_canvas`, `export`,
+  `write_gcode`, `write_print_file`, `close_window`) and relays each call, starting the window (its own handles,
+  `UseShellExecute`) when the pipe is not there. A size field typed with a `-` turns its way (a cylinder down: Depth).
+  Test: `python pc/3DForge/tools/mcp_test.py` (`FORGE_OFFSCREEN=1`: the window it starts is drawn off the screen;
+  it refuses to run while a 3DForge window is open — it would drive it).
+  Its language: `Lang.cs` loads, when Windows speaks French, Onyx's own catalogue (`sdcard/apps/3dforge.app/lang/fr.txt`,
+  shipped as `lang\fr.txt`) and the window's (`pc/3DForge/lang/fr.txt`, shipped as `lang\fr-win.txt`), and gives both
+  to the core (`fc_lang`, before `fc_init`): the shim's `TR` / `uk_tr` read them (`forgeshim.h`), so 3DForge's headers
+  translate as on Onyx; the C# says `Tr ("...")` (`{0}` formats). `fdoc.h` defines `TR` / `TRN` as nothing when no
+  UIKit is there (the tests on the PC): its words stay English; the tables built before `main` (KIND_NAME, OP_NAME,
+  the bar's tools, the cube's faces) are `TRN` and translated where they are drawn.
 - **Tests**: `sh tools/tests/run_basic_test.sh` builds the core with a console host
   (`tools/tests/basic/host_main.cpp`, graphics / controls logged as text) under ASan + UBSan
   and compares `tools/tests/basic/progs/*.bas` with their `.out` (`--update` rewrites them); then
@@ -5145,6 +5229,13 @@ the runner, which stands for the kernel: the same kapi page as the kernel's (`KA
 `APPKIT_TABLE_VA`), the same address map (the program at 8 GB, the libraries at 16 GB+, the windows'
 buffers at their slots), SD: on a folder of the PC (the repository's `sdcard/` by default), RAM: on
 another. The plan and the choices are `docs/APP-RUNNER-STUDY.md`.
+
+**Built, ready to use on Windows: `tools/onyxrun/dist/onyxrun.exe`** (one static .exe, nothing to install;
+rebuilt and committed when the runner changes: `make -C tools/onyxrun win`, then `x86_64-w64-mingw32-strip -o
+tools/onyxrun/dist/onyxrun.exe tools/onyxrun/build/onyxrun.exe`). Run from the repository it finds `sdcard/`
+by itself (beside the .exe or above the current folder); elsewhere give it `--root`:
+`tools\onyxrun\dist\onyxrun.exe clock`. It carries Unicorn (GPL-2.0): the .exe is distributed under GPL-2.0,
+its sources stay MIT (docs/LICENSING.md).
 
 ```
 sh tools/onyxrun/get_unicorn.sh      # once: Unicorn built for Linux and (with mingw-w64) Windows

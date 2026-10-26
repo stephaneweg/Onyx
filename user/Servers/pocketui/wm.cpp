@@ -1313,10 +1313,11 @@ static void Tick (unsigned self)
 		if (nSig != s_nTaskSig && ShellPush (UK_SHELL_EVENT, UK_SHELL_EV_TASKS)) s_nTaskSig = nSig;
 
 		// (P10) ... and when the front program's focused text field changes (its type, as the pocket UIKit says it:
-		// PK_OP_TEXT_HINT): the shell's on-screen keyboard comes and goes with it. Pocket only (console has none).
+		// PK_OP_TEXT_HINT): the shell's on-screen keyboard comes and goes with it -- the pocket shell's (pocketshell/keys.h)
+		// and, since 2026-10-14, the console's (consolehome/appkeys.h: typing with the pad).
 		static int s_nHintSent = -1;
 		int nHint = -1;
-		if (g_nPkMode == PK_MODE_POCKET && !s_bHome && s_nFront != 0 && !bFull)
+		if ((g_nPkMode == PK_MODE_POCKET || g_nPkMode == PK_MODE_CONSOLE) && !s_bHome && s_nFront != 0 && !bFull)
 			for (int id = 0; id < EL_WINDOWS_MAX && nHint < 0; id++)
 				if (g_pElWin[id] != 0 && s_St[id].pWin == g_pElWin[id] && g_pElWin[id]->OwnerPid () == s_nFront
 				    && !g_pElWin[id]->Hidden () && !g_pElWin[id]->Minimised ()) nHint = s_St[id].nHint;

@@ -1,0 +1,157 @@
+# Cosmo Zoom!'s words in French (uikit/lang.h: English<TAB>French; tools/lang/check.py cosmozoom).
+# MIT License -- Copyright (c) 2026 Stéphane Wegener and the Onyx contributors.
+Remix	Remix
+GO!	PARTEZ !
+FINAL LAP!	DERNIER TOUR !
+LAP %d	TOUR %d
+GREAT START!	SUPER DÉPART !
+WARP STAR!	ÉTOILE WARP !
+STORM INCOMING!	ORAGE EN APPROCHE !
+TIME TRIAL	CONTRE-LA-MONTRE
+RACE	COURSE
+LAP	TOUR
+TIME	TEMPS
+WARP STAR	ÉTOILE WARP
+BOOST ACTIVE	BOOST ACTIVÉ
+TRACTOR BEAM	RAYON TRACTEUR
+SHIELD UP	BOUCLIER ACTIF
+LEADERBOARD	CLASSEMENT
+YOU	VOUS
+PLAYER %d	JOUEUR %d
+SPEED	VITESSE
+PLACE	PLACE
+WRONG WAY!	MAUVAIS SENS !
+Press A / Enter	Appuyez sur A / Entrée
+THE VELOCITY GRID	LA VELOCITY GRID
+Grand Prix	Grand Prix
+Single Race	Course simple
+Time Trial	Contre-la-montre
+Options	Options
+Quit	Quitter
+PRESS START	APPUYEZ SUR START
+An anti-gravity racer for Onyx	Une course anti-gravité pour Onyx
+< %d player >	< %d joueur >
+< %d players >	< %d joueurs >
+Up / Down: choose   Left / Right: players   A / Enter: go   B / Esc: back	Haut / Bas : choisir   Gauche / Droite : joueurs   A / Entrée : valider   B / Échap : retour
+Off	Non
+Some	Un peu
+Lots	Beaucoup
+On	Oui
+Orbit only	En Orbite seulement
+OPTIONS	OPTIONS
+Music	Musique
+Sounds	Sons
+Steering help	Aide à la direction
+Auto-accelerate	Accélération auto
+Back	Retour
+Up / Down: choose   Left / Right: change   B / Esc: back	Haut / Bas : choisir   Gauche / Droite : changer   B / Échap : retour
+HANGAR -- PLAYER %d	HANGAR -- JOUEUR %d
+HANGAR	HANGAR
+Pilot	Pilote
+Ship	Vaisseau
+Wings	Ailes
+Engine	Moteur
+Colour	Couleur
+Trim	Liseré
+Pattern	Motif
+Speed	Vitesse
+Acceleration	Accélération
+Handling	Maniabilité
+Weight	Poids
+Up / Down: choose   Left / Right: change   Y / R: random   A / Enter: ready   B / Esc: back	Haut / Bas : choisir   Gauche / Droite : changer   Y / R : au hasard   A / Entrée : prêt   B / Échap : retour
+CHOOSE A CUP	CHOISISSEZ UNE COUPE
+CHOOSE A CIRCUIT	CHOISISSEZ UN CIRCUIT
+< %d lap >	< %d tour >
+< %d laps >	< %d tours >
+Up / Down: class, choice, laps   Left / Right: change   A / Enter: race!   B / Esc: back	Haut / Bas : classe, choix, tours   Gauche / Droite : changer   A / Entrée : en piste !   B / Échap : retour
+RACE %d OF 4 -- %s	COURSE %d SUR 4 -- %s
+A / Enter: continue	A / Entrée : continuer
+%d points	%d points
+GOLD TROPHY!	TROPHÉE D'OR !
+SILVER TROPHY!	TROPHÉE D'ARGENT !
+BRONZE TROPHY!	TROPHÉE DE BRONZE !
+PAUSED	PAUSE
+Resume	Reprendre
+Restart	Recommencer
+Quit the race	Quitter la course
+Comet Chaser	Chasseur de Comètes
+The all-rounder	Le polyvalent
+Nova Streak	Éclair Nova
+The speedster	Le plus rapide
+Star Drifter	Vagabond Stellaire
+The heavy one	Le poids lourd
+Manta Ray	Raie Manta
+The slalom expert	Le roi du slalom
+Plasma Runner	Coureur Plasma
+The quick starter	Le plus vif au départ
+Ringmaster	Maître de l'Anneau
+Tough and steady	Solide et stable
+Stubby Fins	Ailerons courts
+Ray Wings	Ailes Rayon
+Jumps fly further	Sauts plus longs
+Delta Wings	Ailes Delta
+Swept Fins	Ailes en flèche
+Drifts charge faster	Dérapages plus vite chargés
+Ion Jet	Réacteur ionique
+Side Pods	Nacelles latérales
+Truss Nacelles	Nacelles sur bras
+Plasma Pods	Nacelles Plasma
+Boosts last longer	Boosts plus longs
+Ring Drive	Anneau de poussée
+Magenta	Magenta
+Orange	Orange
+Yellow	Jaune
+Lime	Citron vert
+Cyan	Cyan
+Teal	Turquoise
+Blue	Bleu
+Purple	Violet
+Red	Rouge
+White	Blanc
+Plain	Uni
+Stripe	Bande
+Two-tone	Bicolore
+Racing	Course
+Checker	Damier
+Rainbow	Arc-en-ciel
+Split	Partagé
+Orbit	Orbite
+Hyper	Hyper
+Warp	Warp
+Mirror	Miroir
+Hyper Boost	Hyper-Boost
+A burst of speed	Une poussée de vitesse
+Triple Hyper	Triple Boost
+Three bursts of speed, one by one	Trois poussées de vitesse, l'une après l'autre
+Shield Dome	Bouclier
+Blocks one hit	Arrête un coup
+Plasma Bubble	Bulle Plasma
+Fired ahead (or back): the ship it touches floats in a bubble	Lancée devant (ou derrière) : le vaisseau touché flotte dans une bulle
+Ion Goo	Gelée ionique
+A sticky puddle dropped behind you	Une flaque collante lâchée derrière vous
+Gravity Well	Puits de gravité
+A little vortex that pulls the ships in	Un petit tourbillon qui attire les vaisseaux
+Tractor Beam	Rayon tracteur
+Pulls you along behind the ship ahead	Vous tire dans le sillage du vaisseau devant
+EMP Burst	Impulsion IEM
+Static for the ships behind you: their gadgets are jammed	De l'électricité statique pour ceux derrière : leurs gadgets sont brouillés
+Ion Storm	Orage ionique
+A storm cloud flies to the leader and slows them down	Un nuage d'orage file vers le premier et le ralentit
+Warp Star	Étoile Warp
+A warp field: very fast, and nothing stops you	Un champ warp : très vite, et rien ne vous arrête
+No Fins	Sans ailerons
+Game	Jeu
+Pause	Pause
+View	Affichage
+Full Screen	Plein écran
+Show Frame Rate	Afficher les FPS
+Sound	Son
+Music On / Off	Musique oui / non
+Sounds On / Off	Bruitages oui / non
+Full Screen at 800 x 600	Plein écran en 800 x 600
+Full Screen at 1024 x 576	Plein écran en 1024 x 576
+Full Screen at the System's Size	Plein écran à la taille du système
+Nebula Sprinter	Sprinter Nébuleuse
+Fast off the line	Vif au départ
+Sonic Wave	Onde Sonique
+Rides the shock wave	Surfe sur l'onde de choc

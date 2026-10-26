@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- 3DForge for Windows: Onyx's small parametric CAD as a native Windows program. The WPF window (this project)
+       drives forgecore.dll (core/forgecore.cpp: 3DForge's own code from user/Apps/3dforge, Manifold, the view's
+       z-buffer; MinGW-w64). .NET Framework 4.8 (part of Windows 10 and 11). Build: sh pc/3DForge/build.sh
+       MIT licence (Onyx). -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <LangVersion>latest</LangVersion>
+    <PlatformTarget>x64</PlatformTarget>
+    <AssemblyName>3DForge</AssemblyName>
+    <RootNamespace>Forge</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>3dforge.ico</ApplicationIcon>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <AssemblyTitle>3DForge</AssemblyTitle>
+    <Product>3DForge</Product>
+    <Company>Onyx</Company>
+    <Version>1.0.0</Version>
+    <Nullable>disable</Nullable>
+    <DebugType>none</DebugType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="core/**;obj/**;bin/**" />
+    <None Remove="core/**;obj/**;bin/**" />
+    <Page Remove="core/**;obj/**;bin/**" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <Resource Include="3dforge.ico" />
+  </ItemGroup>
+</Project>

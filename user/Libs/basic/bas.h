@@ -112,6 +112,7 @@ struct Host
 	// 2048 R2, 4096 select, 8192 start ...), a stick axis (0 lx, 1 ly, 2 rx, 3 ry: -1000..1000).
 	virtual unsigned padButtons (int pad) { (void) pad; return 0; }
 	virtual int  padAxis (int pad, int axis) { (void) pad; (void) axis; return 0; }
+	virtual bool padConnected (int pad) { (void) pad; return false; }	// PADS: pad 0..3 is plugged in
 	virtual void pset (int x, int y, int c) { (void) x; (void) y; (void) c; }
 	virtual int  point (int x, int y) { (void) x; (void) y; return 0; }
 	virtual void line (int x1, int y1, int x2, int y2, int c, int box, int style) { (void) x1; (void) y1; (void) x2; (void) y2; (void) c; (void) box; (void) style; }
@@ -126,6 +127,8 @@ struct Host
 	virtual int  texture3d (const unsigned *px, int w, int h) { (void) px; (void) w; (void) h; return 0; }
 	virtual int  render3d (const G3Vertex *v, int nv, const G3Batch *b, int nb, unsigned clear, bool keep)
 	{ (void) v; (void) nv; (void) b; (void) nb; (void) clear; (void) keep; return -1; }
+	// VIEW3D: the frames that follow are drawn into the rectangle x, y, w x h of the page (w <= 0: all of it)
+	virtual void view3d (int x, int y, int w, int h) { (void) x; (void) y; (void) w; (void) h; }
 	virtual unsigned rgbColor (int c) { return (c & 0x1000000) ? (unsigned) c & 0xFFFFFF : 0xFFFFFF; }
 	virtual double pixelAspect () { return 1; }
 	virtual bool gpu3d () { return false; }

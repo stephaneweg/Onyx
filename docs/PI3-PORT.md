@@ -87,7 +87,7 @@ GIC, DMA4, PCIe, the USB audio class (`circle/lib/usb/Makefile:36-44`, `lib/soun
 | No USB audio (Circle builds the audio class for the Pi 4/5 only): `sound.ini` `output = usb` must fall back | `kernel/sys/sound.cpp` | 5 |
 | `HasJack ()` says yes on a Zero 2 W (no jack) | `kernel/sys/sound.cpp:376-382` | 5 |
 | `kapi_kernel_info` says `board pi4` (it knows 4 and 5) | `kernel/sys/kapi.cpp:347-350` | 1 |
-| `config.txt`'s global `core_freq=300` lowers the Pi 3's VPU / L2 / SDRAM clock **(verify)** | `sdcard/config.txt:11` | 1 |
+| ~~`config.txt`'s global `core_freq=300`~~ -- removed on 2026-10-14 (it blacked the Pi 4's HDMI output out) | `sdcard/config.txt` | -- |
 | GPU apps: `gpu_info` must say 0 until Phase 6; `gpu_program` apps (gcemu, v3dprog) bring **V3D 4.2 / 7.1** shaders | `user/Libs/v3d/*`, `user/Apps/gcemu/gxv3d.h` | 2, 6 |
 
 ### Carries over unchanged
@@ -155,7 +155,7 @@ FatFs and its patches, the daemons, BASIC, the emulators' cores, the GameCube JI
 |---|---|---|
 | `kernel8.img` | the Pi 3 build | the firmware's default name for a 64-bit Pi 3 (`arm_64bit=1`) |
 | `bootcode.bin`, `start.elf`, `fixup.dat` | `circle/boot/Makefile:19-24` downloads them | the Pi 3 boots from the card's firmware (no EEPROM) |
-| `config.txt` | a Pi 3 one in `tools/pi3/overlay/` | `arm_64bit=1`, `kernel_address=0x80000`, `framebuffer_depth=32`, `gpu_mem` (§7), **no `core_freq=300`** (the Pi 4's; move it under `[pi4]` in `sdcard/config.txt` too), `hdmi_force_hotplug=1` |
+| `config.txt` | a Pi 3 one in `tools/pi3/overlay/` | `arm_64bit=1`, `kernel_address=0x80000`, `framebuffer_depth=32`, `gpu_mem` (§7), no `core_freq` (the Pi 4's card has none any more: removed on 2026-10-14), `hdmi_force_hotplug=1` |
 | `cmdline.txt` | the overlay | `width=1920 height=1080` (or 1280×720 on the Zero 2 W), `netcore=1`, no `sdhs` (no effect with SDHOST) |
 | `firmware/brcmfmac43430-sdio.{bin,txt,clm_blob}`, `brcmfmac43436-sdio.*` (+ the 43455 ones already there) | `circle/addon/wlan/firmware/Makefile:13-22` | the 3 B and the Zero 2 W |
 | `bcm2710-rpi-3-b(-plus).dtb`, `bcm2710-rpi-zero-2-w.dtb` | optional | Circle needs no DT on the Pi 3; Onyx's DT reader is `RASPPI >= 4` |
@@ -389,7 +389,7 @@ n64emu and the 3D demos on a Pi 3 are wanted.
 1. Circle's Pi 3 IRQ handler reads core 0's `ARM_LOCAL_IRQ_PENDING0` on every core (`circle/lib/interrupt.cpp:308-314`):
    is an IPI on an app core ever mistaken for core 0's timer? (Onyx sends IPIs to cores 0 and 2-3.)
 2. Does the Pi 3's RAM survive a watchdog reboot (a crash area kept across it)?
-3. `core_freq=300`'s effect on the Pi 3 (VPU, L2, SDRAM) — move it under `[pi4]` regardless.
+3. (Closed: `core_freq=300` left `sdcard/config.txt` on 2026-10-14 -- it gave a black HDMI screen on the Pi 4.)
 4. The serial console: which UART Circle's `CSerialDevice` drives on the Pi 3 with Bluetooth on, and whether
    `dtoverlay=disable-bt` is needed.
 5. The CRC32 instructions on the BCM2837's A53 (the Pi 4 binaries are built with `+crc`): Linux reports `crc32` on

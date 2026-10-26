@@ -99,6 +99,90 @@ int main (int argc, char **argv)
 		// an arc's angle: + clockwise -- from (0, 0), its centre at the right, a quarter: it ends above
 		els.clear (); q = SkEl (); q.kind = SK_ARC; q.r = 5; q.ca = 0; q.sweep = 90; els.push_back (q); sketch_eval (els, 96, e2);
 		check (fabs (e2.shapes[0].end.x - 5) < 1e-9 && fabs (e2.shapes[0].end.y - 5) < 1e-9, "an arc's angle: clockwise when positive");
+		// three lines in a run (a U open at the left), then an arc started on its own from the U's end back to its start:
+		// one outline, closed (the user, 2026-10-18); then the same with every element apart, one drawn backwards
+		els.clear ();
+		auto line = [&] (double x, double y, double a, double l, bool chain) { q = SkEl (); q.kind = SK_LINE; q.x = x; q.y = y; q.a = a; q.len = l; q.chain = chain; els.push_back (q); };
+		line (0, 0, 0, 40, false); line (0, 0, 90, 30, true); line (0, 0, 180, 40, true);
+		q = SkEl (); q.kind = SK_ARC; q.x = 0; q.y = 30; q.r = 15; q.ca = -90; q.sweep = -180; els.push_back (q);	// (bulging out, at the left)
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - (1200 + PI * 225 / 2)) < 2, "an arc drawn apart closes a run of lines");
+		els.clear (); line (40, 0, 180, 40, false); line (40, 0, 90, 30, false); line (0, 30, 0, 40, false); line (0, 30, -90, 30, false);
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 1200) < 1e-6, "four lines drawn apart, one backwards: one outline");
+		// construction (the user, 2026-10-18): a run of four lines with a construction line in the middle of it (from the
+		// second's end, a diagonal), a construction circle: one outline still, the rectangle's; nothing open; saved, loaded
+		els.clear (); line (0, 0, 0, 40, false); line (0, 0, 90, 30, true);
+		line (0, 0, 216.87, 50, true); els.back ().cons = true;					// (back to (0, 0): a guide)
+		line (40, 30, 180, 40, true); line (0, 0, -90, 30, true);					// (on from the run's end, not the guide's: apart)
+		els[3].chain = false; els[3].x = 40; els[3].y = 30;
+		q = SkEl (); q.kind = SK_CIRCLE; q.x = 20; q.y = 15; q.w = 10; q.cons = true; els.push_back (q);
+		sketch_eval (els, 96, e2);
+		check (e2.nclosed == 1 && e2.nopen == 0 && fabs (area (e2.closed[0]) - 1200) < 1e-6 && e2.shapes[2].outline < 0 && e2.shapes[5].outline < 0,
+		       "construction: a guide line and circle, part of no outline");
+		{
+			Doc dc; Feature sk; sk.kind = F_SKETCH; sk.els = els; dc.feats.push_back (sk); dc.upto = 1; Doc back;
+			bool ld = back.load (dc.save ().c_str ());
+			check (ld && back.feats[0].els.size () == els.size () && back.feats[0].els[2].cons && back.feats[0].els[5].cons && !back.feats[0].els[0].cons, "construction: saved and loaded");
+		}
+		{	// a loft (the user, 2026-10-18): a square of 20 on the ground to a square of 10, 20 above -- a frustum, 4666.67 mm3;
+			// then a circle to a square, a sketch on an upright plane to one on the ground; saved, loaded
+			Doc dl; auto rect = [] (double w) { SkEl r; r.kind = SK_RECT; r.rel = true; r.w = r.h = w; return r; };
+			Feature a; a.kind = F_SKETCH; a.els.push_back (rect (20)); dl.name_new (a); dl.feats.push_back (a);
+			Feature b; b.kind = F_SKETCH; b.pl = plane_of (V3 (0, 0, 20), V3 (0, 0, 1)); b.els.push_back (rect (10)); dl.name_new (b); dl.feats.push_back (b);
+			Feature l; l.kind = F_LOFT; l.sketch = 0; l.tool = 1; dl.name_new (l); dl.feats.push_back (l); dl.upto = 3; dl.rebuild ();
+			check (!dl.feats[2].failed && dl.bodies.size () == 1 && fabs (dl.bodies[0].m.Volume () - 20.0 / 3 * (400 + 100 + 200)) < 1e-6, "a loft: two squares, a frustum");
+			dl.feats[0].els[0].kind = SK_CIRCLE; dl.feats[0].els[0].w = 20; dl.touch ();
+			double vc = dl.bodies.empty () ? 0 : dl.bodies[0].m.Volume ();
+			check (!dl.feats[2].failed && vc > 3000 && vc < 4000 && dl.bodies[0].m.Genus () == 0, "a loft: a circle to a square");
+			Doc dr; dr.load (dl.save ().c_str ()); dr.rebuild ();
+			check (dr.feats.size () == 3 && dr.feats[2].kind == F_LOFT && dr.feats[2].sketch == 0 && dr.feats[2].tool == 1 && !dr.bodies.empty () && fabs (dr.bodies[0].m.Volume () - vc) < 1e-6 && dr.used (0) && dr.used (1), "a loft: saved and loaded, its sketches used");
+			// the same outline (a rectangle with an arch) drawn again 20 above from another corner, then the other way round:
+			// joined corner to corner, straight -- the volume is the area times the height (the user, 2026-10-18: a sliver)
+			auto L = [] (double a, double l, bool ch) { SkEl e; e.kind = SK_LINE; e.a = a; e.len = l; e.chain = ch; return e; };
+			auto Arc = [] (double ca, double sw) { SkEl e; e.kind = SK_ARC; e.r = 20; e.ca = ca; e.sweep = sw; e.chain = true; return e; };
+			std::vector<SkEl> p1 = { L (0, 40, false), L (90, 30, true), Arc (180, -180), L (-90, 30, true) };
+			std::vector<SkEl> p2 = { L (-90, 30, false), L (0, 40, true), L (90, 30, true), Arc (180, -180) }; p2[0].x = 0; p2[0].y = 30;
+			std::vector<SkEl> p3 = { L (90, 30, false), Arc (0, 180), L (-90, 30, true), L (180, 40, true) };
+			for (int v = 0; v < 2; v++)
+			{
+				Doc dp; Feature s1; s1.kind = F_SKETCH; s1.els = p1; dp.name_new (s1); dp.feats.push_back (s1);
+				Feature s2; s2.kind = F_SKETCH; s2.pl = plane_of (V3 (0, 0, 20), V3 (0, 0, 1)); s2.els = v ? p3 : p2; dp.name_new (s2); dp.feats.push_back (s2);
+				Feature lf; lf.kind = F_LOFT; lf.sketch = 0; lf.tool = 1; dp.name_new (lf); dp.feats.push_back (lf); dp.upto = 3; dp.rebuild ();
+				double want = (1200 + PI * 400 / 2) * 20, got = dp.bodies.empty () ? 0 : dp.bodies[0].m.Volume ();
+				check (!dp.feats[2].failed && fabs (got - want) < want * 1e-3, v ? "a loft: alike outlines drawn the other way round: straight" : "a loft: alike outlines drawn from another corner: straight");
+			}
+			// a fillet, a chamfer on edges of any kind (the user, 2026-10-18): an outline whose right side is an arc,
+			// extruded 30; the upright edge where the flat front meets the curved side rounded (R 3), then a loft's
+			// bottom edge (a straight line under its ruled side) chamfered
+			{
+				Doc de; Feature s; s.kind = F_SKETCH; SkEl q;
+				s.els = { L (0, 40, false), Arc (180, 0), L (180, 40, true), L (-90, 30, true) };
+				s.els[1].r = 25; s.els[1].ca = 180 - atan2 (15.0, 20.0) * 180 / PI; s.els[1].sweep = -2 * atan2 (15.0, 20.0) * 180 / PI;			// (from (40, 0) to (40, 30), bulging right)
+				de.name_new (s); de.feats.push_back (s);
+				Feature x; x.kind = F_EXTRUDE; x.sketch = 0; x.h = 30; de.name_new (x); de.feats.push_back (x); de.upto = 2; de.rebuild ();
+				check (!de.bodies.empty (), "an outline with an arched side, extruded"); if (de.bodies.empty ()) return 1;
+				double v0 = de.bodies[0].m.Volume (); const RMesh &m = de.bodies[0].mesh; int ci = -1;
+				for (size_t k = 0; k < m.chains.size (); k++)
+				{
+					const Chain &ch = m.chains[k]; V3 a = m.v[ch.pts[0]], b = m.v[ch.pts.back ()];
+					if (ch.kind == 0 && fabs (a.z - b.z) > 29 && a.x > 39 && a.y < 1) ci = (int) k;		// (the front right upright)
+				}
+				Feature f; f.kind = F_FILLET; f.target = 1; f.r = 3; if (ci >= 0) f.edges.push_back (chain_mid (m, m.chains[ci])); de.name_new (f); de.feats.push_back (f); de.upto = 3; de.rebuild ();
+				double v1 = de.bodies.empty () ? 0 : de.bodies[0].m.Volume (), lost = v0 - v1;
+				// (the corner there: 126.87 degrees between the front and the arch's tangent; a round of r takes r2 (cot (t / 2) - (pi - t) / 2))
+				double th = acos (-0.6), square = 9 * (1 / tan (th / 2) - (PI - th) / 2) * 30;
+				check (ci >= 0 && !de.feats[2].failed && lost > square * 0.6 && lost < square * 1.4 && de.bodies[0].m.Genus () == 0, "a fillet on an edge between a flat face and a curved one");
+				Doc dq; Feature a2; a2.kind = F_SKETCH; SkEl r2; r2.kind = SK_RECT; r2.rel = true; r2.w = r2.h = 20; a2.els.push_back (r2); dq.name_new (a2); dq.feats.push_back (a2);
+				Feature b2; b2.kind = F_SKETCH; b2.pl = plane_of (V3 (0, 0, 20), V3 (0, 0, 1)); SkEl c2; c2.kind = SK_CIRCLE; c2.w = 10; b2.els.push_back (c2); dq.name_new (b2); dq.feats.push_back (b2);
+				Feature l2; l2.kind = F_LOFT; l2.sketch = 0; l2.tool = 1; dq.name_new (l2); dq.feats.push_back (l2); dq.upto = 3; dq.rebuild ();
+				double w0 = dq.bodies[0].m.Volume (); const RMesh &mq = dq.bodies[0].mesh; int cj = -1;
+				for (size_t k = 0; k < mq.chains.size (); k++) if (mq.v[mq.chains[k].pts[0]].z < 1e-6 && mq.chains[k].kind != 2) cj = (int) k;
+				Feature ch; ch.kind = F_CHAMFER; ch.target = 2; ch.r = 1; if (cj >= 0) ch.edges.push_back (chain_mid (mq, mq.chains[cj])); dq.name_new (ch); dq.feats.push_back (ch); dq.upto = 4; dq.rebuild ();
+				double w1 = dq.bodies.empty () ? 0 : dq.bodies[0].m.Volume ();
+				check (cj >= 0 && !dq.feats[3].failed && w1 < w0 - 1 && w1 > w0 - 200, "a chamfer along a loft's edge");
+			}
+		}
 	}
 	int sk = (int) d.feats.size () - 1;
 	f = &add (d, F_EXTRUDE); f->target = 0; f->op = OP_SUB; f->sketch = sk; f->through = true; f->h = -8;	// Extrude 1
@@ -189,6 +273,27 @@ int main (int argc, char **argv)
 		double torus = 12000 - q * 64 * 10 - q * 9 * (32 + 22) - q * 9 * (PI / 2) * (8 - 0.2234 * 3);
 		printf ("     rim: %s volume %.2f, a torus' quarter would leave %.2f\n", t.feats[2].failed ? t.feats[2].err : "made,", t.bodies[0].m.Volume (), torus);
 		check (!t.feats[2].failed && fabs (t.bodies[0].m.Volume () - torus) < 1.5 && t.bodies[0].m.Genus () == 0, "the top's edges and the arc between them rounded: a torus' quarter");
+	}
+	// asymmetric: a chamfer 2 on the top face and 5 down the front one, a fillet the same (a quarter of an ellipse), swapped
+	{
+		auto has = [] (const Doc &d, double y, double z) { for (const V3 &v : d.bodies[0].mesh.v) if (fabs (v.y - y) < 1e-6 && fabs (v.z - z) < 1e-6) return true; return false; };
+		Doc c; Feature *g = &add (c, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (c, F_CHAMFER); g->target = 0; g->r = 2; g->r2 = 5; g->edges.push_back (V3 (20, 0, 10)); c.rebuild ();
+		check (!c.feats[1].failed && fabs (c.bodies[0].m.Volume () - (12000 - 2 * 5 / 2.0 * 40)) < 0.02 && has (c, 2, 10) && has (c, 0, 5), "an asymmetric chamfer: 2 on the top, 5 down the front");
+		c.feats[1].swap = true; c.touch (); c.rebuild ();
+		check (!c.feats[1].failed && has (c, 5, 10) && has (c, 0, 8), "... swapped: 5 on the top, 2 down the front");
+		Doc l; l.load (c.save ().c_str ()); l.rebuild ();
+		check (l.feats.size () == 2 && l.feats[1].r2 == 5 && l.feats[1].swap && fabs (l.bodies[0].m.Volume () - c.bodies[0].m.Volume ()) < 1e-6, "... kept in the file");
+		Doc f; g = &add (f, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (f, F_FILLET); g->target = 0; g->r = 2; g->r2 = 5; g->edges.push_back (V3 (20, 0, 10)); f.rebuild ();
+		double cut = (1 - PI / 4) * 2 * 5 * 40;
+		printf ("     asymmetric fillet: %s volume %.3f, a quarter ellipse's would leave %.3f\n", f.feats[1].failed ? f.feats[1].err : "made,", f.bodies[0].m.Volume (), 12000 - cut);
+		check (!f.feats[1].failed && fabs (f.bodies[0].m.Volume () - (12000 - cut)) < 0.5 && has (f, 2, 10) && has (f, 0, 5), "an asymmetric fillet: a quarter of an ellipse, tangent to both faces");
+		Doc s; g = &add (s, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (s, F_FILLET); g->target = 0; g->r = 4; g->r2 = 4; g->edges.push_back (V3 (20, 0, 10)); s.rebuild ();
+		Doc o; g = &add (o, F_BOX); g->centred = false; g->w = 40; g->d = 30; g->h = 10;
+		g = &add (o, F_FILLET); g->target = 0; g->r = 4; g->edges.push_back (V3 (20, 0, 10)); o.rebuild ();
+		check (fabs (s.bodies[0].m.Volume () - o.bodies[0].m.Volume ()) < 1e-6, "two equal sizes: the same round as one");
 	}
 	// a body turned and scaled about its centre, then moved
 	{

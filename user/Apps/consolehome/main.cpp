@@ -345,8 +345,11 @@ static void menu_hide (void)
 	uk_shell_grab (0);
 	park (W_OVER, g_oc, g_oc.h);
 }
+static void ak_hide (void);
+static void ak_hint (int type);
 static void menu_show (void)
 {
+	ak_hide ();
 	g_spec[0] = 0; g_level = -1;
 	if (!g_home) uk_win_menu_get (g_spec, sizeof g_spec, g_specTitle, sizeof g_specTitle);	// (the app in front's)
 	g_menu = true; g_msel = 0;
@@ -450,6 +453,7 @@ static void home_key (unsigned long, int ev, long v)
 static void front_look (void);
 static void shell_event (unsigned long, int ev, long v)
 {
+	if (ev == UK_SHELL_EVENT && (v & 0xFF) == UK_SHELL_EV_TEXT) { ak_hint ((int) ((v >> 8) & 0xFF) - 1); return; }	// (the app's text field)
 	if (ev == UK_SHELL_EVENT) { tasks_read (); front_look (); g_homeDirty = true; if (g_menu) { menu_build (); g_overDirty = true; } return; }
 	if (ev != UK_SHELL_KEYEV) return;
 	int code = UK_SHELL_KEY_CODE (v);
@@ -505,8 +509,12 @@ static unsigned pad_any (void)
 // a mouse and a keyboard, this shell typing and pointing for it (kapi_inject_key / kapi_inject_pointer: the server
 // gives them to the app in front): the LEFT STICK moves the pointer (faster the further it is pushed), A is the left
 // button (held: a drag), X the right one; L1 / R1 and the RIGHT STICK up / down scroll (the wheel); the d-pad the arrows,
-// B Esc, Y Tab, Start Enter, L2 / R2 Page Up / Down.
+// B Esc, Y Tab, Start Enter, L2 / R2 Page Up / Down. An app may give Y one of its keys: its app.txt's `pad_y` (f1..f12:
+// Jet's f6, its address bar).
 static bool g_padKeys;
+static char g_padY[8] = "\t";
+static bool g_dpadPointer;			// app.txt `pad_dpad = pointer`: the d-pad moves the pointer too (Jet), not the arrows
+#include "appkeys.h"				// the on-screen keyboard that types into the apps (Select; a text field)
 // THE TIP: an app that comes to the front fills the screen with nothing of the shell's left -- for three seconds a
 // small pill at the top right says how to get the menu ("Home  Menu"; a third window, see-through, parked after).
 static Canvas g_tc;
@@ -547,7 +555,24 @@ static void front_look (void)				// (after tasks_read: who is in front)
 			g_padKeys = !(a && (ieq (a->cat, "Games") || ieq (a->cat, "Emulators")));
 			fs_copy (now, g_tasks[i].name, sizeof now);
 		}
-	if (now[0] && !ieq (now, s_was)) tip_show ();		// (another app in front: the tip)
+	if (!ieq (now, s_was))					// (another app in front: the tip; its Y; no keyboard left up)
+	{
+		if (now[0]) tip_show ();
+		ak_hide ();
+		fs_copy (g_padY, "\t", sizeof g_padY);
+		char q[96];
+		snprintf (q, sizeof q, "SD:/apps/%s.app/app.txt", now);
+		bool ini = now[0] && app_ini_load_path (q) >= 0;
+		const char *dp = ini ? app_ini_get (0, "pad_dpad", 0) : 0;
+		g_dpadPointer = dp && ieq (dp, "pointer");
+		const char *y = ini ? app_ini_get (0, "pad_y", 0) : 0;
+		if (y && (y[0] == 'f' || y[0] == 'F'))
+		{
+			static const char *const FK[12] = { "\x1b[11~", "\x1b[12~", "\x1b[13~", "\x1b[14~", "\x1b[15~", "\x1b[17~", "\x1b[18~", "\x1b[19~", "\x1b[20~", "\x1b[21~", "\x1b[23~", "\x1b[24~" };
+			int n = atoi (y + 1);
+			if (n >= 1 && n <= 12) fs_copy (g_padY, FK[n - 1], sizeof g_padY);
+		}
+	}
 	fs_copy (s_was, now, sizeof s_was);
 	fs_copy (g_front, now, sizeof g_front);
 }
@@ -560,7 +585,7 @@ static void pad_type (unsigned press, unsigned held, bool rep)
 	else if (d & PAD_RIGHT) kapi_inject_key ("\x1b[C");
 	if (press & PAD_START) kapi_inject_key ("\n");
 	if (press & PAD_B) kapi_inject_key ("\x1b");
-	if (press & PAD_Y) kapi_inject_key ("\t");
+	if (press & PAD_Y) kapi_inject_key (g_padY);
 	if (press & PAD_L2) kapi_inject_key ("\x1b[5~");
 	if (press & PAD_R2) kapi_inject_key ("\x1b[6~");
 }
@@ -607,7 +632,14 @@ static void pad_app (unsigned now)
 	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 16;
 	last = b;
 	if (b & PAD_SELECT) return;				// (Select + Start: the menu -- pad_poll)
-	if (press || rep)
+	static unsigned dpadT;				// (the d-pad as the pointer: held since)
+	if (g_dpadPointer)
+	{
+		const unsigned DP = PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT;
+		if (press & DP) dpadT = now;
+		pad_type (press & ~DP, b & ~DP, false);	// (its other buttons as ever)
+	}
+	else if (press || rep)
 	{
 		if (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) t0 = now + (press ? 22 : 0);
 		pad_type (press, b, rep);
@@ -616,6 +648,17 @@ static void pad_app (unsigned now)
 	if (g_mx < 0) { g_mx = g_sw / 2; g_my = g_sh / 2; }
 	int max = g_sw / 64 > 4 ? g_sw / 64 : 4;		// (full tilt, a turn each 16 ms: the screen's width in about a second)
 	int dx = stick_step (lx, max), dy = stick_step (ly, max);
+	if (g_dpadPointer && (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)))
+	{
+		// the d-pad: 2 pixels a turn at first (aiming at a link), faster the longer it is held (the screen's width in
+		// about 1.5 s after a second)
+		int held = (int) (now - dpadT), step = held < 25 ? D (2) : held < 60 ? D (2) + (held - 25) * max / 50 : max;
+		if (step < 1) step = 1;
+		if (b & PAD_LEFT) dx -= step;
+		if (b & PAD_RIGHT) dx += step;
+		if (b & PAD_UP) dy -= step;
+		if (b & PAD_DOWN) dy += step;
+	}
 	g_mMoving = dx || dy || ry < -300 || ry > 300 || (b & (PAD_L | PAD_R));
 	unsigned btn = ((b & PAD_A) ? 1u : 0) | ((b & PAD_X) ? 2u : 0);
 	int wheel = 0;
@@ -640,13 +683,23 @@ static void pad_poll (void)
 	unsigned b = pad_any (), now = kapi_get_ticks ();
 	unsigned press = b & ~last;
 	bool rep = (b & (PAD_UP | PAD_DOWN | PAD_LEFT | PAD_RIGHT)) && (int) (now - t0) > 16;
+	unsigned was = last;
 	last = b;
 	bool mine = g_menu || g_home;
 	if (mine && !g_menu && set_grabs_pad ()) return;		// (the buttons being learnt: the wizard reads them)
+	// Select tapped (pressed and released alone) over an app the pad types for: the on-screen keyboard
+	static bool selArm;
+	if (press & PAD_SELECT) selArm = true;
+	if ((b & PAD_SELECT) && (b & ~PAD_SELECT)) selArm = false;
+	bool selTap = selArm && (was & PAD_SELECT) && !(b & PAD_SELECT);
+	if (!(b & PAD_SELECT)) selArm = false;
+	if (mine && g_ak.on) ak_hide ();
 	if ((press & PAD_HOME) || (mine && (press & PAD_SELECT))
 	    || (!mine && (press & (PAD_SELECT | PAD_START)) && (b & PAD_SELECT) && (b & PAD_START))) { menu_toggle (); return; }
 	if (!mine)						// (an app in front: the pad is its own, or points and types for it)
 	{
+		if (g_padKeys && selTap) { ak_toggle (); return; }
+		if (g_padKeys && g_ak.on) { g_mMoving = false; ak_pad (now); return; }
 		if (g_padKeys) pad_app (now);
 		else { g_mMoving = false; if (g_mbtn) { kapi_inject_pointer (g_mx, g_my, 0, 0); g_mbtn = 0; } }	// (no button left held)
 		return;
@@ -795,6 +848,9 @@ static void screen_sync (void)
 		uk_win_select (W_OVER);
 		fb = uk_win_resize2 (nw, nh, &st);
 		if (fb) { g_oc.adopt (fb, nw, nh, st); g_overStride = st; for (int i = 0; i < st * nh; i++) fb[i] = CLEAR; capW = nw; capH = nh; }
+		uk_win_select (W_KEYS);
+		fb = uk_win_resize2 (nw, nh, &st);
+		if (fb) { g_kc.adopt (fb, nw, nh, st); g_keysStride = st; }
 		uk_win_select (0);
 	}
 	int s = scale_of ();
@@ -811,6 +867,7 @@ static void screen_sync (void)
 	if (!g_menu) park (W_OVER, g_oc, g_oc.h);		// (the server put them back on the new screen)
 	if (g_tipOn) tip_hide (); else park (W_TIP, g_tc, g_tipH);	// (the tip: placed for the old size)
 	if (g_menu) g_overDirty = true;
+	if (g_ak.on) { ak_place (); g_kDirty = true; }
 }
 
 int main (void)
@@ -857,6 +914,7 @@ int main (void)
 			uk_win_select (W_TIP); uk_win_alpha (0); uk_win_move (-g_sw - 50, 0); uk_win_present (); uk_win_select (0);
 		}
 	}
+	ak_make ();						// (the apps' on-screen keyboard: parked off the screen)
 
 	kapi_ipc_register (SHELL_SERVICE);
 	style_read ();						// (the look: SD:/etc/console.ini [look])
@@ -895,8 +953,9 @@ int main (void)
 		}
 		if (g_homeDirty && g_home) draw_home ();
 		if (g_overDirty && g_menu) draw_menu ();
+		if (g_kDirty) ak_draw ();
 		tip_tick ();
-		msleep (g_menu || (g_anim && g_home) || g_mMoving ? 16 : 30);	// (a move animated: a frame each 16 ms)
+		msleep (g_menu || (g_anim && g_home) || g_mMoving || g_ak.on ? 16 : 30);	// (a move animated: a frame each 16 ms)
 	}
 	return 0;
 }

@@ -35,7 +35,8 @@ namespace forge {
 
 enum { T_SELECT, T_BOX, T_CYL, T_SKETCH, T_EXTRUDE, T_FILLET, T_CHAMFER, T_MOVE, T_UNION, T_SUB, T_INT, T_MEASURE,
        T_PYRAMID, T_PRISM, T_TAPER, T_TORUS, T_SPHERE,
-       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT };		// (from T_LINE on: the sketch's)
+       T_LINE, T_RECT, T_CIRCLE, T_ARC, T_ARC3, T_SPLINE, T_POINT, T_MIDLINE, T_LOFT };		// (from T_LINE on: the sketch's)
+static inline bool sketch_tool (int t) { return t >= T_LINE && t != T_LOFT; }		// (the sketch's own tools)
 static inline bool shape_tool (int t) { return t == T_BOX || t == T_CYL || (t >= T_PYRAMID && t <= T_SPHERE); }
 enum { R_FIELDS = 1, R_PANELS = 2, R_ALL = 3 };		// what the window must show again
 
@@ -55,6 +56,7 @@ struct App
 	int skPlane; double skOffset;		// the Sketch tool's plane, chosen at the right: 0 XY, 1 XZ, 2 YZ; moved by
 	SkEl cur; int curStep; bool chain; double sweep0;
 	bool snapOn = false; V2 snapP;		// (the sketch's pointer is held by a point: shown)
+	bool cons = false;			// (the sketch's elements drawn now are construction: part of no outline)
 	bool ghost = false;			// (a shape not yet clicked: shown once one of its values was typed)
 	V2 arcC, arcM; bool rectCentre = false;	// (an arc being placed: its centre, or its end and its middle; rectangles from their centre)
 	// what is selected, what the pointer is on
@@ -103,7 +105,7 @@ static void fmt (double v, char *out, int cap = 24)
 static double snapv (double v, double step = 1) { return A.snap ? floor (v / step + 0.5) * step : v; }
 static void set_hint (const char *s) { snprintf (A.hint, sizeof A.hint, "%s", s); }
 static void ui (int what) { if (A.refresh) A.refresh (what); }
-static const char *body_name (int id) { for (BodyProp &p : A.doc.props) if (p.id == id) return p.name; return "the body"; }
+static const char *body_name (int id) { for (BodyProp &p : A.doc.props) if (p.id == id) return p.name; return TR ("the body"); }
 static bool body_shown (int id) { for (BodyProp &p : A.doc.props) if (p.id == id) return p.visible; return true; }
 
 // ---- undo: the whole document, as its file's text --------------------------------------------------------------------
@@ -142,7 +144,7 @@ static void preview_update ()
 	{
 		Body *b = A.doc.body (f.target);
 		if (!b || A.step < 1) return;
-		if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { A.prevErr = "A scale of 0 would leave nothing"; return; }
+		if (fabs (f.sc.x) < 1e-6 || fabs (f.sc.y) < 1e-6 || fabs (f.sc.z) < 1e-6) { A.prevErr = TR ("A scale of 0 would leave nothing"); return; }
 		build_mesh (moved (*b, f), A.prev); A.hasPrev = true; return;
 	}
 	if (makes_solid (f.kind) && (A.step >= height_step () || (A.step == 0 && f.kind != F_EXTRUDE && A.ghost)))
@@ -162,51 +164,59 @@ static void auto_op ()
 static void caption_set ()
 {
 	A.caption[0] = 0;
-	if (A.sketching) { snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 %s", A.sk.name, A.sk.target >= 0 ? "on a face" : "on the ground"); return; }
+	if (A.sketching) { snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 %s", A.sk.name, A.sk.target >= 0 ? TR ("on a face") : TR ("on the ground")); return; }
 	if (!A.hasPend || A.step == 0) return;
-	Feature &f = A.pend; char nm[40]; snprintf (nm, sizeof nm, "%s %d", KIND_NAME[f.kind], A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
-	if (f.kind == F_FILLET || f.kind == F_CHAMFER) snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 %d edge%s", nm, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s");
+	Feature &f = A.pend; char nm[40]; snprintf (nm, sizeof nm, "%s %d", TR (KIND_NAME[f.kind]), A.doc.count (f.kind, (int) A.doc.feats.size ()) + 1);
+	if (f.kind == F_FILLET || f.kind == F_CHAMFER) snprintf (A.caption, sizeof A.caption, TR ("%s \xC2\xB7 %d edge%s"), nm, (int) f.edges.size (), f.edges.size () == 1 ? "" : "s");
 	else if (f.kind == F_BOX || round_kind (f.kind))
 	{
-		if (f.target >= 0) snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 on a face of %s", nm, body_name (f.target));
-		else snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 on the ground", nm);
+		if (f.target >= 0) snprintf (A.caption, sizeof A.caption, TR ("%s \xC2\xB7 on a face of %s"), nm, body_name (f.target));
+		else snprintf (A.caption, sizeof A.caption, TR ("%s \xC2\xB7 on the ground"), nm);
 	}
 	else snprintf (A.caption, sizeof A.caption, "%s", nm);
 }
-static void sk_eval () { sketch_eval (A.sk.els, A.doc.segs, A.ev); }
+// A line drawn from its middle (arcC, while it is placed): its start, half its length back from there.
+static void midline_place ()
+{
+	if (A.tool != T_MIDLINE || A.curStep != 1 || A.selEl >= 0 || A.cur.kind != SK_LINE) return;
+	double a = A.cur.a * PI / 180; A.cur.x = A.arcC.x - A.cur.len / 2 * cos (a); A.cur.y = A.arcC.y - A.cur.len / 2 * sin (a);
+}
+static void sk_eval () { midline_place (); sketch_eval (A.sk.els, A.doc.segs, A.ev); }
 
 static void tool_hint ()
 {
 	switch (A.tool)
 	{
-	case T_SELECT: set_hint (A.doc.feats.empty () ? "Pick a tool to start: Box, Cylinder or Sketch. Drag turns the view, the wheel zooms."
-						     : "Pick a tool, or click a body, a face or an edge. Drag turns the view, the wheel zooms."); break;
-	case T_BOX: set_hint (A.step == 0 ? "Click the centre of the box (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Move away to set the width and the depth, then click."
-			      : "Move up to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_CYL: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Move away to set the diameter, then click."
-			      : A.pend.op == OP_SUB ? "Pushed into the body: Subtract is chosen. Click to finish." : "Move to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
+	case T_SELECT: set_hint (A.doc.feats.empty () ? TR ("Pick a tool to start: Box, Cylinder or Sketch. Drag turns the view, the wheel zooms.")
+						     : TR ("Pick a tool, or click a body, a face or an edge. Drag turns the view, the wheel zooms.")); break;
+	case T_BOX: set_hint (A.step == 0 ? TR ("Click the centre of the box (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK.") : A.step == 1 ? TR ("Move away to set the width and the depth, then click.")
+			      : TR ("Move up to set the height and click \xE2\x80\x94 or type it and press Enter.")); break;
+	case T_CYL: set_hint (A.step == 0 ? TR ("Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK.") : A.step == 1 ? TR ("Move away to set the diameter, then click.")
+			      : A.pend.op == OP_SUB ? TR ("Pushed into the body: Subtract is chosen. Click to finish.") : TR ("Move to set the height and click \xE2\x80\x94 or type it and press Enter.")); break;
 	case T_PYRAMID: case T_PRISM: case T_TAPER:
-		set_hint (A.step == 0 ? "Click the centre of the base (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Type the number of sides (0: round), move away to set the base's radius, then click."
-			  : A.step < height_step () ? "Move to set the top's radius (its distance from the centre), then click."
-			  : "Move up or down to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_TORUS: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK." : A.step == 1 ? "Move away to set the ring's radius, then click."
-				: "Move off the ring to set the tube's radius and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_SPHERE: set_hint (A.step == 0 ? "Click the centre (a face, or the ground) \xE2\x80\x94 or set its radius at the right and press OK." : "Move away to set the radius and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_SKETCH: set_hint ("Click the flat face to draw on \xE2\x80\x94 or choose a plane at the right and start."); break;
-	case T_EXTRUDE: set_hint ("Move to set the height and click \xE2\x80\x94 or type it and press Enter."); break;
-	case T_FILLET: case T_CHAMFER: set_hint ("Click the edges, then drag the arrow or type the size. Enter to finish."); break;
-	case T_MOVE: set_hint (A.step == 0 ? "Click the body to move, turn or scale." : "Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter."); break;
-	case T_UNION: case T_SUB: case T_INT: set_hint (A.step == 0 ? "Click the body to keep." : A.tool == T_SUB ? "Click the body to cut out of it." : "Click the other body."); break;
-	case T_MEASURE: set_hint (A.mN == 2 ? "Click again to measure something else." : A.mN == 1 ? "Click the second point." : "Click two points to measure between them."); break;
-	case T_LINE: set_hint (A.curStep == 0 ? "Line: click where it starts." : "Line: click where it ends \xE2\x80\x94 or type its length and angle. Esc ends the run."); break;
-	case T_RECT: set_hint (A.rectCentre ? (A.curStep == 0 ? "Rectangle: click its centre." : "Rectangle: click a corner \xE2\x80\x94 or type its width and height.")
-					    : A.curStep == 0 ? "Rectangle: click a corner." : "Rectangle: click the opposite corner."); break;
-	case T_CIRCLE: set_hint (A.curStep == 0 ? "Circle: click its centre." : "Circle: click to set its diameter."); break;
-	case T_ARC: set_hint (A.curStep == 0 ? "Arc: click its centre." : A.curStep == 2 ? "Arc: click where it ends \xE2\x80\x94 or type its angle (+ clockwise)."
-			      : A.cur.chain ? "Arc: click the centre. It starts at the end of the last element." : "Arc: click where it starts: that sets its radius."); break;
-	case T_ARC3: set_hint (A.curStep == 0 ? "Arc: click where it starts." : A.curStep == 1 ? "Arc: click where it ends." : "Arc: move its middle and click \xE2\x80\x94 or type its radius."); break;
-	case T_SPLINE: set_hint (A.curStep == 0 ? "Spline: click where it starts." : "Spline: click its points. Enter, or the last point clicked again, ends it."); break;
-	case T_POINT: set_hint ("Point: click to place a mark to snap to. It is part of no outline."); break;
+		set_hint (A.step == 0 ? TR ("Click the centre of the base (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK.") : A.step == 1 ? TR ("Type the number of sides (0: round), move away to set the base's radius, then click.")
+			  : A.step < height_step () ? TR ("Move to set the top's radius (its distance from the centre), then click.")
+			  : TR ("Move up or down to set the height and click \xE2\x80\x94 or type it and press Enter.")); break;
+	case T_TORUS: set_hint (A.step == 0 ? TR ("Click the centre (a face, or the ground) \xE2\x80\x94 or set its values at the right and press OK.") : A.step == 1 ? TR ("Move away to set the ring's radius, then click.")
+				: TR ("Move off the ring to set the tube's radius and click \xE2\x80\x94 or type it and press Enter.")); break;
+	case T_SPHERE: set_hint (A.step == 0 ? TR ("Click the centre (a face, or the ground) \xE2\x80\x94 or set its radius at the right and press OK.") : TR ("Move away to set the radius and click \xE2\x80\x94 or type it and press Enter.")); break;
+	case T_SKETCH: set_hint (TR ("Click the flat face to draw on \xE2\x80\x94 or choose a plane at the right and start.")); break;
+	case T_LOFT: set_hint (TR ("Loft: the solid from one sketch's outline to another's. Choose the two sketches at the right, then OK.")); break;
+	case T_EXTRUDE: set_hint (TR ("Move to set the height and click \xE2\x80\x94 or type it and press Enter.")); break;
+	case T_FILLET: case T_CHAMFER: set_hint (TR ("Click the edges, then drag the arrow or type the size. Enter to finish.")); break;
+	case T_MOVE: set_hint (A.step == 0 ? TR ("Click the body to move, turn or scale.") : TR ("Move it and click \xE2\x80\x94 or type its move, its turns and its scale at the right, then Enter.")); break;
+	case T_UNION: case T_SUB: case T_INT: set_hint (A.step == 0 ? TR ("Click the body to keep.") : A.tool == T_SUB ? TR ("Click the body to cut out of it.") : TR ("Click the other body.")); break;
+	case T_MEASURE: set_hint (A.mN == 2 ? TR ("Click again to measure something else.") : A.mN == 1 ? TR ("Click the second point.") : TR ("Click two points to measure between them.")); break;
+	case T_LINE: set_hint (A.curStep == 0 ? TR ("Line: click where it starts.") : TR ("Line: click where it ends \xE2\x80\x94 or type its length and angle. Esc ends the run.")); break;
+	case T_RECT: set_hint (A.rectCentre ? (A.curStep == 0 ? TR ("Rectangle: click its centre.") : TR ("Rectangle: click a corner \xE2\x80\x94 or type its width and height."))
+					    : A.curStep == 0 ? TR ("Rectangle: click a corner.") : TR ("Rectangle: click the opposite corner.")); break;
+	case T_CIRCLE: set_hint (A.curStep == 0 ? TR ("Circle: click its centre.") : TR ("Circle: click to set its diameter.")); break;
+	case T_ARC: set_hint (A.curStep == 0 ? TR ("Arc: click its centre.") : A.curStep == 2 ? TR ("Arc: click where it ends \xE2\x80\x94 or type its angle (+ clockwise).")
+			      : A.cur.chain ? TR ("Arc: click the centre. It starts at the end of the last element.") : TR ("Arc: click where it starts: that sets its radius.")); break;
+	case T_ARC3: set_hint (A.curStep == 0 ? TR ("Arc: click where it starts.") : A.curStep == 1 ? TR ("Arc: click where it ends.") : TR ("Arc: move its middle and click \xE2\x80\x94 or type its radius.")); break;
+	case T_SPLINE: set_hint (A.curStep == 0 ? TR ("Spline: click where it starts.") : TR ("Spline: click its points. Enter, or the last point clicked again, ends it.")); break;
+	case T_POINT: set_hint (TR ("Point: click to place a mark to snap to. It is part of no outline.")); break;
+	case T_MIDLINE: set_hint (A.curStep == 0 ? TR ("Midpoint line: click its middle.") : TR ("Midpoint line: click where one end goes \xE2\x80\x94 the other goes as far the other way. Or type its length and angle.")); break;
 	}
 }
 // The element a sketch tool is about to place: chained to the run when there is one.
@@ -216,7 +226,7 @@ static void sk_arm ()
 	A.cur.kind = A.tool == T_ARC || A.tool == T_ARC3 ? SK_ARC : A.tool == T_RECT ? SK_RECT : A.tool == T_CIRCLE ? SK_CIRCLE : A.tool == T_SPLINE ? SK_SPLINE
 		     : A.tool == T_POINT ? SK_POINT : SK_LINE;
 	bool chained = A.chain && A.ev.has && (A.tool == T_LINE || A.tool == T_ARC || A.tool == T_ARC3 || A.tool == T_SPLINE);
-	A.cur.chain = chained; A.curStep = chained ? 1 : 0; A.cur.rel = A.tool == T_RECT && A.rectCentre;
+	A.cur.chain = chained; A.curStep = chained ? 1 : 0; A.cur.rel = A.tool == T_RECT && A.rectCentre; A.cur.cons = A.cons;
 	if (chained) { A.cur.x = A.ev.cur.x; A.cur.y = A.ev.cur.y; A.arcC = A.arcM = A.ev.cur; if (A.tool == T_SPLINE) A.cur.pts.assign (1, A.ev.cur); }
 }
 static void extrude_begin ()
@@ -225,13 +235,30 @@ static void extrude_begin ()
 	if (A.selFeat >= 0 && A.selFeat < (int) A.doc.feats.size () && A.doc.feats[A.selFeat].kind == F_SKETCH) sk = A.selFeat;
 	else for (int i = A.doc.upto - 1; i >= 0 && sk < 0; i--) if (A.doc.feats[i].kind == F_SKETCH && !A.doc.used (i)) sk = i;
 	if (sk < 0) for (int i = A.doc.upto - 1; i >= 0 && sk < 0; i--) if (A.doc.feats[i].kind == F_SKETCH) sk = i;
-	if (sk < 0) { A.tool = T_SELECT; set_hint ("Extrude needs a sketch: draw one first (Sketch)."); return; }
+	if (sk < 0) { A.tool = T_SELECT; set_hint (TR ("Extrude needs a sketch: draw one first (Sketch).")); return; }
 	Feature &f = A.pend; f.kind = F_EXTRUDE; f.sketch = sk; f.target = A.doc.body (A.doc.feats[sk].target) ? A.doc.feats[sk].target : -1;
 	f.h = 10; A.hasPend = true; A.step = 2; auto_op (); preview_update ();
 }
+// A loft's two sketches: the two last ones with a closed outline not used yet (else the two last ones with one).
+static void loft_begin ()
+{
+	std::vector<int> free, all;
+	for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++)
+	{
+		if (A.doc.feats[i].kind != F_SKETCH) continue;
+		SkEval ev; sketch_eval (A.doc.feats[i].els, 24, ev); if (ev.closed.empty ()) continue;
+		all.push_back (i); if (!A.doc.used (i)) free.push_back (i);
+	}
+	std::vector<int> &l = free.size () >= 2 ? free : all;
+	if (l.size () < 2) { A.tool = T_SELECT; set_hint (TR ("A loft needs two sketches with a closed outline: draw them first (Sketch: a plane and its offset).")); return; }
+	Feature &f = A.pend; f.kind = F_LOFT; f.sketch = l[l.size () - 2]; f.tool = l.back ();
+	int ta = A.doc.feats[f.sketch].target, tb = A.doc.feats[f.tool].target;
+	f.target = A.doc.body (ta) ? ta : A.doc.body (tb) ? tb : -1; f.h = 0;
+	A.hasPend = true; A.step = 2; auto_op (); preview_update ();
+}
 static void tool_set (int t)
 {
-	if (A.sketching && t < T_LINE) return;
+	if (A.sketching && !sketch_tool (t)) return;
 	if (A.camMode && t != T_SELECT) return;			// (Manufacture has its own tools)
 	A.tool = t; A.step = 0; A.ghost = false; A.hasPend = false; A.hasPrev = false; A.prevErr = 0; A.pend = Feature (); A.opAuto = true; A.mN = 0;
 	A.hovChain = A.hovFace = A.hovBody = -1; memset (A.typed, 0, sizeof A.typed);
@@ -246,6 +273,7 @@ static void tool_set (int t)
 	if (t == T_SPHERE) { p.kind = F_SPHERE; p.w = 10; p.h = 1; }
 	if (shape_tool (t)) { A.hasPend = true; preview_update (); }
 	if (t == T_EXTRUDE) extrude_begin ();
+	if (t == T_LOFT) loft_begin ();
 	if (t == T_FILLET || t == T_CHAMFER) { A.pend.kind = t == T_FILLET ? F_FILLET : F_CHAMFER; A.pend.r = t == T_FILLET ? 3 : 2; A.hasPend = true; A.step = 1; }
 	if (t == T_MOVE) A.pend.kind = F_MOVE;
 	if (t == T_UNION || t == T_SUB || t == T_INT) { A.pend.kind = F_COMBINE; A.pend.op = t == T_UNION ? OP_UNION : t == T_SUB ? OP_SUB : OP_INT; }
@@ -258,7 +286,7 @@ static bool commit_pend ()
 {
 	Feature f = A.pend; const char *why = "";
 	if (makes_solid (f.kind)) { Manifold m; if (!A.doc.solid (f, &m, &why)) { set_hint (why); ui (R_PANELS); return false; } }
-	if ((f.kind == F_FILLET || f.kind == F_CHAMFER) && f.edges.empty ()) { set_hint ("Click an edge first."); ui (R_PANELS); return false; }
+	if ((f.kind == F_FILLET || f.kind == F_CHAMFER) && f.edges.empty ()) { set_hint (TR ("Click an edge first.")); ui (R_PANELS); return false; }
 	undo_push ();
 	A.doc.upto = (int) A.doc.feats.size (); A.doc.name_new (f); A.doc.feats.push_back (f); A.doc.upto++;
 	A.doc.touch ();
@@ -428,6 +456,17 @@ static void sk_point (V2 p, bool click)
 		if (click) ui (R_FIELDS);
 		return;
 	}
+	if (e.kind == SK_LINE && A.tool == T_MIDLINE)		// from its middle: the pointer is one end, the other as far the other way
+	{
+		double mx = p.x - A.arcC.x, my = p.y - A.arcC.y, a = atan2 (my, mx) * 180 / PI, l = 2 * hypot (mx, my);
+		if (!snapped && A.snap) { a = snap_angle (a); l = snapv (l); }
+		if (!A.typed[0]) e.len = l;
+		if (!A.typed[1]) e.a = a;
+		midline_place ();
+		if (click && e.len > 1e-6) { sk_add (e); return; }
+		if (click) ui (R_FIELDS);
+		return;
+	}
 	double dx = p.x - e.x, dy = p.y - e.y, dist = hypot (dx, dy);
 	if (e.kind == SK_LINE)
 	{
@@ -467,6 +506,15 @@ static void sk_point (V2 p, bool click)
 	}
 	if (click) ui (R_FIELDS);
 }
+// Construction (the bar's tile, X): the element selected turned into construction or back -- none selected: the
+// elements drawn from now on.
+static void sk_cons ()
+{
+	if (!A.sketching) return;
+	if (A.selEl >= 0 && A.selEl < (int) A.sk.els.size ()) { SkEl &e = A.sk.els[A.selEl]; e.cons = !e.cons; sk_eval (); }
+	else { A.cons = !A.cons; A.cur.cons = A.cons; set_hint (A.cons ? TR ("Construction: what you draw now is a guide, part of no outline. Construction again to stop.") : TR ("Construction off: what you draw makes outlines again.")); }
+	ui (R_ALL);
+}
 static void sk_close ()
 {
 	if (!A.sketching || !A.ev.has) return;
@@ -480,15 +528,15 @@ static void cam_hint ()
 {
 	CamOp *op = cam_op (); A.prevErr = 0; char a[24], b[24], c[24];
 	V3 s = A.paths.hi - A.paths.lo; fmt (s.x, a, 12); fmt (s.y, b, 12); fmt (s.z, c, 12);
-	if (A.camPage == 0) { set_hint ("Click one of the stock's points to put the origin there."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s", a, b, c); }
-	else if (A.camPage == 1) { set_hint ("The tool and the machine are remembered: the next part starts with them."); snprintf (A.caption, sizeof A.caption, "Tool \xC2\xB7 %s", A.job.tool.name); }
+	if (A.camPage == 0) { set_hint (TR ("Click one of the stock's points to put the origin there.")); snprintf (A.caption, sizeof A.caption, TR ("Setup \xC2\xB7 stock %s \xC3\x97 %s \xC3\x97 %s"), a, b, c); }
+	else if (A.camPage == 1) { set_hint (TR ("The tool and the machine are remembered: the next part starts with them.")); snprintf (A.caption, sizeof A.caption, TR ("Tool \xC2\xB7 %s"), A.job.tool.name); }
 	else if (op)
 	{
 		if (op->failed) { A.prevErr = op->err; set_hint (op->err); }
-		else if (op->useFace && A.camDirty) set_hint ("Click the flat face, turned up, to work on.");
-		else set_hint (op->kind == CAM_CLEAR ? "Clearing: the stock removed level by level around the body. Its values are at the right."
-						     : "Contour: the tool follows the outline, a pass a step down. Tabs hold the part at the end.");
-		snprintf (A.caption, sizeof A.caption, "%s \xC2\xB7 %d min", op->name, (int) (op->minutes + 0.5));
+		else if (op->useFace && A.camDirty) set_hint (TR ("Click the flat face, turned up, to work on."));
+		else set_hint (op->kind == CAM_CLEAR ? TR ("Clearing: the stock removed level by level around the body. Its values are at the right.")
+						     : TR ("Contour: the tool follows the outline, a pass a step down. Tabs hold the part at the end."));
+		snprintf (A.caption, sizeof A.caption, TR ("%s \xC2\xB7 %d min"), op->name, (int) (op->minutes + 0.5));
 	}
 }
 // The stock and the moves made again (it can take a moment: asked a little after the last change, main.cpp).
@@ -520,7 +568,7 @@ static void sim_to (size_t target)
 static void cam_touch ()
 {
 	A.camDirty = true; A.doc.changes++;
-	set_hint ("Changed. Validate computes the moves again with these values; Cancel puts them back.");
+	set_hint (TR ("Changed. Validate computes the moves again with these values; Cancel puts them back."));
 }
 static void cam_revert ()
 {
@@ -534,7 +582,7 @@ static void cam_enter (bool on)
 	tool_set (T_SELECT);
 	if (on)
 	{
-		if (A.doc.bodies.empty ()) { set_hint ("Manufacture needs a body: make one first."); ui (R_ALL); return; }
+		if (A.doc.bodies.empty ()) { set_hint (TR ("Manufacture needs a body: make one first.")); ui (R_ALL); return; }
 		if (!A.job.on || !A.doc.body (A.job.body)) { A.job.on = true; A.job.body = A.doc.body (A.selBody) ? A.selBody : A.doc.bodies[0].id; }
 		A.camMode = true; A.camSel = 0; A.camPage = 0; A.camSim = false; cam_refresh ();
 		if (A.gen >= 1) print_enter ();
@@ -545,7 +593,7 @@ static void cam_enter (bool on)
 static void cam_add (int kind)
 {
 	CamOp o; o.kind = kind; int n = 1; for (const CamOp &q : A.job.ops) if (q.kind == kind) n++;
-	snprintf (o.name, sizeof o.name, "%s %d", kind == CAM_CLEAR ? "Clearing" : "Contour", n);
+	snprintf (o.name, sizeof o.name, "%s %d", kind == CAM_CLEAR ? TR ("Clearing") : TR ("Contour"), n);
 	if (kind == CAM_CONTOUR) o.stepdown = 2;
 	A.job.ops.push_back (o); A.camSel = (int) A.job.ops.size (); A.camPage = 2; A.camSim = false; A.doc.changes++;
 	cam_refresh (); ui (R_ALL);
@@ -598,19 +646,19 @@ static void print_hint ()
 	if (A.gen == 2)
 	{
 		A.caption[0] = 0;
-		if (A.camPage == 0) { set_hint ("The body on the printer's bed: move, tilt or turn it at the right."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 a filament printer"); }
-		else if (A.camPage == 1) { set_hint ("The layers, the shell and the infill: they are remembered for the next part."); snprintf (A.caption, sizeof A.caption, "Filament \xC2\xB7 %.3g mm layers", A.fdm.layer); }
-		else set_hint (A.fjob.err[0] ? A.fjob.err : "The nozzle's path, layer by layer. The bar, the wheel; Play draws it as the printer would.");
+		if (A.camPage == 0) { set_hint (TR ("The body on the printer's bed: move, tilt or turn it at the right.")); snprintf (A.caption, sizeof A.caption, TR ("Setup \xC2\xB7 a filament printer")); }
+		else if (A.camPage == 1) { set_hint (TR ("The layers, the shell and the infill: they are remembered for the next part.")); snprintf (A.caption, sizeof A.caption, TR ("Filament \xC2\xB7 %.3g mm layers"), A.fdm.layer); }
+		else set_hint (A.fjob.err[0] ? A.fjob.err : TR ("The nozzle's path, layer by layer. The bar, the wheel; Play draws it as the printer would."));
 		return;
 	}
-	if (A.camPage == 0) { set_hint ("The body on the printer's plate: move, lift, tilt or turn it at the right."); snprintf (A.caption, sizeof A.caption, "Setup \xC2\xB7 %s", s.machine.name); }
-	else if (A.camPage == 1) { set_hint ("The resin's values are remembered: the next part starts with them."); snprintf (A.caption, sizeof A.caption, "Resin \xC2\xB7 %s", s.resin.name); }
+	if (A.camPage == 0) { set_hint (TR ("The body on the printer's plate: move, lift, tilt or turn it at the right.")); snprintf (A.caption, sizeof A.caption, TR ("Setup \xC2\xB7 %s"), s.machine.name); }
+	else if (A.camPage == 1) { set_hint (TR ("The resin's values are remembered: the next part starts with them.")); snprintf (A.caption, sizeof A.caption, TR ("Resin \xC2\xB7 %s"), s.resin.name); }
 	else if (A.camPage == 2)
 	{
-		set_hint ("Generate: pillars where the body hangs. Click the body to add one, a tip to remove it.");
-		if (s.tips.empty ()) snprintf (A.caption, sizeof A.caption, "Supports \xC2\xB7 none"); else snprintf (A.caption, sizeof A.caption, "Supports \xC2\xB7 %d pillars%s", (int) s.tips.size (), s.raft ? " \xC2\xB7 a raft" : "");
+		set_hint (TR ("Generate: pillars where the body hangs. Click the body to add one, a tip to remove it."));
+		if (s.tips.empty ()) snprintf (A.caption, sizeof A.caption, TR ("Supports \xC2\xB7 none")); else snprintf (A.caption, sizeof A.caption, TR ("Supports \xC2\xB7 %d pillars%s"), (int) s.tips.size (), s.raft ? TR (" \xC2\xB7 a raft") : "");
 	}
-	else { set_hint ("The layers as the screen shows them: white is lit. The bar, the wheel, or Play."); A.caption[0] = 0; }
+	else { set_hint (TR ("The layers as the screen shows them: white is lit. The bar, the wheel, or Play.")); A.caption[0] = 0; }
 }
 // The body on the plate and what holds it, made again; the layers are to be cut again.
 static void print_refresh ()
@@ -999,16 +1047,16 @@ public:
 	{
 		canvas.clear (0xF6F7FA); const FdmJob &j = A.fjob; int n = (int) j.layers.size (); char t[120], a[24];
 		UkFaceScope fs (g_small);
-		if (!A.fdmReady || n < 1) { const char *m = j.err[0] ? j.err : "Computing the paths..."; uk_text (canvas, (width - uk_tw (m)) / 2, height / 2 - 8, m, 0x5A5E68); layerBar (false); return; }
+		if (!A.fdmReady || n < 1) { const char *m = j.err[0] ? j.err : TR ("Computing the paths..."); uk_text (canvas, (width - uk_tw (m)) / 2, height / 2 - 8, m, 0x5A5E68); layerBar (false); return; }
 		if (A.layer > n - 1) A.layer = n - 1;
 		double m0 = A.fdm.skirtGap + A.fdm.skirt * A.fdm.width + 3, bx0 = j.lo.x - m0, bx1 = j.hi.x + m0, by0 = j.lo.y - m0, by1 = j.hi.y + m0;
 		int aw = width - 28 - 64, ah = height - 44 - 44; double s = std::min (aw / (bx1 - bx0), ah / (by1 - by0));
 		double ox = 28 + (aw - (bx1 - bx0) * s) / 2, oy = 44 + (ah - (by1 - by0) * s) / 2;
 		const FdmLayer &l = j.layers[A.layer]; double lw = A.fdm.width * s * 0.8; if (lw < 3.2) lw = 3.2;	// (a bead that shows, even small)
 		fdmDrawPaths (l, lw, [&] (const V2 &p, double *x, double *y) { *x = ox + (p.x - bx0) * s; *y = oy + (by1 - p.y) * s; });
-		fmt (l.z, a, 12); snprintf (t, sizeof t, "Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.1f m of line", A.layer + 1, n, a, fdm_layer_length (l) / 1000);
+		fmt (l.z, a, 12); snprintf (t, sizeof t, TR ("Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.1f m of line"), A.layer + 1, n, a, fdm_layer_length (l) / 1000);
 		uk_text (canvas, 28, 20, t, 0x3C4050);
-		static const char *const NM[5] = { "outer wall", "inner wall", "solid", "infill", "skirt" }; int x = 28;
+		static const char *const NM[5] = { TR ("outer wall"), TR ("inner wall"), TR ("solid"), TR ("infill"), TR ("skirt") }; int x = 28;
 		for (int k = 0; k < 5; k++) { canvas.fillRect (x, height - 24, 16, 5, fdmColour (k)); uk_text (canvas, x + 21, height - 29, NM[k], 0x5A5E68); x += uk_tw (NM[k]) + 40; }
 		layerBar (false);
 	}
@@ -1036,14 +1084,14 @@ public:
 					}
 				at += run;
 			}
-			fmt ((A.layer + 1) * f.layer, a, 12); snprintf (t, sizeof t, "Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.3g s", A.layer + 1, n, a, l.exposure);
+			fmt ((A.layer + 1) * f.layer, a, 12); snprintf (t, sizeof t, TR ("Layer %d of %d  \xC2\xB7  %s mm  \xC2\xB7  %.3g s"), A.layer + 1, n, a, l.exposure);
 			uk_text (canvas, ox, oy - 22, t, 0xC8CCD6);
-			snprintf (t, sizeof t, "lit: %.1f cm\xC2\xB2", l.lit * m.pixel * m.pixel / 1e8); uk_text (canvas, ox, oy + ph + 8, t, 0x969CAA);
+			snprintf (t, sizeof t, TR ("lit: %.1f cm\xC2\xB2"), l.lit * m.pixel * m.pixel / 1e8); uk_text (canvas, ox, oy + ph + 8, t, 0x969CAA);
 		}
 		else
 		{
 			int done = A.pjob.done, tot = A.pjob.total > 0 ? A.pjob.total : 1;
-			if (A.pjob.err[0]) snprintf (t, sizeof t, "%s", A.pjob.err); else snprintf (t, sizeof t, "Cutting the layers...  %d of %d", done, A.pjob.total);
+			if (A.pjob.err[0]) snprintf (t, sizeof t, "%s", A.pjob.err); else snprintf (t, sizeof t, TR ("Cutting the layers...  %d of %d"), done, A.pjob.total);
 			uk_text (canvas, ox + (pw - uk_tw (t)) / 2, oy + ph / 2 - 20, t, 0xC8CCD6);
 			uk_rbox (canvas, ox + pw / 4, oy + ph / 2 + 4, pw / 2, 8, 4, 0x2C303C, 0x2C303C); uk_rbox (canvas, ox + pw / 4, oy + ph / 2 + 4, std::max (8, pw / 2 * done / tot), 8, 4, C_ACCENT, C_ACCENT);
 		}
@@ -1093,7 +1141,7 @@ public:
 		if (A.camPage == 2 && tipHot >= 0 && tipHot < (int) A.print.tips.size ()) { double x, y; sx (A.print.tips[tipHot], &x, &y); ov_dot (canvas, x, y, 6, 0xFFFFFF, C_RED, 2); }
 		if (A.slicer.running ())
 		{
-			char t[64]; snprintf (t, sizeof t, "Cutting the layers...  %d of %d", A.pjob.done, A.pjob.total); UkFaceScope fs (g_small);
+			char t[64]; snprintf (t, sizeof t, TR ("Cutting the layers...  %d of %d"), A.pjob.done, A.pjob.total); UkFaceScope fs (g_small);
 			int w = uk_tw (t) + 24; uk_rbox (canvas, (width - w) / 2, 10, w, 24, 12, 0xFFFFFF, 0xFFFFFF, 230); uk_rline (canvas, (width - w) / 2, 10, w, 24, 12, 0xB0B4BE);
 			uk_text (canvas, (width - w) / 2 + 12, 10 + (24 - uk_fh ()) / 2, t, 0x3C4050);
 		}
@@ -1128,7 +1176,7 @@ public:
 			{
 				const RMesh &m = A.doc.bodies[h.body].mesh; int g = m.grp[h.tri];
 				if (m.flat[g] && m.gn[g].z > 0.9999) { op->facePt = h.p; cam_refresh (); ui (R_ALL); }
-				else { set_hint ("Choose a flat face turned up."); ui (0); }
+				else { set_hint (TR ("Choose a flat face turned up.")); ui (0); }
 			}
 		}
 		invalidate (true);
@@ -1301,7 +1349,6 @@ public:
 			int b, c;
 			if (!edgeAt (mx, my, &b, &c)) break;
 			const Body &bd = A.doc.bodies[b]; const Chain &ch = bd.mesh.chains[c];
-			if (ch.kind == 0) { set_hint ("This edge cannot be rounded: only straight edges, circles and arcs."); ui (R_PANELS); break; }
 			V3 m = chain_mid (bd.mesh, ch); bool had = false;
 			for (size_t i = 0; i < f.edges.size (); i++) if (chain_near (bd.mesh, f.edges[i], 0.05) == c) { f.edges.erase (f.edges.begin () + i); had = true; break; }
 			if (!had) { f.edges.push_back (m); f.target = bd.id; }
@@ -1352,7 +1399,7 @@ public:
 		if (ns)
 		{
 			if (sy > BY) canvas.fillRect (BX + 8, sy + 1, BW - 16, 1, 0xDCDFE5);
-			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, sy + 6, "Sketches", 0x5A5E68, 2); }
+			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, sy + 6, TR ("Sketches"), 0x5A5E68, 2); }
 			for (int k = 0; k < ns; k++)
 			{
 				int i = sketchAt (k), y = sy + 24 + k * BROW; unsigned bg = 0xFFFFFF; const Feature &f = A.doc.feats[i];
@@ -1360,14 +1407,14 @@ public:
 				icon (canvas, I_SKETCH, BX + 8, y + 3, 18, 0x464C5A, C_ACCENT, bg);
 				char fit[32]; uk_text_fit (f.name, BW - 34 - 40, fit, sizeof fit);
 				uk_text (canvas, BX + 32, y + (BROW - uk_fh ()) / 2, fit, 0x1A1A1E, i == A.selFeat ? 2 : 0);
-				UkFaceScope fs (g_small); uk_text (canvas, BX + BW - 10 - uk_tw ("Edit"), y + (BROW - uk_fh ()) / 2, "Edit", 0x2862B0);
+				UkFaceScope fs (g_small); uk_text (canvas, BX + BW - 10 - uk_tw (TR ("Edit")), y + (BROW - uk_fh ()) / 2, TR ("Edit"), 0x2862B0);
 			}
 		}
 		int nc = (int) A.doc.canvases.size (), cy = sy + (ns ? 24 + BROW * ns : 0);
 		if (nc)				// the canvases: the eye shows / hides one, its name selects it
 		{
 			if (cy > BY) canvas.fillRect (BX + 8, cy + 1, BW - 16, 1, 0xDCDFE5);
-			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, cy + 6, "Canvases", 0x5A5E68, 2); }
+			{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, cy + 6, TR ("Canvases"), 0x5A5E68, 2); }
 			for (int k = 0; k < nc; k++)
 			{
 				const Canvas3 &c = A.doc.canvases[k]; int y = cy + 24 + k * BROW; unsigned bg = 0xFFFFFF;
@@ -1378,7 +1425,7 @@ public:
 			}
 		}
 		if (A.doc.bodies.empty ()) return;
-		{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, BY + 6, "Bodies", 0x5A5E68, 2); }
+		{ UkFaceScope fs (g_small); uk_text (canvas, BX + 10, BY + 6, TR ("Bodies"), 0x5A5E68, 2); }
 		for (size_t i = 0; i < A.doc.bodies.size (); i++)
 		{
 			int id = A.doc.bodies[i].id, y = BY + 24 + (int) i * BROW; BodyProp &p = A.doc.prop (id); unsigned bg = 0xFFFFFF;
@@ -1408,7 +1455,7 @@ public:
 		if (my >= cy + 24 && ck < (int) A.doc.canvases.size ())
 		{
 			if (mx < BX + 30) { A.doc.canvases[ck].visible = !A.doc.canvases[ck].visible; A.doc.changes++; }
-			else { if (A.tool != T_SELECT) tool_set (T_SELECT); A.selCanvas = ck; A.selBody = A.selFeat = -1; set_hint ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right."); }
+			else { if (A.tool != T_SELECT) tool_set (T_SELECT); A.selCanvas = ck; A.selBody = A.selFeat = -1; set_hint (TR ("Drag the canvas to move it on its plane, a corner to size it; its values are at the right.")); }
 			ui (R_ALL); return true;
 		}
 		int i = (my - BY - 24) / BROW;
@@ -1596,8 +1643,8 @@ public:
 
 // The orientation cube: its faces turned as the view, their names; a click on one looks at the model from there.
 static const struct { V3 n; const char *name; double az, el; } CUBE[6] = {
-	{ V3 (0, 0, 1), "TOP", -90, 90 }, { V3 (0, 0, -1), "BOTTOM", -90, -90 }, { V3 (0, -1, 0), "FRONT", -90, 0 },
-	{ V3 (0, 1, 0), "BACK", 90, 0 }, { V3 (1, 0, 0), "RIGHT", 0, 0 }, { V3 (-1, 0, 0), "LEFT", 180, 0 } };
+	{ V3 (0, 0, 1), TRN ("TOP"), -90, 90 }, { V3 (0, 0, -1), TRN ("BOTTOM"), -90, -90 }, { V3 (0, -1, 0), TRN ("FRONT"), -90, 0 },
+	{ V3 (0, 1, 0), TRN ("BACK"), 90, 0 }, { V3 (1, 0, 0), TRN ("RIGHT"), 0, 0 }, { V3 (-1, 0, 0), TRN ("LEFT"), 180, 0 } };
 static void cube_face (const Cam &c, int f, double cx, double cy, double s, int *xy)
 {
 	V3 n = CUBE[f].n, a = fabs (n.z) > 0.5 ? V3 (1, 0, 0) : V3 (0, 0, 1), b = cross (n, a);
@@ -1632,8 +1679,8 @@ void View::drawCube ()
 	if (A.sketching)
 	{
 		uk_rbox (canvas, width - 82, 14, 64, 64, 4, 0xFCFCFD, 0xFCFCFD); uk_rline (canvas, width - 82, 14, 64, 64, 4, 0x8C929E);
-		UkFaceScope fs (g_small); const char *nm = "FACE";
-		for (int f = 0; f < 6; f++) if (dot (CUBE[f].n, A.sk.pl.n) > 0.99) nm = CUBE[f].name;
+		UkFaceScope fs (g_small); const char *nm = TR ("FACE");
+		for (int f = 0; f < 6; f++) if (dot (CUBE[f].n, A.sk.pl.n) > 0.99) nm = TR (CUBE[f].name);
 		uk_text (canvas, width - 50 - uk_tw (nm, 2) / 2, 46 - uk_fh () / 2, nm, 0x686870, 2);
 		return;
 	}
@@ -1648,7 +1695,7 @@ void View::drawCube ()
 		p.clear (); p.polyline (xy, 4, 16, true); p.fill (canvas, 0x8C929E);
 		if (k > 0.35)
 		{
-			UkFaceScope fs (g_tiny); const char *nm = CUBE[f].name;
+			UkFaceScope fs (g_tiny); const char *nm = TR (CUBE[f].name);
 			int mx = (xy[0] + xy[2] + xy[4] + xy[6]) / 64, my = (xy[1] + xy[3] + xy[5] + xy[7]) / 64;
 			uk_text (canvas, mx - uk_tw (nm, 2) / 2, my - uk_fh () / 2, nm, uk_mix (0x686870, col, (int) ((1 - k) * 200)), 2);
 		}
@@ -1669,11 +1716,12 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 	for (size_t i = 0; i < ev.shapes.size (); i++)
 	{
 		const SkShape &s = ev.shapes[i]; bool sel = editing && (int) i == A.selEl;
-		unsigned col = sel ? C_AMBER : s.outline >= 0 || !editing ? C_LINE : 0x5A6E8C;
+		bool cons = i < sk.els.size () && sk.els[i].cons;		// (construction: dashed, of its own colour)
+		unsigned col = sel ? C_AMBER : cons ? 0x8C78BE : s.outline >= 0 || !editing ? C_LINE : 0x5A6E8C;
 		for (size_t k = 0; k + 1 < s.pts.size (); k++)
 		{
 			double x0, y0, x1, y1; P (s.pts[k], &x0, &y0); P (s.pts[k + 1], &x1, &y1);
-			ov_line (canvas, x0, y0, x1, y1, sel ? 2.4 : 1.7, col);
+			if (cons) ov_dash (canvas, x0, y0, x1, y1, sel ? 2 : 1.3, col, 6, 4); else ov_line (canvas, x0, y0, x1, y1, sel ? 2.4 : 1.7, col);
 		}
 	}
 	if (!editing) return;
@@ -1706,7 +1754,7 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 		{
 			const SkShape &s = e1.shapes[0];
 			if (!(e.kind == SK_ARC && A.curStep == 1))
-				for (size_t k = 0; k + 1 < s.pts.size (); k++) { P (s.pts[k], &x, &y); P (s.pts[k + 1], &x1, &y1); ov_line (canvas, x, y, x1, y1, 2.4, C_AMBER); }
+				for (size_t k = 0; k + 1 < s.pts.size (); k++) { P (s.pts[k], &x, &y); P (s.pts[k + 1], &x1, &y1); if (e.cons) ov_dash (canvas, x, y, x1, y1, 2, C_AMBER, 6, 4); else ov_line (canvas, x, y, x1, y1, 2.4, C_AMBER); }
 			if (e.kind == SK_SPLINE) for (const V2 &q : e.pts) { P (q, &x, &y); ov_dot (canvas, x, y, 3, 0xFFFFFF, C_AMBER, 1.6); }
 			else if (e.kind == SK_ARC && A.tool == T_ARC3)		// the chord, the line its middle slides on
 			{
@@ -1742,12 +1790,13 @@ void View::sketchDraw (const Feature &sk, const SkEval &ev, bool editing)
 				if (got && hypot (s.end.x - first.x, s.end.y - first.y) < 1e-6)
 				{
 					P (first, &x, &y); ov_dot (canvas, x, y, 6.5, 0xFFFFFF, C_GREEN, 2); ov_dot (canvas, x, y, 3, 0xFFFFFF, C_GREEN, 1.8);
-					UkFaceScope fs (g_small); uk_text (canvas, (int) x - uk_tw ("closes the outline") - 12, (int) y + 8, "closes the outline", 0x287838);
+					UkFaceScope fs (g_small); uk_text (canvas, (int) x - uk_tw (TR ("closes the outline")) - 12, (int) y + 8, TR ("closes the outline"), 0x287838);
 				}
 			}
 		}
 	}
-	else if (A.curStep == 0 && A.tool >= T_LINE) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	else if (A.curStep == 0 && sketch_tool (A.tool)) { double x, y; P (V2 (A.cur.x, A.cur.y), &x, &y); ov_dot (canvas, x, y, 3.2, 0xFFFFFF, C_AMBER, 1.8); }
+	if (A.tool == T_MIDLINE && A.curStep == 1 && A.selEl < 0) { double x, y; P (A.arcC, &x, &y); ov_dot (canvas, x, y, 3.6, C_AMBER, C_AMBER, 1.8); }	// (the middle)
 	if (A.snapOn && A.selEl < 0)			// held by a point: a green ring on it
 	{
 		double x, y; P (A.snapP, &x, &y); const double d = 6.5;
@@ -1766,7 +1815,7 @@ void View::overlays ()
 		for (int i = 0; i < A.doc.upto && i < (int) A.doc.feats.size (); i++)
 		{
 			const Feature &sk = A.doc.feats[i];
-			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && f.kind == F_EXTRUDE && f.sketch == i))) continue;
+			if (sk.kind != F_SKETCH || (A.doc.used (i) && A.selFeat != i && !(A.hasPend && (f.kind == F_EXTRUDE || f.kind == F_LOFT) && (f.sketch == i || (f.kind == F_LOFT && f.tool == i))))) continue;
 			SkEval ev; sketch_eval (sk.els, A.doc.segs, ev); sketchDraw (sk, ev, false);
 		}
 	// the Sketch tool, before its plane is chosen: the one the panel proposes, shown in the model
@@ -1805,15 +1854,15 @@ void View::overlays ()
 			double px, py; sx (pl.at (f.x, f.y), &px, &py); ov_dot (canvas, px, py, 3.2, 0xFFFFFF, col);
 			fmt (f.w, a); snprintf (t, sizeof t, cyl ? "\xC3\x98 %s" : "R %s", a); tag3 (pl.at (f.x, f.y + rad), 0, -18, t, A.step == 1, C_AMBER);
 			if (f.kind == F_TAPER && A.step == 2)							// the top's outline, where the base is
-			{ ring (f.d, C_AMBER, 2); fmt (f.d, a); snprintf (t, sizeof t, "top R %s", a); tag3 (pl.at (f.x + f.d, f.y), 44, 0, t, true, C_AMBER); }
+			{ ring (f.d, C_AMBER, 2); fmt (f.d, a); snprintf (t, sizeof t, TR ("top R %s"), a); tag3 (pl.at (f.x + f.d, f.y), 44, 0, t, true, C_AMBER); }
 			if (torus && A.step == 2)								// the tube: from the ring outward
 			{
 				line3 (pl.at (f.x + f.w, f.y), pl.at (f.x + f.w + f.d, f.y), 2, C_AMBER);
-				fmt (f.d, a); snprintf (t, sizeof t, "tube R %s", a); tag3 (pl.at (f.x + f.w + f.d, f.y), 52, 0, t, true, C_AMBER);
+				fmt (f.d, a); snprintf (t, sizeof t, TR ("tube R %s"), a); tag3 (pl.at (f.x + f.w + f.d, f.y), 52, 0, t, true, C_AMBER);
 			}
 		}
 	}
-	if (A.hasPend && makes_solid (f.kind) && f.kind != F_TORUS && f.kind != F_SPHERE && A.step == height_step ())
+	if (A.hasPend && makes_solid (f.kind) && f.kind != F_TORUS && f.kind != F_SPHERE && f.kind != F_LOFT && A.step == height_step ())
 	{
 		V3 c = baseCentre (), n = pendNormal (); unsigned col = f.op == OP_SUB ? C_RED : C_AMBER;
 		double h = f.through ? -fabs (f.h ? f.h : 10) : f.h;
@@ -1821,7 +1870,7 @@ void View::overlays ()
 		V3 far = tip + n * ((h < 0 ? -1 : 1) * 46 / A.cam.scale); sx (far, &x1, &y1);
 		if (hypot (x1 - x0, y1 - y0) < 20) { x1 = x0; y1 = y0 - 46; }
 		ov_arrow (canvas, x0, y0, x1, y1, col, true);
-		if (f.through) snprintf (t, sizeof t, "through"); else { fmt (fabs (f.h), a); snprintf (t, sizeof t, "%s mm", a); }
+		if (f.through) snprintf (t, sizeof t, TR ("through")); else { fmt (fabs (f.h), a); snprintf (t, sizeof t, TR ("%s mm"), a); }
 		ov_tag (canvas, (int) x1 + 44, (int) y1 + 14, t, true, col);
 	}
 	// the edges: chosen, pointed
@@ -1832,7 +1881,7 @@ void View::overlays ()
 		if (A.hovChain >= 0 && A.hovBody >= 0 && A.hovBody < (int) A.doc.bodies.size ())
 		{
 			const RMesh &m = A.doc.bodies[A.hovBody].mesh;
-			if (A.hovChain < (int) m.chains.size ()) chainDraw (m, m.chains[A.hovChain], 3, m.chains[A.hovChain].kind ? C_AMBER : 0x9A9AA2);
+			if (A.hovChain < (int) m.chains.size ()) chainDraw (m, m.chains[A.hovChain], 3, C_AMBER);
 		}
 		if (b && !f.edges.empty ())
 		{
@@ -1856,7 +1905,7 @@ void View::overlays ()
 		if (A.mN == 2)
 		{
 			line3 (A.mA, A.mB, 1.6, C_AMBER); double x1, y1; sx (A.mB, &x1, &y1); ov_dot (canvas, x1, y1, 4, 0xFFFFFF, C_AMBER, 2);
-			fmt (len (A.mB - A.mA), a); snprintf (t, sizeof t, "%s mm", a); ov_tag (canvas, (int) (x + x1) / 2, (int) (y + y1) / 2 - 16, t, false, 0);
+			fmt (len (A.mB - A.mA), a); snprintf (t, sizeof t, TR ("%s mm"), a); ov_tag (canvas, (int) (x + x1) / 2, (int) (y + y1) / 2 - 16, t, false, 0);
 		}
 	}
 	chrome ();

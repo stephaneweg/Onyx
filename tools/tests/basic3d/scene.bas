@@ -36,3 +36,9 @@ FOR shot = 0 TO 1
   VERTEX3D -1.5, 0, 1.8: VERTEX3D 1.5, 1.6, 1.8: VERTEX3D -1.5, 1.6, 1.8
   RENDER3D
 NEXT
+' a split screen (VIEW3D): the left half's sky blue, the right half's green, a red sphere in each --
+' each half's own aspect (the sphere stays round), the other half kept
+CAMERA3D 0, 3, 7, 0, 0.5, 0, 50
+VIEW3D 0, 0, 320, 480: SCENE3D RGB(10, 20, 200): COLOR3D RGB(220, 40, 40): SPHERE3D 1, 16: RENDER3D
+VIEW3D 320, 0, 320, 480: SCENE3D RGB(10, 200, 20): COLOR3D RGB(220, 40, 40): SPHERE3D 1, 16: RENDER3D
+VIEW3D

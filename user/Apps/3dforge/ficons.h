@@ -18,7 +18,7 @@ enum { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_UNION, 
        I_LINE, I_RECT, I_CIRCLE, I_ARC, I_CLOSE, I_HOME, I_FIT, I_SHADED, I_CHECK, I_INFO, I_EYE, I_WARN, I_COMBINE,
        I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_SHAPES,
        I_CAM_SETUP, I_CAM_TOOL, I_CAM_CLEAR, I_CAM_CONTOUR, I_GCODE, I_PLAY, I_ARC3, I_SPLINE, I_POINT,
-       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS, I_PR_FIL,
+       I_PR_PLATE, I_PR_RESIN, I_PR_SUP, I_PR_LAYERS, I_PR_FIL, I_MIDLINE, I_CONS, I_LOFT,
        I_NEW, I_OPEN, I_SAVE, I_UNDO, I_REDO };
 
 // Icon `kind` in the s x s box at (x, y): ink the lines, acc the accent, bg what is behind it.
@@ -167,6 +167,15 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 		break;
 	}
 	case I_LINE: seg (4, 20, 20, 4, ink); dot (4, 20, 2.4, acc); dot (20, 4, 2.4, acc); break;
+	case I_CONS: seg (4, 20, 8, 16, dim); seg (10, 14, 14, 10, dim); seg (16, 8, 20, 4, dim); dot (4, 20, 2.2, acc); dot (20, 4, 2.2, acc); break;	// (a dashed line: construction)
+	case I_LOFT:				// a square below, a smaller ring above, joined: a loft
+	{
+		const double bot[] = { 3, 17, 13, 21, 21, 17, 11, 13 };
+		poly (bot, 4, soft, true, ink, true);
+		p.clear (); p.ellipse (X (12), Y (6), L (5), L (2.4)); p.fill (cv, ink); p.clear (); p.ellipse (X (12), Y (6), L (5) - w, L (2.4) - w); p.fill (cv, bg);
+		seg (3, 17, 7, 6, dim); seg (21, 17, 17, 6, dim); seg (13, 21, 12, 8.4, dim); break;
+	}
+	case I_MIDLINE: seg (4, 20, 20, 4, ink); dot (4, 20, 1.9, dim); dot (20, 4, 1.9, dim); dot (12, 12, 3.2, acc); break;	// (a line drawn from its middle)
 	case I_RECT: { const double r[] = { 4, 6, 20, 6, 20, 18, 4, 18 }; poly (r, 4, soft, true, ink, true); dot (4, 6, 2.4, acc); dot (20, 18, 2.4, acc); break; }
 	case I_CIRCLE: dot (12, 12, 8.5 + 0.8, ink); dot (12, 12, 8.5 - 0.8, soft); dot (12, 12, 2.2, acc); break;
 	case I_ARC:
@@ -226,7 +235,7 @@ static void icon (Canvas &cv, int kind, int x, int y, int s, unsigned ink, unsig
 }
 static inline int icon_of_kind (int featKind)
 {
-	static const int map[F_KINDS] = { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_COMBINE, I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE };
+	static const int map[F_KINDS] = { I_BOX, I_CYL, I_SKETCH, I_EXTRUDE, I_FILLET, I_CHAMFER, I_MOVE, I_COMBINE, I_PYRAMID, I_PRISM, I_TAPER, I_TORUS, I_SPHERE, I_LOFT };
 	return map[featKind];
 }
 
