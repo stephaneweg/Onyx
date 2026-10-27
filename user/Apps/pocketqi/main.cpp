@@ -8,7 +8,8 @@
 // network -- net.h); it tells this window what to show through kapi_post. Pocket speaks with Mistral's voices
 // (voice.h), on a third thread: the brain goes on meanwhile, and waits for the voice only before listening.
 // `pocketqi --tray`: Pocket in the background, its icon in the menu bar, its ear on the microphone -- "dis Pocket" --
-// and its face in a small popup while it is spoken to (tray.h, listen.h). Not in this version: its drawings.
+// and its face in a small popup while it is spoken to (tray.h, listen.h). PocketQI Studio reaches it on the network:
+// PocketQI's administration API (studio.h: its skills sent, fetched, run, its face). Not in this version: its drawings.
 //
 // Its files: SD:/apps/pocketqi.app/config.ini (the settings and the API keys: Pocket > Settings), etc/memoire.txt
 // (what Pocket remembers), etc/cron.txt, etc/histoires.txt, apps/<skill>/ (the skills and their data), lib/galo.bi
@@ -36,6 +37,7 @@
 #include "fontkit/uikitface.h"
 #include "Apps/pocketqi/brain.h"
 #include "Apps/pocketqi/voice.h"
+#include "Apps/pocketqi/core/admin_core.h"
 #include "uikit/checkbox.h"
 #include <stdio.h>
 #include <string.h>
@@ -55,6 +57,9 @@ static int         g_bgState = VISAGE_VEILLE;	// what Pocket does (the face), th
 static unsigned    g_speakUntil;		// ticks: the eyes bob while a sentence is "said" (no voice)
 static volatile bool g_talking;			// the voice is heard (voice.h, the speaker's thread)
 static std::string g_home;			// SD:apps/pocketqi.app
+static volatile bool g_skillsDirty;		// PocketQI Studio sent, replaced or removed a skill: the brain reads them again
+static std::vector<std::string> g_runArgs;	// PocketQI Studio's F5: the skill's id, its action, its arguments
+static volatile bool g_runJob;			// ... to run, instead of a sentence (studio.h)
 
 class FaceView;
 class ChatView;
@@ -292,8 +297,10 @@ static void tray_apply (const Config &c);
 enum { TRAY_MSG_RELOAD = 1, TRAY_MSG_QUIT = 2 };
 #define TRAY_SERVICE "pocketqi.tray"
 
+static volatile unsigned g_faceSeq;		// the face's changes (PocketQI Studio's /api/face)
 static void face_state (int e)
 {
+	g_faceSeq++;
 	if (!g_face) return;
 	if (e != VISAGE_PARLE) g_bgState = e;
 	bool speaking = g_talking || (int) (g_speakUntil - kapi_get_ticks ()) > 0;
@@ -332,6 +339,7 @@ static void on_msg (void *ctx, long)
 	case M_STATE: face_state (m->a); update_status (); break;
 	case M_MOOD:
 	{
+		g_faceSeq++;
 		float va, ev;
 		if (pocket_humeur_get_va (&va, &ev)) pocket_visage_humeur_va (&g_face->v, va, ev);
 		else pocket_visage_humeur (&g_face->v, m->a, m->b);
@@ -457,6 +465,17 @@ static int worker (void *)
 	{
 		int r = kapi_event_wait (g_jobEv, 500);
 		if (g_quit) break;
+		if (g_skillsDirty) { g_skillsDirty = false; g_brain.skillsReload (); }	// (PocketQI Studio sent or removed one)
+		if (r == 0 && g_busy && g_runJob)
+		{
+			// PocketQI Studio's F5: a skill run without the LLM
+			std::vector<std::string> a = g_runArgs;
+			g_runJob = false;
+			if (!a.empty ()) g_brain.runDirect (a[0], std::vector<std::string> (a.begin () + 1, a.end ()));
+			post (M_DONE, 0, 0, "");
+			if (g_tray) { speech_wait (); post (M_HIDE, 0, 0, ""); }
+			continue;
+		}
 		if (r == 0 && g_busy)
 		{
 			std::string s = g_job;
@@ -495,6 +514,7 @@ static void cfg_load (Config &c)
 		else if (k == "voice_fr") c.voiceFr = v;
 		else if (k == "voice_en") c.voiceEn = v;
 		else if (k == "listen") c.listen = lower (v) == "on" || v == "1";
+		else if (k == "studio") c.studio = lower (v) == "on" || v == "1";
 	}
 }
 
@@ -504,7 +524,8 @@ static bool cfg_save (const Config &c)
 			"provider = " + c.provider + "\nmistral_key = " + c.mistralKey + "\ngroq_key = " + c.groqKey +
 			"\nmodel = " + c.model + "\nurl = " + c.url + "\nurl_key = " + c.urlKey +
 			"\ncharacter = " + num (c.character) + "\nvoice = " + (c.voice ? "on" : "off") +
-			"\nvoice_fr = " + c.voiceFr + "\nvoice_en = " + c.voiceEn + "\nlisten = " + (c.listen ? "on" : "off") + "\n";
+			"\nvoice_fr = " + c.voiceFr + "\nvoice_en = " + c.voiceEn + "\nlisten = " + (c.listen ? "on" : "off") +
+			"\nstudio = " + (c.studio ? "on" : "off") + "\n";
 	return write_file (cfg_path (), t);
 }
 
@@ -595,6 +616,37 @@ static void open_voice ()
 	g_brain.cfg = c;
 	if (!cfg_save (c)) uk_messagebox ("PocketQI", TR ("The settings could not be written on the card."), MB_OK);
 	tray_apply (c);
+}
+
+// Pocket > PocketQI Studio...: PocketQI's Windows IDE reaches Pocket (studio.h)
+static void studio_apply (bool on);
+static void open_studio ()
+{
+	if (busy_say ()) return;
+	Config c = g_brain.cfg;
+	char ip[48] = "";
+	if (!kapi_net_status (ip, sizeof ip)) ip[0] = 0;
+	char err[160] = "";
+	std::string fp = AdminTlsInit (err, sizeof err) ? AdminTlsFingerprint () : std::string (err);
+	FormDialog f (TR ("PocketQI Studio"), 460);
+	Checkbox *on = new Checkbox (0, 0, 380, 24, TR ("PocketQI Studio can reach Pocket"), c.studio, 0, C_FACE);
+	f.addText (TR ("PocketQI Studio (PocketQI's Windows IDE) sends its apps to Pocket, fetches them, runs them (F5) and shows its face, over the network (HTTPS, port 443)."));
+	f.addRow (0, on);
+	f.addSection (TR ("In PocketQI Studio"));
+	std::string where = std::string (TR ("Target: \"Pocket QI physique\", address:")) + " " + (ip[0] ? std::string ("https://") + ip : std::string (TR ("(no network)")));
+	f.addText (where.c_str ());
+	std::string print = std::string (TR ("The first time, accept the certificate whose SHA-256 fingerprint is:")) + " " + fp;
+	f.addText (print.c_str ());
+	f.addText (TR ("An optional password: SD:/apps/pocketqi.app/etc/admin.pass, as on PocketQI's robot."));
+	f.addButton (TR ("Save"), UK_FB_DEFAULT, 1);
+	f.addButton (TR ("Cancel"), UK_FB_CANCEL, 0);
+	if (f.run () != 1) return;
+	c.studio = on->checked;
+	g_brain.cfg = c;
+	if (!cfg_save (c)) uk_messagebox ("PocketQI", TR ("The settings could not be written on the card."), MB_OK);
+	studio_apply (c.studio);
+	int pid = kapi_ipc_lookup (TRAY_SERVICE);
+	if (pid > 0) kapi_mailbox_send (pid, TRAY_MSG_RELOAD, "", 0);
 }
 
 static void open_memory ()
@@ -696,6 +748,7 @@ static void m_new ()
 }
 static void m_settings () { open_settings (); }
 static void m_voice () { open_voice (); }
+static void m_studio () { open_studio (); }
 static void m_memory () { open_memory (); }
 static void m_skills () { open_skills (); }
 static void m_quit () { kapi_exit (0); }
@@ -721,6 +774,7 @@ static void build_menu ()
 	g_menu.item (TR ("Skills..."), "", 0, m_skills);
 	g_menu.item (TR ("Settings..."), "", 0, m_settings);
 	g_menu.item (TR ("Voice and Listening..."), "", 0, m_voice);
+	g_menu.item (TR ("PocketQI Studio..."), "", 0, m_studio);
 	g_menu.separator ();
 	g_menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), m_quit);
 	g_menu.menu (TR ("Edit"));
@@ -791,6 +845,7 @@ public:
 
 static void on_send (Widget &) { send_text (g_entry->text); }
 
+#include "Apps/pocketqi/studio.h"
 #include "Apps/pocketqi/tray.h"
 
 int main (void)
@@ -854,6 +909,7 @@ int main (void)
 	int tid = kapi_thread_create (worker, 0, 1024 * 1024, "brain");
 	int stid = kapi_thread_create (speaker, 0, 256 * 1024, "voice");
 	if (tid < 0) g_chat->add (E_ERROR, TR ("Pocket could not start its thread."));
+	studio_apply (g_brain.cfg.studio);
 	update_status ();
 
 	root.run ();

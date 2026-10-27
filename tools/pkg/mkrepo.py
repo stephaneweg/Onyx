@@ -48,7 +48,8 @@ def kapi_version ():
 # remembers, its tasks and stories, its drafts, the shopping list)
 PRIVATE = { "etc/wpa_supplicant.conf", "apps/pocketqi.app/config.ini", "apps/pocketqi.app/etc/memoire.txt",
 	    "apps/pocketqi.app/etc/cron.txt", "apps/pocketqi.app/etc/histoires.txt", "apps/pocketqi.app/tmp/mail-draft.txt",
-	    "apps/pocketqi.app/apps/courses/liste.txt" }
+	    "apps/pocketqi.app/apps/courses/liste.txt", "apps/pocketqi.app/etc/https.key", "apps/pocketqi.app/etc/https.crt",
+	    "apps/pocketqi.app/etc/admin.pass" }
 
 def card_files (sd):
 	"""Every file of the card, '/'-separated, relative (var/ left out: the card's own state)."""

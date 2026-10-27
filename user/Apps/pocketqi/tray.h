@@ -239,7 +239,7 @@ public:
 		char b[64];
 		while (kapi_mailbox_recv (&from, &type, b, sizeof b, 0) >= 0)
 		{
-			if (type == TRAY_MSG_RELOAD) { Config c; cfg_load (c); g_brain.cfg = c; if (!c.listen) kapi_exit (0); }
+			if (type == TRAY_MSG_RELOAD) { Config c; cfg_load (c); g_brain.cfg = c; if (!c.listen) kapi_exit (0); studio_apply (c.studio); }
 			else if (type == TRAY_MSG_QUIT) kapi_exit (0);
 		}
 	}
@@ -287,6 +287,7 @@ static int tray_main ()
 	int tid = kapi_thread_create (worker, 0, 1024 * 1024, "brain");
 	int stid = kapi_thread_create (speaker, 0, 256 * 1024, "voice");
 	int etid = kapi_thread_create (ear_thread, 0, 1024 * 1024, "ear");
+	studio_apply (g_brain.cfg.studio);
 	root.run ();
 	g_quit = true;
 	kapi_event_set (g_jobEv); kapi_event_set (g_ansEv); kapi_event_set (g_speechEv);
