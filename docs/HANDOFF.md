@@ -8,11 +8,19 @@ answer in French. The docs stay in English.
 
 The user asked for an Onyx port of their own project **PocketQI** (github.com/stephaneweg/PocketQI: Pocket, a voice
 assistant -- an LLM decides, BASIC apps act, two animated eyes show the mood -- for a robot, an ESP32 handheld, Windows),
-then, the same day, for Pocket to act in **Onyx's own utility apps**.
+then, the same day, for Pocket to act in **Onyx's own utility apps**, to **speak** (Mistral's voice only, the voice
+chosen in its settings) and to **wait in the menu bar for "dis Pocket"** (a popup with its face at the bottom left).
 - **The app**: `user/Apps/pocketqi/` (docs/03 "PocketQI" says the layers), `sdcard/apps/pocketqi.app/` (the BASIC
   skills `apps/{courses,meteo,humeur}`, `lib/galo.bi`, `lang/fr.txt`, `config.ini.example`); docs/04 "PocketQI".
   PocketQI's LLM protocol, moods and face are in `core/` unchanged (commit `060b797`); `brain.h` / `skills.h` port its
-  shell and its BASIC host. Typed, not spoken: no wake word, no voice yet.
+  shell and its BASIC host.
+- **The voice and the ear** (2026-10-26): `voice.h` (Voxtral TTS streamed into AudioKit's output, a voice per language,
+  the families follow the mood; Pocket > Voice and Listening...), `listen.h` + `tray.h` (`pocketqi --tray`: the tray icon,
+  the microphone, PocketQI's listening and PocketSphinx -- `third_party/pocketsphinx-5.1.1`, its French model in
+  `apps/pocketqi.app/ps/` --, the sentence to Voxtral in Ogg Opus, the popup). The package needs onyx >= 2026.10.176
+  and audiokit >= 1.232.7 (the sound input). **On the Pi** (the user's, a USB microphone): "dis Pocket" heard, the
+  sentence written by Voxtral, Mistral's answer said aloud. First fix there: the popup made at y = 0 was refused by
+  PocketUI (a topmost window on the top edge is a bar) -- it is made away from the edges now.
 - **The native skills** (`natives.h`): agenda and tasks in the **Calendar** (`calendar/model.h` + the new shared
   `calendar/agendafiles.h`; the Calendar now reads `calendar.ics` again when another program changed it), **Notes**,
   **Mail** (the new `mail --compose <draft>`: the person sends), the **contacts** (Contacts.card: found, added, changed, removed), the **Clock**'s alarms,
@@ -23,12 +31,9 @@ then, the same day, for Pocket to act in **Onyx's own utility apps**.
   and writes in the Calendar. **Not checked by us**: Mistral / Groq over mbedTLS on the Pi (the
   certificate is not verified, as `/bin/llm`), the face's cost at 25 images a second on the Pi 4, a key typed in the
   Settings on the PocketTerm35, a real printer (the PC's test stood PrinterKit in by a stub that logs its calls).
-- **Next** (the user, 2026-10-26): **the voice** -- PocketQI on Circle speaks with PicoTTS (Apache-2.0, `voix=pico`,
-  its "mignon" voice: `system/pi/src/pocketvoice.cpp`) or Mistral's Voxtral TTS (`voix=mistral`: `/v1/audio/speech`,
-  SSE, PCM 24 kHz, a voice per language and mood) --, then **a status bar applet**: Pocket in the background on the
-  microphone (AudioKit `ak_in_*`, kapi v99), "dis Pocket" heard (PocketQI's PocketSphinx keyphrase, BSD-2) opens a
-  small popup at the bottom left with its face alone, the question spoken, the popup gone when Pocket rests.
-  Other ideas:
+- **Next** (the user, 2026-10-26): **PocketQI Studio** (PocketQI's Windows IDE) reaching Onyx's Pocket, to send it
+  commands and skills directly. Other ideas: the tray's ~1000 system calls a second (the microphone polled every 8 ms:
+  a blocking read would do), a beep after "dis Pocket" (`GEC_BIP`), PicoTTS for a voice without the network,
   `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
   itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.
 
@@ -159,8 +164,11 @@ I2S one in the case). kapi **v99** `sound_input` (slot 235):
 - Circle fork: a USB audio device's continuous range of rates (docs/05 §36, PocketQI's patch);
 - the output's `auto` now counts only USB devices with an output.
 
-PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Not tried on the
-device yet**: the Pi was off when it was to be deployed; then test USB (a headset) and I2S (once wired).
+PocketQI's code (`C:\Projects\Robot\PocketQI\system\pi`, `ecoute_circle.cpp`) was the model. **Tried on the
+device the same day** (kernel v99 deployed over the network): a USB headset's microphone records at 16 kHz -- `rec
+SD:/tmp/mic.wav 3`, silence about -72 dBFS, a voice -18 dBFS, the file read back by `play --info`. **I2S not tried
+yet** (no microphone wired). The user's Pi was switched back to the pocket mode (`session switch pocket`): the
+Control Panel's desktop window does not fit 640 x 480.
 
 **The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
 `SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:

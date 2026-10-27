@@ -1,7 +1,7 @@
 # systemkit.bi -- systemkit for Onyx BASIC (#import systemkit): made by tools/kitbi/kitbi.py from systemkit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit systemkit 117
+kit systemkit 119
 struct PreloadList 4100 PreloadList
 field n 0 i
 struct recent_doc 168 recent_doc
@@ -132,3 +132,5 @@ display_follow_init 113 v ps display_follow_init f,shell
 display_follow_launch 114 i ps display_follow_launch f,app
 display_follow_ask 115 v psii display_follow_ask f,front,w,h
 display_follow_tick 116 v pspi display_follow_tick f,front,running,n
+volume_input_word 117 s i volume_input_word in
+volume_set_input 118 l ii volume_set_input in,gain_db

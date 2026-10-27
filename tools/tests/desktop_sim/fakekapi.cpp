@@ -649,6 +649,17 @@ static int h_event_create (int manual, int initial)
 	pthread_mutex_lock (&g_thrLock); g_events.push_back (e); int h = (int) g_events.size (); pthread_mutex_unlock (&g_thrLock);
 	return h;
 }
+// mutexes (kapi v67): a pthread mutex each (PocketQI's voice queue)
+static std::vector<pthread_mutex_t *> g_mutexes;
+static int h_mutex_create (void)
+{
+	pthread_mutex_t *m = new pthread_mutex_t; pthread_mutex_init (m, 0);
+	pthread_mutex_lock (&g_thrLock); g_mutexes.push_back (m); int h = (int) g_mutexes.size (); pthread_mutex_unlock (&g_thrLock);
+	return h;
+}
+static pthread_mutex_t *mx_of (int h) { pthread_mutex_lock (&g_thrLock); pthread_mutex_t *m = h > 0 && h <= (int) g_mutexes.size () ? g_mutexes[h - 1] : 0; pthread_mutex_unlock (&g_thrLock); return m; }
+static int h_mutex_lock (int h, unsigned) { pthread_mutex_t *m = mx_of (h); if (!m) return -2; pthread_mutex_lock (m); return 0; }
+static int h_mutex_unlock (int h) { pthread_mutex_t *m = mx_of (h); if (!m) return -2; pthread_mutex_unlock (m); return 0; }
 static SimEvent *ev_of (int h) { pthread_mutex_lock (&g_thrLock); SimEvent *e = h > 0 && h <= (int) g_events.size () ? g_events[h - 1] : 0; pthread_mutex_unlock (&g_thrLock); return e; }
 static int h_event_set (int h) { SimEvent *e = ev_of (h); if (!e) return -2; pthread_mutex_lock (&e->m); e->set = true; pthread_cond_broadcast (&e->c); pthread_mutex_unlock (&e->m); return 0; }
 static int h_event_reset (int h) { SimEvent *e = ev_of (h); if (!e) return -2; pthread_mutex_lock (&e->m); e->set = false; pthread_mutex_unlock (&e->m); return 0; }
@@ -1800,6 +1811,7 @@ static void setup (void)
 	T->midi_read = midi_read; T->midi_devices = midi_devices;
 	T->screen_native = screen_native; T->set_timezone = set_timezone;
 	T->thread_create = h_thread_create; T->thread_exit = h_thread_exit; T->thread_join = h_thread_join; T->thread_self = h_thread_self;
+	T->mutex_create = h_mutex_create; T->mutex_lock = h_mutex_lock; T->mutex_unlock = h_mutex_unlock;
 	T->event_create = h_event_create; T->event_set = h_event_set; T->event_reset = h_event_reset; T->event_wait = h_event_wait;
 	T->post = h_post; T->pump_wait = h_pump_wait;
 	g_mainThread = pthread_self (); g_mainSet = true;

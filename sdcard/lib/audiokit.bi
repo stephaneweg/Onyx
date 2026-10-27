@@ -1,7 +1,7 @@
 # audiokit.bi -- audiokit for Onyx BASIC (#import audiokit): made by tools/kitbi/kitbi.py from audiokit.abi and the kit's headers;
 # not edited by hand. <name> <place> <result> <arguments or -> <C name>; the types: user/Libs/basic/basint.h.
 # struct <name> <size> <C name>, then its fields: field <name> <offset> <kind> [<length> | <structure>].
-kit audiokit 232
+kit audiokit 236
 struct info 32 ak_info
 field rate 0 i
 field channels 4 i
@@ -107,3 +107,7 @@ wav_write 228 i ppi ak_wav_write w,frames,n
 fm_live 229 v i ak_fm_live on
 fm_silence 230 v - ak_fm_silence
 tags_read 231 i sp ak_tags_read path,out
+in_close 232 v - ak_in_close
+in_open 233 i i ak_in_open rate
+in_peak 234 i pi ak_in_peak samples,n
+in_read 235 i pi ak_in_read out,max

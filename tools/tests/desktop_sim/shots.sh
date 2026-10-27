@@ -820,6 +820,8 @@ if want pocketqi; then			# (PocketQI: a sentence typed, the LLM's answer canned 
 		Q='Note the dentist tomorrow at 2pm, and milk for the shopping'
 	fi
 	sim pocketqi pocketqi "wait;wait;$(typ "$Q");key 13;$W20;$W20;$W20;$W20" $P SIM_SLEEP=1 SIM_NET="$A"; png pocketqi
+	# Pocket > Voice and Listening... (the menu's fifth item): Mistral's voices, "dis Pocket" in the background
+	sim pocketqi pocketqi-voice "wait;wait;menu 4;$W;$W" $P; png pocketqi-voice
 	rm -rf "$PQ"
 fi
 if want photos; then			# (Photos over a made-up library -- tools/tests/photos/make_samples.py: drawn photos as JPEGs with

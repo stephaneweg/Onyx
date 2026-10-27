@@ -1,0 +1,245 @@
+PocketSphinx 5.1.1
+=====================
+
+This is PocketSphinx, one of Carnegie Mellon University's open source large
+vocabulary, speaker-independent continuous speech recognition engines.
+
+Though the algorithms and models implemented by PocketSphinx are now
+quite old (dating back to the 1970s in some cases!) they are still
+useful in many applications due to their compactness and efficiency.
+
+The version number is strangely large because there was a "release"
+that people are using called 5prealpha, and we will use proper
+[semantic versioning](https://semver.org/) from now on.
+
+**Please see the LICENSE file for terms of use.**
+
+Installation
+------------
+
+We now use CMake for building, which should give reasonable results
+across Linux and Windows.  Not certain about Mac OS X because I don't
+have one of those.  In addition, the audio library, which never really
+built or worked correctly on any platform at all, has simply been
+removed.
+
+There is no longer any dependency on SphinxBase.  There is no
+SphinxBase anymore.  This is not the SphinxBase you're looking for.
+All your SphinxBase are belong to us.
+
+There are some other dependencies that you may find useful in order to
+use the example code (though they are not strictly necessary to build
+and install).  On Debian GNU/Linux and its derivatives (such as
+Raspberry Pi OS, Ubuntu, etc), you can install them with:
+
+    sudo apt install \
+        ffmpeg \
+        libasound2-dev \
+        libportaudio2 \
+        libportaudiocpp0 \
+        libpulse-dev \
+        libsox-fmt-all \
+        portaudio19-dev \
+        sox
+
+To install the Python module in a virtual environment (replace
+`~/ve_pocketsphinx` with the virtual environment you wish to create),
+from the top level directory:
+
+```
+python3 -m venv ~/ve_pocketsphinx
+. ~/ve_pocketsphinx/bin/activate
+pip install .
+```
+
+To install the C library and bindings (assuming you have access to
+/usr/local - if not, use `-DCMAKE_INSTALL_PREFIX` to set a different
+prefix in the first `cmake` command below):
+
+```
+cmake -S . -B build
+cmake --build build
+cmake --build build --target install
+```
+
+Usage
+-----
+
+The `pocketsphinx` command-line program reads single-channel 16-bit
+PCM audio from standard input or one or more files, and attempts to
+recognize speech in it using the default acoustic and language model.
+It accepts a large number of options which you probably don't care
+about, a *command* which defaults to `live`, and one or more inputs
+(except in `align` mode), or `-` to read from standard input.
+
+If you have a single-channel WAV file called "speech.wav" and you want
+to recognize speech in it, you can try doing this (the results may not
+be wonderful):
+
+    pocketsphinx single speech.wav
+    
+If your input is in some other format I suggest converting it with
+`sox` as described below.
+
+The commands are as follows:
+
+  - `help`: Print a long list of those options you don't care about.
+
+    You can also get command-specific help by running `help <command>`,
+    for example `pocketsphinx help align` will show alignment-specific
+    options.
+
+  - `config`: Dump configuration as JSON to standard output (can be
+    loaded with the `-config` option).
+
+  - `live`: Detect speech segments in each input, run recognition
+    on them (using those options you don't care about), and write the
+    results to standard output in line-delimited JSON.  I realize this
+    isn't the prettiest format, but it sure beats XML.  Each line
+    contains a JSON object with these fields, which have short names
+    to make the lines more readable:
+    
+    - `b`: Start time in seconds, from the beginning of the stream
+    - `d`: Duration in seconds
+    - `p`: Estimated probability of the recognition result, i.e. a
+      number between 0 and 1 representing the likelihood of the input
+      according to the model
+    - `t`: Full text of recognition result
+    - `w`: List of segments (usually words), each of which in turn
+      contains the `b`, `d`, `p`, and `t` fields, for start, end,
+      probability, and the text of the word.  If `-phone_align yes`
+      has been passed, then a `w` field will be present containing
+      phone segmentations, in the same format.
+
+  - `single`: Recognize each input as a single utterance, and write a
+    JSON object in the same format described above.
+    
+  - `align`: Force-align a single audio file to a word sequence, and write
+    a word sequence, and write a JSON object in the same format
+    described above.  The first positional argument is the input, and
+    all subsequent ones are concatenated to make the text, to avoid
+    surprises if you forget to quote it.  You are responsible for
+    normalizing the text to remove punctuation, uppercase, centipedes,
+    etc. For example:
+    
+        pocketsphinx align goforward.wav "go forward ten meters"
+        
+    By default, only word-level alignment is done.  To get phone
+    alignments, pass `-phone_align yes` in the flags, e.g.:
+
+        pocketsphinx -phone_align yes align audio.wav $text
+
+    To get state-level alignments, pass `-state_align yes` (this
+    automatically enables phone alignment as well):
+
+        pocketsphinx -state_align yes align audio.wav $text
+
+    This will make not particularly readable output, but you can use
+    [jq](https://stedolan.github.io/jq/) to clean it up.  For example,
+    you can get just the word names and start times like this:
+    
+        pocketsphinx align audio.wav $text | jq '.w[]|[.t,.b]'
+        
+    Or you could get the phone names and durations like this:
+    
+        pocketsphinx -phone_align yes align audio.wav $text | jq '.w[]|.w[]|[.t,.d]'
+        
+    There are many, many other possibilities, of course.
+
+  - `soxflags`: Return arguments to `sox` which will create the
+    appropriate input format.  Note that because the `sox`
+    command-line is slightly quirky these must always come *after* the
+    filename or `-d` (which tells `sox` to read from the microphone).
+    You can run live recognition like this:
+    
+        sox -d $(pocketsphinx soxflags) | pocketsphinx -
+
+    or decode from a file named "audio.mp3" like this:
+    
+        sox audio.mp3 $(pocketsphinx soxflags) | pocketsphinx -
+        
+By default only errors are printed to standard error, but if you want
+more information you can pass `-loglevel INFO`.  Partial results are
+not printed, maybe they will be in the future, but don't hold your
+breath.
+
+Programming
+-----------
+
+For programming, see the [examples directory](./examples/) for a
+number of examples of using the library from C and Python.  You can
+also read the [documentation for the Python
+API](https://pocketsphinx.readthedocs.io) or [the C
+API](https://cmusphinx.github.io/doc/pocketsphinx/)
+
+Development
+-----------
+
+There isn't quite enough information here for potential developers,
+but here's a start.  The C API documentation is built with Doxygen,
+which will be auto-detected when running CMake.  If you have it
+installed, you can build the docs with:
+
+    cmake --build build --target docs
+
+There is a suite of regression and unit tests, run with:
+
+    cmake --build build --target check
+
+You can run it somewhat faster with:
+
+    cd build && ctest -j4  # or however many CPUs you want to use
+
+Somewhat confusingly (because readthedocs needs it, I think?), the
+Python API documentation is in the `docs` directory which has nothing
+to do with the abovementioned CMake target.  These use some extra
+dependencies named in `docs/requirements.txt`.  To build the
+documentation first set up a virtual environment, then run `make` in
+the `docs` directory, with one of its many targets (`html` here will
+make multi-page HTML documentation):
+
+    python3 -m venv ~/ve_pocketsphinx
+    . ~/ve_pocketsphinx/bin/activate
+    pip install -r docs/requirements.txt
+    make -C docs html
+
+There are also Python regression tests, of course, which for some
+reason require `memory_profiler`:
+
+    python3 -m venv ~/ve_pocketsphinx
+    . ~/ve_pocketsphinx/bin/activate
+    pip install -e .
+    pip install memory_profiler
+    pytest
+
+Most, but not all of the release process is managed with GitHub
+Actions, namely the "Release" and "Update API Documentation"
+workflows.  The notable exception here is updating the version, which
+is done with [Bump My
+Version](https://github.com/callowayproject/bump-my-version).
+
+Also, the [Read The Docs](https://pocketsphinx.readthedocs.io) pages
+must be updated manually, it seems (maybe this will be fixed soon).
+
+AUTHORS
+-------
+
+PocketSphinx is ultimately based on `Sphinx-II` which in turn was
+based on some older systems at Carnegie Mellon University, which were
+released as free software under a BSD-like license thanks to the
+efforts of Kevin Lenzo.  Much of the decoder in particular was written
+by Ravishankar Mosur (look for "rkm" in the comments), but various
+other people contributed as well, see [the AUTHORS file](./AUTHORS)
+for more details.
+
+David Huggins-Daines (the author of this document) is
+responsible for creating `PocketSphinx` which added
+various speed and memory optimizations, fixed-point computation, JSGF
+support, portability to various platforms, and a somewhat coherent
+API.  He then disappeared for a while.
+
+Nickolay Shmyrev took over maintenance for quite a long time
+afterwards, and a lot of code was contributed by Alexander Solovets,
+Vyacheslav Klimkov, and others.
+
+Currently this is maintained by David Huggins-Daines again.

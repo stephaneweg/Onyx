@@ -9,6 +9,10 @@
 #              when set, it is the only one asked
 # url_key      its key, if it wants one
 # character    Pocket's character: 0 serious, 1 calm, 2 warm, 3 playful, 4 mischievous
+# voice        on: Pocket speaks aloud with Mistral's voices (the Mistral key is needed); off: silent
+# voice_fr     its French voice: voice_589 (Léa), fr_marie (Marie, with Pocket's moods), voice_3137 (Manon), voice_3141 (Camille)
+# voice_en     its English voice: en_paul (Paul, with the moods), gb_oliver, gb_jane, voice_3150 (James)... (Pocket > Voice and Listening)
+# listen       on: Pocket waits for "dis Pocket" in the background (`pocketqi --tray`, its icon in the menu bar)
 provider = mistral
 mistral_key =
 groq_key =
@@ -16,3 +20,7 @@ model =
 url =
 url_key =
 character = 0
+voice = on
+voice_fr = voice_589
+voice_en = en_paul
+listen = off

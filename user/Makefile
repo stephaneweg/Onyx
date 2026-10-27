@@ -595,19 +595,39 @@ mail.elf: Apps/mail/main.cpp $(wildcard Apps/mail/*.h) $(wildcard Libs/mail/*.h)
 # ported): a newlib app as Courier (FreeType's text through uikit, mbedTLS for https:// -- NetKit's http.hpp over
 # ../tls/onyx_tls.hpp), Onyx BASIC's compiler and VM built in for its skills, PocketQI's own C cores (core/: the LLM's
 # protocol, the moods, the face) compiled as C; Notes', the Clock's, the Calendar's and Cardfile's models for its native
-# skills (Apps/pocketqi/natives.h: Pocket writes in Onyx's own apps), PrinterKit for its printing.
+# skills (Apps/pocketqi/natives.h: Pocket writes in Onyx's own apps), PrinterKit for its printing, AudioKit for its voice
+# and the microphone; its ear in the background (`pocketqi --tray`): PocketQI's listening (core/pocket_ecoute.c), its
+# "dis Pocket" spotted by PocketSphinx 5.1.1 (third_party/pocketsphinx-5.1.1, BSD: its sources unchanged, Onyx's
+# config.h in onyx/, built here into Apps/pocketqi/obj/libpocketsphinx.a), the sentence sent to Voxtral in Ogg Opus
+# (core/pocket_son.c over libopus, third_party/opus-1.5.2/libopus.a: Libs/av builds it).
 PQI_MBEDTLS ?= ../third_party/mbedtls-3.6.3
-PQI_CORE = Apps/pocketqi/core/groq_proto.o Apps/pocketqi/core/pocket_humeur.o Apps/pocketqi/core/pocket_visage.o
+PQI_OPUS = ../third_party/opus-1.5.2
+PS_DIR = ../third_party/pocketsphinx-5.1.1
+PS_SRCS = $(wildcard $(PS_DIR)/src/*.c $(PS_DIR)/src/util/*.c $(PS_DIR)/src/fe/*.c $(PS_DIR)/src/feat/*.c $(PS_DIR)/src/lm/*.c \
+		     $(PS_DIR)/src/common_audio/signal_processing/*.c $(PS_DIR)/src/common_audio/vad/*.c)
+PS_OBJ = $(patsubst $(PS_DIR)/src/%.c,Apps/pocketqi/obj/ps/%.o,$(filter-out %/util/mmio.c %/util/profile.c,$(PS_SRCS))) Apps/pocketqi/obj/ps/psonyx.o
+PS_CF = -DHAVE_CONFIG_H -DNDEBUG -I$(PS_DIR)/onyx -I$(PS_DIR)/onyx/include -I$(PS_DIR)/include -I$(PS_DIR)/src
+Apps/pocketqi/obj/ps/%.o: $(PS_DIR)/src/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(NL_CFLAGS) -O3 -fno-math-errno -w $(PS_CF) -c $< -o $@
+Apps/pocketqi/obj/ps/psonyx.o: $(PS_DIR)/onyx/psonyx.c
+	@mkdir -p $(dir $@)
+	$(CC) $(NL_CFLAGS) -O3 -w $(PS_CF) -c $< -o $@
+Apps/pocketqi/obj/libpocketsphinx.a: $(PS_OBJ)
+	rm -f $@
+	$(AR) rcs $@ $(PS_OBJ)
+PQI_CORE = Apps/pocketqi/core/groq_proto.o Apps/pocketqi/core/pocket_humeur.o Apps/pocketqi/core/pocket_visage.o \
+	   Apps/pocketqi/core/pocket_ecoute.o Apps/pocketqi/core/pocket_eveil.o Apps/pocketqi/core/pocket_kws.o Apps/pocketqi/core/pocket_son.o
 Apps/pocketqi/core/%.o: Apps/pocketqi/core/%.c $(wildcard Apps/pocketqi/core/*.h)
-	$(CC) $(NL_CFLAGS) -fno-math-errno -c $< -o $@
+	$(CC) $(NL_CFLAGS) -fno-math-errno -I$(PS_DIR)/onyx/include -I$(PS_DIR)/include -I$(PQI_OPUS)/include -c $< -o $@
 PQI_NATIVE = Apps/notes/notesmodel.cpp Apps/clock/alarms.cpp Apps/clock/clocktime.cpp
 pocketqi.elf: Apps/pocketqi/main.cpp $(wildcard Apps/pocketqi/*.h) $(PQI_CORE) $(PQI_NATIVE) Apps/notes/notesmodel.h Apps/clock/alarms.h Apps/clock/clocktime.h \
-	      Apps/calendar/model.h Apps/calendar/agendafiles.h Apps/cardfile/model.h lib/printerkit.imp.a Kits/printerkit/printerkit.h Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
+	      Apps/calendar/model.h Apps/calendar/agendafiles.h Apps/cardfile/model.h lib/printerkit.imp.a Kits/printerkit/printerkit.h lib/audiokit.imp.a Apps/pocketqi/obj/libpocketsphinx.a Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp \
 	      Libs/basic/bas.h Libs/basic/basint.h Libs/basic/basjit.h Libs/basic/basnum.h Libs/basic/basfont.h Kits/netkit/http.hpp Libs/tls/onyx_tls.hpp \
 	      lib/fontkit.imp.a Kits/fontkit/uikitface.h lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o Runtime/user.ld Kits/appkit/appkit.h
 	$(CXX) $(NL_CXXFLAGS) -fno-math-errno -IKits/fontkit -I$(FT_SRC)/include -I$(PQI_MBEDTLS)/include $(NL_LDFLAGS) Runtime/libc/crt0libc.o Runtime/libc/onyx_syscalls.o $< \
-	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp $(PQI_CORE) $(PQI_NATIVE) lib/printerkit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a \
-	       -L$(PQI_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lstdc++ -lm -o $@
+	       Libs/basic/bascomp.cpp Libs/basic/basvm.cpp Libs/basic/basnum.cpp Libs/basic/basbax.cpp $(PQI_CORE) $(PQI_NATIVE) lib/printerkit.imp.a lib/audiokit.imp.a lib/uikit.imp.a lib/filekit.imp.a lib/systemkit.imp.a lib/netkit.imp.a lib/fontkit.imp.a \
+	       Apps/pocketqi/obj/libpocketsphinx.a $(PQI_OPUS)/libopus.a -L$(PQI_MBEDTLS)/library -lmbedtls -lmbedx509 -lmbedcrypto -lstdc++ -lm -o $@
 
 # Telegram, the instant messenger in the way of Windows Live Messenger (Apps/telegram: docs/04 "Telegram"): a newlib app as
 # Mail (FreeType's text through uikit), its own MTProto 2.0 (tl.h, mtproto.h, client.h) on mbedTLS's cryptography, the API's
@@ -978,6 +998,7 @@ BinUtils/basic.elf: Libs/basic/runtime.cpp Libs/basic/libbasic.a lib/uikit.imp.a
 
 clean:
 	rm -f *.elf *.o Kits/fontkit/*.o Kits/fontkit/*.a Libs/zlib/*.o Libs/zlib/*.a Runtime/libc/*.o Libs/basic/*.o Libs/basic/*.a Apps/pocketqi/core/*.o $(KPLUG_ELFS) Emulators/gb/*.o Emulators/gb/*.a Emulators/gba/*.o Emulators/gba/*.a Emulators/nes/*.o Emulators/nes/*.a Emulators/snes/*.o Emulators/snes/*.a Emulators/n64/*.o Emulators/n64/*.a Emulators/gc/*.o Emulators/gc/*.a Emulators/nds/*.o Emulators/nds/*.a Libs/v3d/*.o Libs/v3d/*.a Libs/gpucomp/*.o Libs/gpucomp/*.a BinUtils/basic.elf
+	rm -rf Apps/pocketqi/obj
 	rm -f Kits/uikit/*.o Kits/uikit/*.a
 	rm -rf lib
 	rm -rf Apps/pdf/obj Apps/koton/obj Apps/media/obj
