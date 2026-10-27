@@ -367,6 +367,7 @@ sur le Pi et le résultat attendu.
   Pi OS, taille des binaires / de l'image) ; un schéma d'architecture ; 2 ou 3 images de plus. Préparé
   dans **`docs/programmez/`** : `points-cles.md` (le résumé chiffré, le préchargement, un protocole de
   comparaison avec Pi OS, à mesurer), `architecture.svg/.png`, les captures du mode pocket (640 × 480).
-  Les tokens viennent des transcriptions de Claude Code sur le PC (du 7 au 27 octobre seulement). Restent :
-  les captures du mode bureau (le Pi, mis en 3840 × 2160, n'est pas revenu sur le réseau), la photo, les
-  mesures face à Pi OS.
+  Les tokens viennent des transcriptions de Claude Code sur le PC (du 7 au 27 octobre seulement). Puis le même
+  jour : le Pi 5 dans le schéma ; les captures du bureau en 1280 × 1024 (la 4K a fait redémarrer le Pi en
+  boucle) ; mesuré sur le Pi : 33 s du `reboot` au bureau, Letters prête en 0,3 s, le tableur en 0,8 s,
+  Koton en 2,9 s. Restent : la photo, les mesures face à Pi OS.

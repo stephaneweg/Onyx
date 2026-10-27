@@ -50,9 +50,28 @@ FAT32.
 
 ## Les performances face à Raspberry Pi OS
 
-Ce qu'on peut déjà affirmer : moins de **30 secondes** entre la mise sous tension et un bureau prêt,
-Wi-Fi connecté et accessible à distance. Il n'existe pas encore de comparaison mesurée sur le même Pi.
-Voici un protocole proposé, avec la même machine et deux cartes :
+### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
+
+- **Démarrage** : **33 s** entre la commande `reboot` et le bureau complet (barre de menus, dock, Wi-Fi
+  connecté, accès à distance ouvert dès 31 s). Ce temps comprend le firmware du Pi. Il s'agit d'un seul
+  essai, en redémarrage et non en mise sous tension.
+- **Lancement des applications**, du lancement à l'app prête, la mémoire du processus stable (trois
+  essais, depuis la carte SD, sans préchargement) :
+
+| Application | À vide | Avec un document | Mémoire |
+|---|---|---|---|
+| Letters (traitement de texte) | **0,3 s** | **0,3 s** (`letters-tour.rtf`, avec images) | 8 à 12 Mo |
+| Sheet (tableur) | **0,8 s** | **0,8 s** (`cafe-2026.xlsx`, 3 feuilles, un graphique) | 9 à 11 Mo |
+| Koton (le studio de musique) | **2,9 s** | — | 87 Mo (les sons) |
+
+  Ces temps comprennent l'aller-retour réseau de la commande (environ 0,2 s). Le relevé se fait toutes
+  les 0,2 s environ, d'où une précision de l'ordre du quart de seconde. Lire Letters depuis la carte
+  prend 31 ms au noyau (576 Ko) : les kits qu'elle utilise sont déjà en mémoire, partagés avec le bureau.
+
+### Une comparaison avec Raspberry Pi OS (à faire)
+
+Il n'existe pas encore de comparaison mesurée sur le même Pi. Voici un protocole proposé, avec la même
+machine et deux cartes :
 
 1. **Démarrage** : chronométrer de la mise sous tension au bureau utilisable (dix essais, la médiane).
 2. **Lancement d'une app** : le traitement de texte et le tableur (Letters / Sheet face à LibreOffice
@@ -80,4 +99,6 @@ nouvelle version préchargée à nouveau.
   serveurs graphiques, les kits, les apps, l'UIKit propre à chaque serveur, le préchargement).
 - `pocket-*.png` : le mode pocket (640 × 480, l'écran d'une console de poche) : le lanceur, le
   traitement de texte, le tableur. La même application, sans recompilation, que sur le bureau.
-- `bureau-*.png` : le mode bureau.
+- `bureau-*.png` : le mode bureau, en 1280 × 1024 sur le Pi : Jet affichant programmez.com
+  (`bureau-jet.png`) ; Letters, le tableur et le terminal, où `ps` montre les processus du système
+  (`bureau-bureautique.png`) ; 3DForge, le logiciel de CAO, avec une pièce d'exemple (`bureau-3dforge.png`).
