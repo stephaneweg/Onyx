@@ -14,6 +14,7 @@
 '   MOOD:     l'humeur (le visage) : "60 40" (valence, eveil) ou "joyeux 2" a ecrire, "60 40 joyeux 2" a lire :
 '             voir SetMood.
 '   LLM:      une phrase pour le LLM, traitee a la fin de l'app comme si on l'avait dite : voir SendLLM.
+'   FAIL:     l'app n'a pas pu faire ce qu'on lui demandait, et pourquoi : voir Fail.
 '   SCREEN:   l'ecran de Pocket : une scene a ecrire, sa taille a lire ; TOUCH: le dernier toucher : voir ScreenBegin.
 '   Dates : AAAA-MM-JJ ; heures : HH:MM (le shell les a verifiees avant de lancer l'app).
 ' Licence MIT.
@@ -1243,6 +1244,22 @@ SUB SendLLM (prompt$)
     OPEN "LLM:" FOR OUTPUT AS #f
     PRINT #f, prompt$
     CLOSE #f
+END SUB
+
+' ---- un echec : peripherique FAIL: -------------------------------------------------------------------------------
+' Fail "Je n'ai pas trouve de rendez-vous chez le dentiste." : l'app n'a pas pu faire ce qu'on lui demandait. A la place
+' d'un Say : la raison part au LLM a la fin de l'app, qui trouve une autre solution avec la personne (une question, un
+' autre jour...) ou la lui dit. Ecrire une phrase qu'on peut dire telle quelle : elle est dite quand le LLM ne peut pas
+' la recevoir (un noyau sans FAIL:, une tache du cron, une app qui a lu des mails : rien de ceux-ci ne part au LLM).
+SUB Fail (raison$)
+    IF FILEEXISTS("FAIL:") THEN
+        f = FREEFILE
+        OPEN "FAIL:" FOR OUTPUT AS #f
+        PRINT #f, raison$
+        CLOSE #f
+    ELSE
+        Say raison$
+    END IF
 END SUB
 
 ' ---- l'ecran de Pocket : peripheriques SCREEN: et TOUCH: (Pocket dessine, system/modules/dessin) -------------------

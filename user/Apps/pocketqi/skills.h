@@ -13,6 +13,8 @@
 //   SAY:        the lines written are said (shown in the conversation)
 //   MOOD:       "60 40" (valence, arousal) or "joyeux 2" written: the face; read: "60 40 joyeux 2"
 //   LLM:        a sentence for the LLM, handled as if typed once the skill ends (SendLLM)
+//   FAIL:       the skill could not, and why (Fail): SkillIo::fail, the second turn "echec"; not for the cron (galo.bi
+//               says it then)
 //   ASKINFO:    FILEEXISTS: true when it runs for the LLM (askinfo: what it says goes back to the LLM)
 //   CRON:       FILEEXISTS: true when the cron runs it; OPEN "CRON:STOP" ends its task
 //   [METHOD ]http(s)://...   the web: FOR INPUT reads the answer (GET), FOR OUTPUT writes the body sent at CLOSE
@@ -72,6 +74,9 @@ struct SkillIo
 	virtual bool listen (std::string &answer) = 0;		// LINE INPUT: the person's answer (false: none in time)
 	virtual void log (const std::string &utf8) = 0;		// a line of the skill's journal (PRINT, the web's requests)
 	virtual const char *lang () = 0;			// "en", "fr"
+	// the skill could not do what it was asked (galo.bi's Fail, FAIL:; a native skill's): a sentence that may be said as
+	// it is; the brain sends it to the LLM (second turn "echec"); else it is said
+	virtual void fail (const std::string &utf8) { say (utf8); }
 };
 
 // ---- the manifests ----------------------------------------------------------------------------------------------
@@ -423,6 +428,14 @@ public:
 			if (!askinfo && !t.empty ()) llm.push_back (t);
 			return true;
 		}
+		if (starts_ci (p, "FAIL:"))
+		{
+			std::string t = from_cp437 (text);
+			for (char &c : t) if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+			t = trim (t);
+			if (!t.empty () && io) io->fail (t);
+			return true;
+		}
 		if (starts_ci (p, "MOOD:"))
 		{
 			if (!askinfo) pocket_humeur_commande (from_cp437 (text).c_str ());
@@ -481,6 +494,7 @@ public:
 		if (starts_ci (p, "RESPONSE:") || starts_ci (p, "STATUS:") || starts_ci (p, "HEADERS:") || starts_ci (p, "MOOD:")
 		    || starts_ci (p, "LLM:") || starts_ci (p, "LANG:")) return true;
 		if (starts_ci (p, "PRINTER:")) return true;
+		if (starts_ci (p, "FAIL:")) return cronStop == 0;	// (the cron: galo.bi's Fail says it)
 		if (starts_ci (p, "MAIL:") || starts_ci (p, "SCREEN:") || starts_ci (p, "TOUCH:")) return false;
 		return file_exists (path (p));
 	}

@@ -92,7 +92,9 @@ typedef struct
 	const char *user;		/* la phrase reconnue (UTF-8), en clair : masquée ici */
 	unsigned max_tokens;		/* 0 : 300 (1024 pour les gpt-oss, qui raisonnent d'abord) */
 	/* second tour après une commande : ce que le modèle a demandé et ce que Pocket a obtenu
-	 * (masqué lui aussi) ; tool_name 0 : premier tour */
+	 * (masqué lui aussi) ; tool_name 0 : premier tour. tool_name « erreur » : un appel refusé par l'hôte, tool_arg
+	 * « app \x1F arg \x1F arg... » (redonné au modèle tel qu'il l'a écrit), tool_result la raison du refus ; « echec » :
+	 * de même, une app qui a tourné mais n'a pas pu (Fail de galo.bi), tool_result sa raison */
 	const char *tool_name, *tool_arg, *tool_result;
 	/* la date et l'heure du jour, en clair (pas une donnée personnelle), ajoutées au prompt système
 	 * avec la consigne de calculer « demain », « dans deux jours »... ; ex. « vendredi 23 octobre

@@ -1,5 +1,6 @@
-/* PocketQI (github.com/stephaneweg/PocketQI, commit 060b797), unchanged but for these two lines: MIT License,
- * Copyright (c) 2026 Stéphane Wegener and the Onyx contributors (docs/LICENSING.md). */
+/* PocketQI (github.com/stephaneweg/PocketQI, commit 060b797, with the second turns « erreur » and « echec » of its
+ * commits 42240ad and 49edb74), unchanged but for these three lines: MIT License, Copyright (c) 2026 Stéphane
+ * Wegener and the Onyx contributors (docs/LICENSING.md). */
 /*
  * groq_proto.c -- Pocket alpha : le protocole de l'API Groq (OpenAI-compatible), sans réseau
  *
@@ -425,6 +426,18 @@ static const char s_tour_ask[] =
 static const char s_tour_resultat[] =
 	"Reponds maintenant a la question avec ce resultat (outcomes avec say), en une ou "
 	"deux phrases, sans nouveau wiki ni askinfo.";
+static const char s_tour_erreur[] =
+	"Les outcomes avant celui-ci ont ete faits, ceux d'apres non. Corrige cet appel (une application et une action "
+	"de la liste, les arguments dans l'ordre et au bon format) et rends seulement ce qui reste a faire, avec un say "
+	"si l'app ne parle pas ; ne parle pas du refus ni de la correction a la personne, c'est entre Pocket et toi. Si "
+	"c'est impossible (pas d'application pour cela, une date qui n'existe pas...), dis-le simplement a la personne en "
+	"une phrase, ou demande-lui ce qui manque avec ask.";
+static const char s_tour_echec[] =
+	"Les outcomes avant celui-ci ont ete faits, ceux d'apres non. Trouve une solution avec la personne : si la raison "
+	"le permet, fais l'appel corrige ; sinon demande-lui ce qu'il faut avec ask (ou des choix a toucher avec un draw), "
+	"ou dis-lui simplement, en une phrase, pourquoi ce n'est pas possible. Ne refais pas le meme appel. Avec ask, "
+	"mets dans la question tout ce qu'il faudra pour refaire l'appel (les noms, les jours, les heures) : tu ne "
+	"reverras pas cette raison.";
 static const char s_tour_resultat_dessin[] =
 	"Si on t'a demande de montrer ou d'afficher, si des donnees a comparer s'y pretent (la "
 	"meteo de plusieurs jours, une liste), ou si c'est un sujet precis (un animal, un lieu, une "
@@ -536,6 +549,8 @@ static const struct { const char *nom, *texte, *role; } s_textes[] =
 	{ "tour_ask", s_tour_ask, "second tour d'un ask : continuer avec la reponse" },
 	{ "tour_resultat", s_tour_resultat, "second tour d'un wiki ou askinfo : repondre avec le resultat" },
 	{ "tour_resultat_dessin", s_tour_resultat_dessin, "le meme, avec un ecran : quand dessiner" },
+	{ "tour_erreur", s_tour_erreur, "second tour d'un appel refuse par Pocket (app, action ou argument) : le corriger" },
+	{ "tour_echec", s_tour_echec, "second tour d'une app qui n'a pas pu (Fail) : trouver une solution avec la personne" },
 };
 #define NTEXTES (sizeof s_textes / sizeof s_textes[0])
 
@@ -1147,12 +1162,34 @@ size_t groq_build_request (const groq_request *req, char *buf, size_t cap, char 
 		 * scène, il recopiait le résumé à la place d'une scène au tour suivant */
 		char *memo = strcmp (req->tool_name, "draw") == 0 ? strchr (ma, '\x1E') : 0;
 		if (memo != 0) *memo++ = '\0';
-		puts_ (&ta, "{\"outcomes\": [{\"app\": ");
-		put_json_string (&ta, req->tool_name);
-		puts_ (&ta, ", \"args\": [");
-		put_json_string (&ta, ma);
-		if (memo != 0) { puts_ (&ta, ", "); put_json_string (&ta, memo); }
-		puts_ (&ta, "]}]}");
+		if (strcmp (req->tool_name, "erreur") == 0 || strcmp (req->tool_name, "echec") == 0)
+		{
+			/* erreur, echec : l'argument est l'appel refusé ou qui a échoué, « app \x1F arg \x1F arg... » ; le modèle le
+			 * revoit tel qu'il l'a écrit */
+			char *s = strchr (ma, '\x1F');
+			if (s != 0) *s++ = '\0';
+			puts_ (&ta, "{\"outcomes\": [{\"app\": ");
+			put_json_string (&ta, ma);
+			puts_ (&ta, ", \"args\": [");
+			for (int k = 0; s != 0; k++)
+			{
+				char *n = strchr (s, '\x1F');
+				if (n != 0) *n++ = '\0';
+				if (k > 0) puts_ (&ta, ", ");
+				put_json_string (&ta, s);
+				s = n;
+			}
+			puts_ (&ta, "]}]}");
+		}
+		else
+		{
+			puts_ (&ta, "{\"outcomes\": [{\"app\": ");
+			put_json_string (&ta, req->tool_name);
+			puts_ (&ta, ", \"args\": [");
+			put_json_string (&ta, ma);
+			if (memo != 0) { puts_ (&ta, ", "); put_json_string (&ta, memo); }
+			puts_ (&ta, "]}]}");
+		}
 		if (ta.full) return 0;
 		puts_ (&o, ",");
 		put_message (&o, "assistant", a);
@@ -1162,7 +1199,24 @@ size_t groq_build_request (const groq_request *req, char *buf, size_t cap, char 
 			       r, sizeof r) == 0 && req->tool_result != 0 && req->tool_result[0] != '\0')
 			return 0;
 		out_t tt = { t, sizeof t, 0, 0 };
-		if (strcmp (req->tool_name, "next") == 0)
+		if (strcmp (req->tool_name, "erreur") == 0)
+		{
+			/* erreur : Pocket a refusé l'appel ; le résultat est la raison (app inconnue, action inconnue, nombre ou
+			 * format des arguments) */
+			puts_ (&tt, "Pocket a refuse cet appel : ");
+			puts_ (&tt, r);
+			puts_ (&tt, "\n");
+			put_texte (&tt, "tour_erreur");
+		}
+		else if (strcmp (req->tool_name, "echec") == 0)
+		{
+			/* echec : l'app a tourné mais n'a pas pu (Fail de galo.bi) ; le résultat est sa raison, une phrase */
+			puts_ (&tt, "L'application n'a pas pu le faire : ");
+			puts_ (&tt, r);
+			puts_ (&tt, "\n");
+			put_texte (&tt, "tour_echec");
+		}
+		else if (strcmp (req->tool_name, "next") == 0)
 		{
 			/* next : le morceau suivant d'un long contenu ; l'argument est « mode : résumé », le résultat le
 			 * dernier passage dit */

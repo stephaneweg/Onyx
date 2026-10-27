@@ -241,8 +241,27 @@ static void do_agenda (const groq_outcome &o, SkillIo *io)
 	{
 		long d = act == "delete" && !arg (o, 2).empty () ? parse_day (arg (o, 2)) : -1;
 		int i = cal_find (arg (o, 1), d);
-		if (i == -1) { io->say (TR ("I find no appointment like that in the agenda.")); return; }
-		if (i == -2) { io->say (TR ("Several appointments match: which one?")); return; }
+		// (none, or several: io->fail, the brain asks the LLM, which finds out with the person -- the candidates said)
+		if (i == -1) { io->fail (TR ("I find no appointment like that in the agenda.")); return; }
+		if (i == -2)
+		{
+			int bs = 0, today = cal_today ();
+			for (int pass = 0; pass < 2; pass++)
+			{
+				std::string list;
+				for (int k = 0; k < calm::g_nev; k++)
+				{
+					const calm::Event &e = calm::g_ev[k];
+					int dd = e.start / 1440;
+					if (d >= 0 ? dd != d : (dd < today && e.freq == calm::RP_NONE)) continue;
+					int sc = match_score (e.title, arg (o, 1));
+					if (pass == 0) { if (sc > bs) bs = sc; continue; }
+					if (sc == bs) list += (list.empty () ? "" : "; ") + event_said (e, e.start) + ", " + spoken_day (dd);
+				}
+				if (pass == 1) io->fail (fmt (TR ("Several appointments match: %s. Which one?"), list));
+			}
+			return;
+		}
 		calm::Event e = calm::g_ev[i];
 		if (act == "delete")
 		{

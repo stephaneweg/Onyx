@@ -7,7 +7,9 @@
 //   system prompt (core/groq_proto.c), the last exchanges and the skills' manifests -> {"outcomes": [...]} run in
 //   order: say, humeur (the face), geste, retenir (the memory), wiki (Wikipedia, then a second turn), askinfo (a skill
 //   run for the LLM, then a second turn), ask (a question to the person, then a second turn), next / reprendre (a
-//   long content in pieces), maketext, cron (a skill's action run again later), and the skills (skills.h).
+//   long content in pieces), maketext, cron (a skill's action run again later), and the skills (skills.h); a skill
+//   refused by its manifest, or that could not (Fail), goes back to the LLM too (second turns "erreur", "echec").
+//   Three second turns at most a question, never the same call twice (runOutcomes, as PocketQI's since 2026-10-27).
 //
 // The memory (<home>/etc/memoire.txt, "name = value") never leaves the device: the LLM only sees markers ({nom}),
 // replaced back before Pocket speaks (groq_mask / groq_unmask). The conversation is forgotten after 10 minutes.
@@ -68,6 +70,9 @@ public:
 	bool listen (std::string &a) override { ui->state (VISAGE_ECOUTE); bool r = ui->listen (a, 60); ui->state (VISAGE_REFLECHIT); return r; }
 	void log (const std::string &t) override { ui->log ("[skill] " + t); }
 	const char *lang () override { return ui->lang (); }
+	// a skill that could not do it (galo.bi's Fail, a native skill's): kept for runOutcomes, the second turn "echec"
+	std::string lastFail;
+	void fail (const std::string &why) override { lastFail += (lastFail.empty () ? "" : " ") + why; }
 
 	// ---- the memory -------------------------------------------------------------------------------------
 	std::vector<std::pair<std::string, std::string>> mem;
@@ -507,7 +512,9 @@ public:
 			else if (s)
 			{
 				ui->state (VISAGE_REFLECHIT);
+				lastFail.clear ();
 				if (skill_run (home, *s, o, this, err, 0, false, &stop) != 0) ui->note (NOTE_ERROR, j.app + ": " + err);
+				if (!lastFail.empty ()) { saidAll (lastFail); lastFail.clear (); }	// (Fail, without the LLM: said)
 			}
 			ui->state (VISAGE_VEILLE);
 			if (stop || j.every == 0) cron.erase (cron.begin () + (long) i);
@@ -521,8 +528,30 @@ public:
 	// ---- the outcomes, in order ---------------------------------------------------------------------------------
 	std::vector<std::string> llmQueue;		// the skills' SendLLM, handled once the answer is done
 
-	void runOutcomes (const char *text, groq_reply &r, groq_predicate *p, unsigned &np, char *sent, size_t nsent, int depth)
+	// The second turns of a question (wiki, askinfo, ask, erreur: a call refused, with why, and echec: a skill that could
+	// not, Fail; a result sent back to the LLM, which answers again), as PocketQI's: TOURS_MAX at most, and never the
+	// same call twice (the same skill, the same arguments) while the person has said nothing new: no loop
+	enum { TOURS_MAX = 3 };
+	std::vector<std::string> toursDone;		// the second turns of the question ("askinfo [meteo | week]")
+	bool tourOk (int tours, const std::string &call)
 	{
+		if (tours >= TOURS_MAX) { ui->log ("(" + call + " ignored: " + num ((long) tours) + " second turns already)"); return false; }
+		for (auto &c : toursDone) if (c == call) { ui->log ("(" + call + " ignored: already done for this question)"); return false; }
+		toursDone.push_back (call);
+		return true;
+	}
+	static std::string callOf (const groq_outcome &o, const char *sep)
+	{
+		std::string s;
+		for (unsigned k = 0; k < o.nargs; k++) s += (k ? sep : "") + std::string (o.args[k]);
+		return s;
+	}
+
+	void runOutcomes (const char *text, groq_reply &r, groq_predicate *p, unsigned &np, char *sent, size_t nsent,
+			  int tours,			// the second turns done for this question (0: a new one)
+			  bool askOk = true)		// false during a long content (next) and after an ask left unanswered
+	{
+		if (tours == 0) toursDone.clear ();
 		// a skill run speaks for itself: the say of the same answer are kept aside, and said only when they do not
 		// repeat what the skills said (the model often adds "Appointment added", a double of the skill's own)
 		bool appRun = false, remembered = false, appSpoke = false;
@@ -573,14 +602,14 @@ public:
 			}
 			else if (!strcmp (o.app, "wiki"))
 			{
-				if (depth & 2) continue;
+				if (!tourOk (tours, "wiki [" + callOf (o, " | ") + "]")) continue;
 				std::string topic = o.nargs > 0 ? o.args[0] : "", result;
 				ui->note (NOTE_APP, std::string ("wiki: ") + topic);
 				wiki (topic.c_str (), result);
 				np = preds (p);
 				static groq_reply r2;
 				if (!ask (text, "wiki", topic.c_str (), result.c_str (), p, np, r2, sent, nsent)) { sayTr (TRN ("I cannot find the answer.")); return; }
-				runOutcomes (text, r2, p, np, sent, nsent, depth | 2);
+				runOutcomes (text, r2, p, np, sent, nsent, tours + 1, askOk);
 				return;			// (the second answer takes the place of the rest of this one)
 			}
 			else if (!strcmp (o.app, "cron")) { noteApp (o); cronOutcome (o); }
@@ -601,7 +630,7 @@ public:
 			else if (!strcmp (o.app, "askinfo"))
 			{
 				// a skill run for the LLM: what it would say goes back as data, then a second turn
-				if (depth & 2) continue;
+				if (!tourOk (tours, "askinfo [" + callOf (o, " | ") + "]")) continue;
 				static groq_outcome o2;
 				memset (&o2, 0, sizeof o2);
 				snprintf (o2.app, sizeof o2.app, "%s", o.nargs > 0 ? o.args[0] : "");
@@ -618,6 +647,7 @@ public:
 					{
 						Brain *b; std::string *info;
 						void say (const std::string &t) override { if (!info->empty ()) *info += " "; *info += t; }
+						void fail (const std::string &t) override { if (!info->empty ()) *info += " "; *info += "(l'app n'a pas pu : " + t + ")"; }
 						bool listen (std::string &) override { return false; }
 						void log (const std::string &t) override { b->log (t); }
 						const char *lang () override { return b->lang (); }
@@ -628,7 +658,7 @@ public:
 				np = preds (p);
 				static groq_reply r2;
 				if (!ask (text, "askinfo", what.c_str (), info.c_str (), p, np, r2, sent, nsent)) { sayTr (TRN ("I cannot find the answer.")); return; }
-				runOutcomes (text, r2, p, np, sent, nsent, depth | 2);
+				runOutcomes (text, r2, p, np, sent, nsent, tours + 1, askOk);
 				return;
 			}
 			else if (!strcmp (o.app, "maketext"))
@@ -643,14 +673,19 @@ public:
 			else if (!strcmp (o.app, "ask"))
 			{
 				// a question to the person: said, then the answer typed goes to the LLM in a second turn
-				if (depth & 1) continue;
+				if (!askOk) { ui->log (tours ? "(ask ignored: no answer to the previous one)" : "(ask ignored: a content in progress)"); continue; }
 				std::string question = o.args[0], answer;
+				// (no more turns: the question said all the same, without listening; the answer will come as a sentence)
+				if (!tourOk (tours, "ask [" + callOf (o, " | ") + "]")) { saidAll (question); continue; }
 				saidAll (question);
 				if (!listen (answer)) answer.clear ();
 				np = preds (p);
 				static groq_reply r2;
 				if (!ask (text, "ask", question.c_str (), answer.c_str (), p, np, r2, sent, nsent)) { sayTr (TRN ("I cannot find the answer.")); return; }
-				runOutcomes (text, r2, p, np, sent, nsent, depth | 1);
+				// (without an answer, no new question; with one, a call already made may be made again: "which town?",
+				// "Lyon", then the same weather, which now knows where)
+				if (!answer.empty ()) toursDone.clear ();
+				runOutcomes (text, r2, p, np, sent, nsent, tours + 1, askOk && !answer.empty ());
 				return;
 			}
 			else
@@ -659,7 +694,26 @@ public:
 				skillsCheck ();
 				const Skill *s = skills_check (skills, o, why);
 				for (unsigned k = 0; k < o.nargs; k++) args += (k ? " " : "") + std::string (o.args[k]);
-				if (!s) { ui->log ("app refused: " + why); sayTr (TRN ("I cannot do that.")); continue; }
+				if (!s)
+				{
+					// the LLM sees its call again and why it was refused, and corrects it (second turn "erreur", which
+					// takes the place of the rest of this answer); no more turns, or the same call refused again: said
+					ui->log ("app refused: " + why);
+					std::string call = o.app;
+					for (unsigned k = 0; k < o.nargs; k++) call += std::string ("\x1F") + o.args[k];
+					if (tourOk (tours, "erreur [" + std::string (o.app) + " | " + callOf (o, " | ") + "]"))
+					{
+						np = preds (p);
+						static groq_reply r2;
+						if (ask (text, "erreur", call.c_str (), why.c_str (), p, np, r2, sent, nsent))
+						{
+							runOutcomes (text, r2, p, np, sent, nsent, tours + 1, askOk);
+							return;
+						}
+					}
+					sayTr (TRN ("I cannot do that."));
+					continue;
+				}
 				ui->note (NOTE_APP, s->id + " " + args);
 				noteApp (o);
 				std::string err;
@@ -667,6 +721,7 @@ public:
 				ui->state (VISAGE_REFLECHIT);
 				std::string keepLang = speakLang;
 				speakLang = s->native ? ui->lang () : "fr";		// (the native skills speak the system's language, the BASIC ones French)
+				lastFail.clear ();
 				int rc = skill_run (home, *s, o, this, err, &llmQueue);
 				speakLang = keepLang;
 				if (rc != 0)
@@ -677,6 +732,32 @@ public:
 					saidAll (b);
 				}
 				if (said.size () != before) appSpoke = true;
+				// Fail: the skill could not; the LLM sees the call and why, and finds a way with the person (second turn
+				// "echec", which takes the place of the rest of this answer); no more turns: the reason is said, and not
+				// the say kept aside ("It is deleted")
+				if (!lastFail.empty ())
+				{
+					std::string reason = lastFail;
+					lastFail.clear ();
+					ui->note (NOTE_ERROR, s->id + ": " + reason);
+					std::string call = o.app;
+					for (unsigned k = 0; k < o.nargs; k++) call += std::string ("\x1F") + o.args[k];
+					if (tourOk (tours, "echec [" + std::string (o.app) + " | " + callOf (o, " | ") + "]"))
+					{
+						np = preds (p);
+						static groq_reply r2;
+						if (ask (text, "echec", call.c_str (), reason.c_str (), p, np, r2, sent, nsent))
+						{
+							runOutcomes (text, r2, p, np, sent, nsent, tours + 1, askOk);
+							return;
+						}
+					}
+					speakLang = s->native ? ui->lang () : "fr";	// (the reason: in the skill's language)
+					saidAll (reason);
+					speakLang = keepLang;
+					later.clear ();
+					appSpoke = true;
+				}
 			}
 		}
 		// a say kept aside is dropped only when it repeats what the skills said (half its words of 4 letters and more)
@@ -761,7 +842,7 @@ public:
 			np = preds (p);
 			std::string arg = st.mode + " : " + st.summary;
 			if (!ask (text.c_str (), "next", arg.c_str (), st.last.c_str (), p, np, rn, sent, sizeof sent)) { storyKeep (st); break; }
-			runOutcomes (text.c_str (), rn, p, np, sent, sizeof sent, 1);
+			runOutcomes (text.c_str (), rn, p, np, sent, sizeof sent, 0, false);	// (no ask during a long content)
 			if (!next.active) storyDrop (st.summary);
 			else if (next.mode.empty ()) next.mode = st.mode;
 		}
@@ -806,7 +887,9 @@ public:
 		ui->note (NOTE_APP, "PocketQI Studio: " + s->id + all);
 		speakLang = s->native ? ui->lang () : "fr";
 		ui->state (VISAGE_REFLECHIT);
+		lastFail.clear ();
 		if (skill_run (home, *s, o, this, err, &llmQueue) != 0) ui->note (NOTE_ERROR, s->id + ": " + err);
+		if (!lastFail.empty ()) { saidAll (lastFail); lastFail.clear (); }	// (Fail, without the LLM: said)
 		llmQueue.clear ();
 		ui->state (VISAGE_VEILLE);
 	}

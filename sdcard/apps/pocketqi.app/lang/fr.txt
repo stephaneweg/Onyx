@@ -118,7 +118,7 @@ Nothing in the agenda for those days.	Rien dans l'agenda pour ces jours-là.
 One appointment:	Un rendez-vous :
 %s appointments:	%s rendez-vous :
 I find no appointment like that in the agenda.	Je ne trouve pas ce rendez-vous dans l'agenda.
-Several appointments match: which one?	Plusieurs rendez-vous correspondent : lequel ?
+Several appointments match: %s. Which one?	Plusieurs rendez-vous correspondent : %s. Lequel ?
 Deleted from the agenda: %s, %s.	Supprimé de l'agenda : %s, %s.
 Moved: %s, %s.	Déplacé : %s, %s.
 The tasks could not be written on the card.	Les tâches n'ont pas pu être écrites sur la carte.
