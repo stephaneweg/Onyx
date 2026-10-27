@@ -5,8 +5,10 @@
 // BASIC, the skills (the agenda, the to-do list, the shopping list, the weather...), do the work. The window: the
 // face on top, the conversation, the field to type in (and, while the conversation is empty, a few questions to try).
 // Pocket's mind runs on a thread of its own (brain.h: the LLM, the outcomes, the skills -- skills.h -- and the
-// network -- net.h); it tells this window what to show through kapi_post. Not in this version: the microphone and
-// the wake word (Onyx has no sound input yet), Pocket's voice, its drawings, the mail and the printing skills.
+// network -- net.h); it tells this window what to show through kapi_post. Pocket speaks with Mistral's voices
+// (voice.h), on a third thread: the brain goes on meanwhile, and waits for the voice only before listening.
+// `pocketqi --tray`: Pocket in the background, its icon in the menu bar, its ear on the microphone -- "dis Pocket" --
+// and its face in a small popup while it is spoken to (tray.h, listen.h). Not in this version: its drawings.
 //
 // Its files: SD:/apps/pocketqi.app/config.ini (the settings and the API keys: Pocket > Settings), etc/memoire.txt
 // (what Pocket remembers), etc/cron.txt, etc/histoires.txt, apps/<skill>/ (the skills and their data), lib/galo.bi
@@ -33,6 +35,8 @@
 #include "systemkit/systemkit.h"
 #include "fontkit/uikitface.h"
 #include "Apps/pocketqi/brain.h"
+#include "Apps/pocketqi/voice.h"
+#include "uikit/checkbox.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -48,7 +52,8 @@ static std::string g_job, g_answer;		// (written before the event is set: the br
 static volatile bool g_busy, g_quit;		// Pocket works on a sentence; the window closes
 static bool        g_listening;			// Pocket waits for the answer to its question
 static int         g_bgState = VISAGE_VEILLE;	// what Pocket does (the face), the speaking aside
-static unsigned    g_speakUntil;		// ticks: the eyes bob while a sentence is "said"
+static unsigned    g_speakUntil;		// ticks: the eyes bob while a sentence is "said" (no voice)
+static volatile bool g_talking;			// the voice is heard (voice.h, the speaker's thread)
 static std::string g_home;			// SD:apps/pocketqi.app
 
 class FaceView;
@@ -277,14 +282,21 @@ public:
 };
 
 // ---- the brain's messages, posted to the main thread -------------------------------------------------------------
-enum { M_SAY, M_NOTE, M_STATE, M_MOOD, M_LISTEN, M_DONE, M_LOG };
+enum { M_SAY, M_NOTE, M_STATE, M_MOOD, M_LISTEN, M_DONE, M_LOG, M_TALK, M_WAKE, M_HIDE, M_EARERR };
 struct Msg { int type, a, b; std::string text; };
+
+static bool g_tray;				// `pocketqi --tray`: Pocket in the background (tray.h)
+static void tray_msg (Msg *m);
+static bool tray_listen (std::string &answer, int seconds);
+static void tray_apply (const Config &c);
+enum { TRAY_MSG_RELOAD = 1, TRAY_MSG_QUIT = 2 };
+#define TRAY_SERVICE "pocketqi.tray"
 
 static void face_state (int e)
 {
 	if (!g_face) return;
 	if (e != VISAGE_PARLE) g_bgState = e;
-	bool speaking = (int) (g_speakUntil - kapi_get_ticks ()) > 0;
+	bool speaking = g_talking || (int) (g_speakUntil - kapi_get_ticks ()) > 0;
 	pocket_visage_etat (&g_face->v, speaking ? VISAGE_PARLE : g_bgState);
 }
 
@@ -301,13 +313,18 @@ static const char *gesture_word (const std::string &g)
 static void on_msg (void *ctx, long)
 {
 	Msg *m = (Msg *) ctx;
+	if (g_tray) { tray_msg (m); delete m; return; }
 	switch (m->type)
 	{
 	case M_SAY:
 		g_chat->add (E_POCKET, m->text);
-		g_speakUntil = kapi_get_ticks () + (unsigned) (40 + (m->text.size () * 4 > 460 ? 460 : m->text.size () * 4));
-		face_state (VISAGE_PARLE);
+		if (!m->a)				// (no voice: the eyes bob a moment, as long as the sentence)
+		{
+			g_speakUntil = kapi_get_ticks () + (unsigned) (40 + (m->text.size () * 4 > 460 ? 460 : m->text.size () * 4));
+			face_state (VISAGE_PARLE);
+		}
 		break;
+	case M_TALK: g_talking = m->a != 0; face_state (g_bgState); break;
 	case M_NOTE:
 		g_chat->add (m->a == NOTE_ERROR ? E_ERROR : m->a == NOTE_GESTURE ? E_GESTURE : m->a == NOTE_INFO ? E_INFO : E_NOTE,
 			     m->a == NOTE_GESTURE ? std::string (gesture_word (m->text)) : m->a == NOTE_APP ? "\xE2\x96\xB8 " + m->text : m->text);
@@ -341,14 +358,81 @@ static void post (int type, int a, int b, const std::string &t)
 	for (int i = 0; i < 50 && kapi_post (on_msg, m, 0) < 0; i++) kapi_msleep (20);	// (the queue full: wait a little)
 }
 
+// ---- the voice: Pocket's sentences said one after the other on a thread of their own (voice.h) ---------------------
+// The brain goes on while Pocket speaks (its skills, the next piece); it waits for the voice only before listening.
+struct Speech { std::string text, lang; };
+static std::vector<Speech> g_speech;
+static int g_speechMx = -1, g_speechEv = -1;
+static volatile int g_speechLeft;		// sentences queued or being said
+
+static bool voice_on () { return g_brain.cfg.voice && !g_brain.cfg.mistralKey.empty (); }
+
+static void speak (const std::string &t, const std::string &lang)
+{
+	kapi_mutex_lock (g_speechMx, 0xFFFFFFFF);
+	g_speech.push_back ({ t, lang });
+	g_speechLeft++;
+	kapi_mutex_unlock (g_speechMx);
+	kapi_event_set (g_speechEv);
+}
+static void speech_clear ()
+{
+	kapi_mutex_lock (g_speechMx, 0xFFFFFFFF);
+	g_speechLeft -= (int) g_speech.size ();
+	g_speech.clear ();
+	kapi_mutex_unlock (g_speechMx);
+}
+static void speech_wait () { for (int i = 0; i < 6000 && g_speechLeft > 0 && !g_quit; i++) kapi_msleep (10); }
+
+static void first_sound (void *) { post (M_TALK, 1, 0, ""); }
+
+static int speaker (void *)
+{
+	bool warned = false;
+	while (!g_quit)
+	{
+		kapi_event_wait (g_speechEv, 500);
+		for (;;)
+		{
+			kapi_mutex_lock (g_speechMx, 0xFFFFFFFF);
+			if (g_speech.empty ()) { kapi_mutex_unlock (g_speechMx); break; }
+			Speech sp = g_speech.front ();
+			g_speech.erase (g_speech.begin ());
+			kapi_mutex_unlock (g_speechMx);
+			Config c = g_brain.cfg;
+			int intensity = 0;
+			std::string v = voice_id (sp.lang, c.voiceFr, c.voiceEn, pocket_humeur_get (&intensity)), err;
+			if (!v.empty () && !g_quit)
+			{
+				if (!voice_say (c.mistralKey, v, sp.text, first_sound, 0, err))
+				{
+					post (M_LOG, 0, 0, "voice: " + err);
+					if (!warned) { warned = true; post (M_NOTE, NOTE_ERROR, 0, std::string (TR ("Pocket's voice did not work:")) + " " + err); }
+				}
+				else warned = false;
+				post (M_TALK, 0, 0, "");
+			}
+			g_speechLeft--;
+		}
+	}
+	return 0;
+}
+
 // what the brain asks of the window (on the brain's thread)
 struct Bridge : BrainUi
 {
-	void say (const std::string &t) override { post (M_SAY, 0, 0, t); }
+	void say (const std::string &t, const std::string &lang) override
+	{
+		bool v = voice_on ();
+		post (M_SAY, v ? 1 : 0, 0, t);
+		if (v) speak (t, lang);
+	}
 	void note (int kind, const std::string &t) override { post (M_NOTE, kind, 0, t); }
 	void state (int e) override { post (M_STATE, e, 0, ""); }
 	bool listen (std::string &answer, int seconds) override
 	{
+		if (g_tray) return tray_listen (answer, seconds);
+		speech_wait ();				// (the question heard before the answer is awaited)
 		kapi_event_reset (g_ansEv);
 		post (M_LISTEN, 1, 0, "");
 		int r = kapi_event_wait (g_ansEv, (unsigned) seconds * 1000u);
@@ -407,6 +491,10 @@ static void cfg_load (Config &c)
 		else if (k == "url") c.url = v;
 		else if (k == "url_key") c.urlKey = v;
 		else if (k == "character") c.character = atoi (v.c_str ());
+		else if (k == "voice") c.voice = lower (v) != "off" && v != "0";
+		else if (k == "voice_fr") c.voiceFr = v;
+		else if (k == "voice_en") c.voiceEn = v;
+		else if (k == "listen") c.listen = lower (v) == "on" || v == "1";
 	}
 }
 
@@ -415,7 +503,8 @@ static bool cfg_save (const Config &c)
 	std::string t = "# PocketQI's settings (Pocket > Settings). It holds your API keys: keep it private.\n"
 			"provider = " + c.provider + "\nmistral_key = " + c.mistralKey + "\ngroq_key = " + c.groqKey +
 			"\nmodel = " + c.model + "\nurl = " + c.url + "\nurl_key = " + c.urlKey +
-			"\ncharacter = " + num (c.character) + "\n";
+			"\ncharacter = " + num (c.character) + "\nvoice = " + (c.voice ? "on" : "off") +
+			"\nvoice_fr = " + c.voiceFr + "\nvoice_en = " + c.voiceEn + "\nlisten = " + (c.listen ? "on" : "off") + "\n";
 	return write_file (cfg_path (), t);
 }
 
@@ -462,6 +551,50 @@ static void open_settings ()
 	g_brain.cfg = c;
 	if (!cfg_save (c)) uk_messagebox ("PocketQI", TR ("The settings could not be written on the card."), MB_OK);
 	update_status ();
+	int pid = kapi_ipc_lookup (TRAY_SERVICE);
+	if (pid > 0) kapi_mailbox_send (pid, TRAY_MSG_RELOAD, "", 0);	// (Pocket in the background: the new keys)
+}
+
+// Pocket > Voice and Listening: Mistral's voices (voice.h), the listening in the background (tray.h)
+static void open_voice ()
+{
+	if (busy_say ()) return;
+	Config c = g_brain.cfg;
+	// the voices: their names, a family "follows Pocket's mood"
+	static std::vector<std::string> fv, ev;
+	fv.clear (); ev.clear ();
+	auto label = [] (const VoiceChoice &v) { return std::string (v.name) + (v.moods ? std::string (" \xE2\x80\x93 ") + TR ("follows Pocket's mood") : std::string ()); };
+	int fs = 0, es = 0, nf = (int) (sizeof VOICES_FR / sizeof VOICES_FR[0]), ne = (int) (sizeof VOICES_EN / sizeof VOICES_EN[0]);
+	for (int i = 0; i < nf; i++) { fv.push_back (label (VOICES_FR[i])); if (c.voiceFr == VOICES_FR[i].id) fs = i; }
+	for (int i = 0; i < ne; i++) { ev.push_back (label (VOICES_EN[i])); if (c.voiceEn == VOICES_EN[i].id) es = i; }
+	const char *fvp[8], *evp[16];
+	for (int i = 0; i < nf; i++) fvp[i] = fv[i].c_str ();
+	for (int i = 0; i < ne; i++) evp[i] = ev[i].c_str ();
+	Checkbox *vo = new Checkbox (0, 0, 280, 24, TR ("Pocket speaks aloud"), c.voice, 0, C_FACE);
+	Dropdown *vf = new Dropdown (0, 0, 280, 26, fvp, nf, fs, 0);
+	Dropdown *ve = new Dropdown (0, 0, 280, 26, evp, ne, es, 0);
+	FormDialog f (TR ("Voice and Listening"), 460);
+	f.addSection (TR ("The voice"));
+	f.addText (TR ("Pocket speaks with Mistral's voices (Voxtral): your Mistral key (Pocket > Settings) is needed."));
+	f.addRow (0, vo);
+	f.addRow (TR ("In French:"), vf);
+	f.addRow (TR ("In English:"), ve);
+	Checkbox *li = new Checkbox (0, 0, 380, 24, TR ("Listen for \"dis Pocket\" in the background"), c.listen, 0, C_FACE);
+	f.addSection (TR ("Listening"));
+	f.addText (TR ("Pocket waits in the menu bar; say \"dis Pocket\", then your question: its face shows at the bottom left. "
+		       "Nothing leaves the device before \"dis Pocket\". A microphone is needed (the Sound applet)."));
+	f.addRow (0, li);
+	f.addButton (TR ("Save"), UK_FB_DEFAULT, 1);
+	f.addButton (TR ("Cancel"), UK_FB_CANCEL, 0);
+	if (f.run () != 1) return;
+	c.voice = vo->checked;
+	c.voiceFr = VOICES_FR[vf->sel].id;
+	c.voiceEn = VOICES_EN[ve->sel].id;
+	c.listen = li->checked;
+	if (!c.voice) speech_clear ();
+	g_brain.cfg = c;
+	if (!cfg_save (c)) uk_messagebox ("PocketQI", TR ("The settings could not be written on the card."), MB_OK);
+	tray_apply (c);
 }
 
 static void open_memory ()
@@ -554,6 +687,7 @@ static void m_new ()
 {
 	if (busy_say ()) return;
 	g_brain.forget ();
+	speech_clear ();
 	g_chat->lines.clear ();
 	g_chat->invalidate (true);
 	pocket_humeur_set (HUMEUR_NEUTRE, 1);
@@ -561,6 +695,7 @@ static void m_new ()
 	((Widget *) g_entry)->setFocus ();
 }
 static void m_settings () { open_settings (); }
+static void m_voice () { open_voice (); }
 static void m_memory () { open_memory (); }
 static void m_skills () { open_skills (); }
 static void m_quit () { kapi_exit (0); }
@@ -585,6 +720,7 @@ static void build_menu ()
 	g_menu.item (TR ("What Pocket Remembers..."), "", 0, m_memory);
 	g_menu.item (TR ("Skills..."), "", 0, m_skills);
 	g_menu.item (TR ("Settings..."), "", 0, m_settings);
+	g_menu.item (TR ("Voice and Listening..."), "", 0, m_voice);
 	g_menu.separator ();
 	g_menu.item (TR ("Quit"), "^Q", UK_CTRL ('Q'), m_quit);
 	g_menu.menu (TR ("Edit"));
@@ -655,6 +791,8 @@ public:
 
 static void on_send (Widget &) { send_text (g_entry->text); }
 
+#include "Apps/pocketqi/tray.h"
+
 int main (void)
 {
 	ft_uikit_install ("DejaVu Sans", 13);
@@ -670,6 +808,9 @@ int main (void)
 	cfg_load (g_brain.cfg);
 	pocket_humeur_set_sink (mood_sink, 0);
 	pocket_humeur_set_delai (12000);
+	char args[64] = "";
+	kapi_get_args (args, sizeof args);
+	if (strstr (args, "--tray")) { g_tray = true; return tray_main (); }
 
 	// the desktop: a window of its own size; pocket and console: the screen's (fitted to the work area below --
 	// PocketUI fills a smaller one only later)
@@ -708,7 +849,10 @@ int main (void)
 
 	g_jobEv = kapi_event_create (0, 0);
 	g_ansEv = kapi_event_create (0, 0);
+	g_speechMx = kapi_mutex_create ();
+	g_speechEv = kapi_event_create (0, 0);
 	int tid = kapi_thread_create (worker, 0, 1024 * 1024, "brain");
+	int stid = kapi_thread_create (speaker, 0, 256 * 1024, "voice");
 	if (tid < 0) g_chat->add (E_ERROR, TR ("Pocket could not start its thread."));
 	update_status ();
 
@@ -717,6 +861,9 @@ int main (void)
 	g_quit = true;
 	kapi_event_set (g_jobEv);
 	kapi_event_set (g_ansEv);
+	kapi_event_set (g_speechEv);
+	speech_clear ();
 	if (tid > 0) kapi_thread_join (tid, 3000, 0);
+	if (stid > 0) kapi_thread_join (stid, 3000, 0);
 	return 0;
 }

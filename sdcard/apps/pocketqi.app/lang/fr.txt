@@ -198,3 +198,25 @@ I added %s to your contacts.	J'ai ajouté %s à tes contacts.
 I added %s to your contacts: %s.	J'ai ajouté %s à tes contacts : %s.
 I changed %s's card: %s.	J'ai modifié la fiche de %s : %s.
 , at %s	, chez %s
+Pocket's voice did not work:	La voix de Pocket n'a pas marché :
+follows Pocket's mood	suit l'humeur de Pocket
+Pocket speaks aloud	Pocket parle à voix haute
+Voice and Listening	Voix et écoute
+The voice	La voix
+Pocket speaks with Mistral's voices (Voxtral): your Mistral key (Pocket > Settings) is needed.	Pocket parle avec les voix de Mistral (Voxtral) : il faut ta clé Mistral (Pocket > Réglages).
+In French:	En français :
+In English:	En anglais :
+Listen for "dis Pocket" in the background	Écouter « dis Pocket » en arrière-plan
+Listening	L'écoute
+Pocket waits in the menu bar; say "dis Pocket", then your question: its face shows at the bottom left. Nothing leaves the device before "dis Pocket". A microphone is needed (the Sound applet).	Pocket attend dans la barre de menu ; dis « dis Pocket », puis ta question : son visage s'affiche en bas à gauche. Rien ne quitte l'appareil avant « dis Pocket ». Il faut un micro (le panneau Son).
+Voice and Listening...	Voix et écoute...
+Pocket does not listen (paused)	Pocket n'écoute pas (en pause)
+Pocket cannot listen:	Pocket ne peut pas écouter :
+Pocket listens: say "dis Pocket"	Pocket écoute : dis « dis Pocket »
+its speech model is missing	son modèle de parole manque
+another program records	un autre programme enregistre
+no microphone (the Sound applet chooses one)	pas de micro (le panneau Son en choisit un)
+Open PocketQI	Ouvrir PocketQI
+Listen Again	Écouter à nouveau
+Pause Listening	Mettre l'écoute en pause
+Stop Listening in the Background	Arrêter l'écoute en arrière-plan

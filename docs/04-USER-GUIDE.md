@@ -2982,7 +2982,8 @@ words, and it acts through its **skills** -- small apps in Onyx BASIC that keep 
 shopping list, or look up the weather. Its **face** -- two big glowing eyes, after Eilik, Cozmo or EMO -- shows
 its **mood** (joyful, curious, surprised, sad, tired, mischievous... nineteen of them, each at three intensities) and
 what it is doing: the eyes become two hopping dots while it **thinks**, they bob while it **speaks**, they look
-around while it waits. It is the Onyx port of the user's own project **PocketQI** (github.com/stephaneweg/PocketQI),
+around while it waits. It **speaks aloud** with Mistral's voices, and it can **wait in the menu bar** for *dis Pocket*:
+spoken to, it answers aloud in a small popup with its face (*Voice and listening* below). It is the Onyx port of the user's own project **PocketQI** (github.com/stephaneweg/PocketQI),
 whose Pocket also lives in a robot, on an ESP32 handheld and on a Windows PC. In the dock's **Productivity** drawer,
 or `run pocketqi`.
 
@@ -3020,6 +3021,7 @@ the questions and the conversation; the menus are the CMD key (or F10) as in eve
 | | What Pocket Remembers... | | the memory, `name = value` lines; **Forget Everything** clears it |
 | | Skills... | | the skills installed, with what they do |
 | | Settings... | | below |
+| | Voice and Listening... | | Pocket's voice, *dis Pocket* in the background: below |
 | | Quit | Ctrl+Q | |
 | Edit | Copy Last Answer | | Pocket's last answer to the clipboard |
 | | Copy Conversation | | the whole conversation as text |
@@ -3030,6 +3032,33 @@ or Groq: the other one is the fallback when it has a key), the **model** (empty:
 of your own -- the address of an OpenAI-compatible `chat/completions` endpoint on your network (a local model:
 `http://192.168.1.20:8080/v1/chat/completions`), which is then the only one asked --, and Pocket's **character**
 (serious, calm, warm, playful, mischievous: the tone of its answers).
+
+**Voice and listening** (Pocket > Voice and Listening...):
+
+![PocketQI's Voice and Listening](../screenshots/pocketqi-voice.png)
+*Pocket > Voice and Listening...: the voice in French and in English, the listening in the background.*
+
+- **Pocket speaks aloud** (on by default, with a Mistral key): every sentence Pocket writes is also said, with
+  **Mistral's voices** (Voxtral, through the Mistral key; the sound starts before the sentence is fully made). A voice for
+  **French** (**Léa** by default, Marie, Manon, Camille) and one for **English** (**Paul** by default, Oliver, Jane,
+  James, Sheila...); the voices marked *follows Pocket's mood* change their tone with Pocket's mood (happy, sad, excited,
+  curious, angry). German, Spanish, Italian, Portuguese and Dutch answers have Mistral's voice of their language. Off:
+  the eyes bob a moment instead, as before. Pocket says its question before it waits for the answer.
+- **Listen for "dis Pocket" in the background**: Pocket waits in the **menu bar** (its icon in the status area, on the
+  desktop and in the pocket mode), the **microphone** open (the one the Control Panel's **Sound** applet chooses: a USB
+  microphone or a headset's, an I2S microphone on the header). Say **"dis Pocket"**, then your question -- in one go
+  (*Dis Pocket, quelle heure est-il ?*) or after a pause: a **small popup with Pocket's face** comes at the **bottom left**
+  of the screen, Pocket listens, thinks, answers aloud. Then **8 seconds** to speak again without *dis Pocket*; nothing
+  said (or *au revoir*, *merci c'est tout*), Pocket rests and the popup goes. When Pocket asks something, say the answer.
+  The icon: a **double click** opens PocketQI's window; a **right click** its menu -- *Open PocketQI*, *Pause Listening* /
+  *Listen Again*, *Stop Listening in the Background*. Its tip says when it cannot listen (no microphone, another program
+  records). It starts at every boot while the setting is on (the line `run pocketqi --tray` in
+  `SD:/etc/session/desktop` and `pocket`).
+- **What is heard**: *dis Pocket* is recognised **on the device** (PocketSphinx, a French model): **nothing leaves the
+  device before it**. Then the sentence -- from *dis Pocket* to the silence after it -- goes to Mistral's **Voxtral** to
+  be written down (Ogg Opus, a few KB), and the text goes on as a typed sentence would. While Pocket speaks, the
+  microphone is not listened to (Pocket does not hear itself). The wake word is tuned for French; a voice it does not
+  recognise at once: say it again, a little slower.
 
 **Privacy**: what you type goes to the model's provider (Mistral, Groq) with the last six exchanges, today's date and
 the skills' descriptions. **What Pocket remembers never leaves the device**: the model only sees a marker in braces --
@@ -3059,15 +3088,15 @@ Pocket knows it at the next sentence (the manifest's `llm.<action> = <types> : <
 is told); they are written in Onyx BASIC with the library `lib/galo.bi` (`Say`, `Arg$`, `Web$`, `JsonText$`, `SetMood`,
 `Ask$`...; docs/03 *PocketQI* says how to write one). A skill is stopped after ten seconds of its own work.
 
-**Not in this version** (PocketQI has them on its other devices): the microphone and the wake word *dis Pocket*
-(Onyx has no sound input yet), Pocket's voice, its drawings on the screen, sending a mail by itself, printing a PDF
-(a PDF is printed from the PDF Viewer).
+**Not in this version** (PocketQI has them on its other devices): its drawings on the screen, sending a mail by itself, printing a PDF (a PDF is printed from the PDF Viewer), the
+voices made on the device (PicoTTS: PocketQI's robot has it; here the voice is Mistral's, so it needs the network).
 
 **Files** (all in `SD:/apps/pocketqi.app/`):
 
 | File | What |
 |---|---|
-| `config.ini` | the settings: `provider`, `mistral_key`, `groq_key`, `model`, `url`, `url_key`, `character` (`config.ini.example` says each) -- **your API keys: keep it private** |
+| `config.ini` | the settings: `provider`, `mistral_key`, `groq_key`, `model`, `url`, `url_key`, `character`, `voice`, `voice_fr`, `voice_en`, `listen` (`config.ini.example` says each) -- **your API keys: keep it private** |
+| `ps/` | the wake word's model (PocketSphinx's French acoustic model, `ps/model/`, 4 MB) and its words (`ps/eveil.dict`) |
 | `etc/memoire.txt` | what Pocket remembers, `name = value` a line |
 | `etc/cron.txt` | the reminders and the tasks watched (*warn me...*) |
 | `etc/histoires.txt` | the stories and explanations left halfway (10 at most) |

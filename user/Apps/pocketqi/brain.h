@@ -36,7 +36,7 @@ enum { NOTE_APP, NOTE_INFO, NOTE_ERROR, NOTE_GESTURE };
 struct BrainUi
 {
 	virtual ~BrainUi () {}
-	virtual void say (const std::string &utf8) = 0;			// Pocket's words
+	virtual void say (const std::string &utf8, const std::string &lang) = 0;	// Pocket's words (lang: "fr", "en"... the voice's)
 	virtual void note (int kind, const std::string &utf8) = 0;		// a small line: a skill run, an error...
 	virtual void state (int etat) = 0;					// VISAGE_VEILLE, _ECOUTE, _REFLECHIT, _PARLE
 	virtual bool listen (std::string &answer, int seconds) = 0;		// the person's next sentence (false: none)
@@ -50,6 +50,9 @@ struct Config
 	std::string provider = "mistral";		// the first one asked
 	std::string mistralKey, groqKey, model, url, urlKey;
 	int character = 0;				// groq_set_caractere: 0 serious .. 4 mischievous
+	bool voice = true;				// Pocket speaks (Mistral's voice: voice.h)
+	std::string voiceFr, voiceEn;			// its voice in French, in English ("": voice.h's default)
+	bool listen = false;				// Pocket listens for "dis Pocket" in the background (tray.h)
 };
 
 class Brain : public SkillIo
@@ -120,6 +123,7 @@ public:
 	std::vector<Exchange> hist;
 	std::string appsRun;				// the skills run in the answer being made (JSON)
 	std::string said;				// what Pocket said in this answer
+	std::string speakLang;				// the language of what Pocket says now (the answer's; a skill's own)
 	long lastTurn = 0;
 	void remember (const std::string &u, const std::string &g, const std::string &l, const std::string &a)
 	{
@@ -153,7 +157,7 @@ public:
 	{
 		if (t.empty ()) return;
 		ui->state (VISAGE_PARLE);
-		ui->say (t);
+		ui->say (t, speakLang.empty () ? std::string (ui->lang ()) : speakLang);
 		if (!said.empty ()) said += " ";
 		said += t;
 	}
@@ -522,6 +526,7 @@ public:
 		// repeat what the skills said (the model often adds "Appointment added", a double of the skill's own)
 		bool appRun = false, remembered = false, appSpoke = false;
 		std::vector<std::string> later;
+		speakLang = r.langue[0] ? r.langue : ui->lang ();
 		static const char *const base[] = { "say", "humeur", "geste", "retenir", "wiki", "askinfo", "ask", "cron", "next",
 						    "reprendre", "maketext", "draw", 0 };
 		for (unsigned i = 0; i < r.noutcomes; i++)
@@ -545,7 +550,13 @@ public:
 			if (!strcmp (o.app, "say"))
 			{
 				if (appRun) later.push_back (o.args[0]);
-				else saidAll (o.args[0]);
+				else
+				{
+					std::string keep = speakLang;
+					if (o.nargs > 1 && o.args[1][0] && strlen (o.args[1]) <= 3) speakLang = o.args[1];
+					saidAll (o.args[0]);
+					speakLang = keep;
+				}
 			}
 			else if (!strcmp (o.app, "humeur")) pocket_humeur_set (r.humeur, r.intensite);
 			else if (!strcmp (o.app, "geste")) ui->note (NOTE_GESTURE, o.nargs ? o.args[0] : "");
@@ -653,7 +664,11 @@ public:
 				std::string err;
 				size_t before = said.size ();
 				ui->state (VISAGE_REFLECHIT);
-				if (skill_run (home, *s, o, this, err, &llmQueue) != 0)
+				std::string keepLang = speakLang;
+				speakLang = s->native ? ui->lang () : "fr";		// (the native skills speak the system's language, the BASIC ones French)
+				int rc = skill_run (home, *s, o, this, err, &llmQueue);
+				speakLang = keepLang;
+				if (rc != 0)
 				{
 					ui->note (NOTE_ERROR, s->id + ": " + err);
 					char b[160];
