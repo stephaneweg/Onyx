@@ -220,3 +220,12 @@ Open PocketQI	Ouvrir PocketQI
 Listen Again	Écouter à nouveau
 Pause Listening	Mettre l'écoute en pause
 Stop Listening in the Background	Arrêter l'écoute en arrière-plan
+PocketQI Studio	PocketQI Studio
+PocketQI Studio can reach Pocket	PocketQI Studio peut joindre Pocket
+PocketQI Studio (PocketQI's Windows IDE) sends its apps to Pocket, fetches them, runs them (F5) and shows its face, over the network (HTTPS, port 443).	PocketQI Studio (l'atelier Windows de PocketQI) envoie ses apps à Pocket, les récupère, les lance (F5) et montre son visage, par le réseau (HTTPS, port 443).
+In PocketQI Studio	Dans PocketQI Studio
+Target: "Pocket QI physique", address:	Cible : « Pocket QI physique », adresse :
+(no network)	(pas de réseau)
+The first time, accept the certificate whose SHA-256 fingerprint is:	La première fois, accepte le certificat dont l'empreinte SHA-256 est :
+An optional password: SD:/apps/pocketqi.app/etc/admin.pass, as on PocketQI's robot.	Un mot de passe facultatif : SD:/apps/pocketqi.app/etc/admin.pass, comme sur le robot de PocketQI.
+PocketQI Studio...	PocketQI Studio...
