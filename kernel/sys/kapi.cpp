@@ -2463,8 +2463,12 @@ int kapi_key_held (int nKey)
 {
 	CWindowManager *pWM = CWindowManager::Get ();
 	CAddressSpace *pAS = CurrentAS ();
-	// (the graphics server says who has the keyboard: kern/wsrv.h)
-	return pWM != 0 && pAS != 0 && WsFocusPid () == pAS->GetPid () && pWM->KeyHeldAny (nKey) ? 1 : 0;
+	// (the graphics server says who has the keyboard: kern/wsrv.h) -- the process whose window has it, or one it
+	// started and shows in its window (a Control Panel's applet: the Gamepad applet waits for a held key, 2026-10-27)
+	if (pWM == 0 || pAS == 0) return 0;
+	unsigned nFocus = WsFocusPid ();
+	if (nFocus == 0 || (nFocus != pAS->GetPid () && nFocus != pAS->GetParentPid ())) return 0;
+	return pWM->KeyHeldAny (nKey) ? 1 : 0;
 }
 void kapi_inject_key_held (int nKey, int bDown)
 {
