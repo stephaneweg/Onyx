@@ -35,7 +35,8 @@
 
 | | |
 |---|---|
-| Image du noyau (Pi 4) | **1,3 Mo** (`kernel8-rpi4.img`, Circle compris) |
+| Image du noyau | **1,3 Mo**, Circle compris : `kernel8-rpi4.img` (Pi 4, Pi 400), `kernel_2712.img` (Pi 5, Pi 500 ; testé et validé) |
+| Cartes Pi 5 | une distribution à part : `sdcard5/` (388 Mo) et `sdcard5_lite/` |
 | Serveurs graphiques | Elegant 162 Ko, PocketUI 230 Ko |
 | Les kits (bibliothèques partagées) | de 90 Ko (AppKit, NetKit) à 800 Ko (AudioKit) ; UIKit 590 Ko |
 | Carte complète (`sdcard/`) | **392 Mo** : le système, plus de 100 applications, les polices, les exemples |

@@ -21,7 +21,7 @@
   </defs>
 
   <rect width="1600" height="1262" fill="#ffffff"/>
-  <text x="40" y="52" class="h">Onyx sur Raspberry Pi 4 : l'architecture</text>
+  <text x="40" y="52" class="h">Onyx sur Raspberry Pi 4 et 5 : l'architecture</text>
   <text x="40" y="80" class="s">Chaque programme tourne dans son propre espace mémoire ; il ne parle au noyau qu'à travers AppKit.</text>
 
   <!-- ===================== USER SPACE ===================== -->
@@ -177,6 +177,8 @@
   </g>
 
   <!-- Hardware -->
-  <rect x="24" y="1188" width="1552" height="54" rx="12" fill="#1b2430"/>
-  <text x="800" y="1222" class="w" text-anchor="middle">Raspberry Pi 4 / Pi 400 — 4 cœurs Cortex-A72, GPU VideoCore VI (V3D), 1 à 8 Go</text>
+  <rect x="24" y="1188" width="766" height="54" rx="12" fill="#1b2430"/>
+  <rect x="810" y="1188" width="766" height="54" rx="12" fill="#1b2430"/>
+  <text x="407" y="1222" class="w" text-anchor="middle">Raspberry Pi 4 / Pi 400 — 4 × Cortex-A72, VideoCore VI</text>
+  <text x="1193" y="1222" class="w" text-anchor="middle">Raspberry Pi 5 / Pi 500 — 4 × Cortex-A76, VideoCore VII</text>
 </svg>
