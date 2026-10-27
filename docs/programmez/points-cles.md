@@ -53,8 +53,9 @@ FAT32.
 ### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
 
 - **Démarrage** : **33 s** entre la commande `reboot` et le bureau complet (barre de menus, dock, Wi-Fi
-  connecté, accès à distance ouvert dès 31 s). Ce temps comprend le firmware du Pi. Il s'agit d'un seul
-  essai, en redémarrage et non en mise sous tension.
+  connecté, accès à distance ouvert dès 31 s). En mode pocket (640 × 480) : **31 s** jusqu'au lanceur.
+  Ce temps comprend le firmware du Pi ; il s'agit d'un essai par mode, en redémarrage et non en mise sous
+  tension. Le premier démarrage après un changement de résolution a pris 57 s : à écarter.
 - **Lancement des applications**, du lancement à l'app prête, la mémoire du processus stable (trois
   essais, depuis la carte SD, sans préchargement) :
 
