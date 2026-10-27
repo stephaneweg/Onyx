@@ -339,6 +339,8 @@ int main (void)
 	PadRoot root;
 	if (root.canvas.px == 0) return 1;
 	g_root = &root;
+	pad_config_reload ();				// (the keyboard's keys as gamepad.ini says -- read only by a pad's
+							// first use otherwise: the defaults were shown, then saved over the file's)
 	static Menu menu;
 	menu.menu (TRC ("menu", "Pad"));
 	menu.item (TR ("Map Buttons..."),      "M",  0, on_map);

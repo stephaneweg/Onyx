@@ -172,6 +172,19 @@ SD:/tmp/mic.wav 3`, silence about -72 dBFS, a voice -18 dBFS, the file read back
 yet** (no microphone wired). The user's Pi was switched back to the pocket mode (`session switch pocket`): the
 Control Panel's desktop window does not fit 640 x 480.
 
+**The Gamepad applet's keyboard tab, fixed on the device (2026-10-27):**
+- It showed the default keys, not `gamepad.ini`'s: the file was read only at a pad's first use. So each save wrote
+  the defaults over the user's keys. It now reads the file at its start.
+- Select and Start (Print Screen and Pause: held keys only, no key event) could not be mapped inside the Control
+  Panel. The applet is a process of its own, and the kernel answers `kapi_key_held` to the window that has the
+  keyboard only: the Panel's. The Panel now watches those two keys and passes a press to the applet as a key
+  (`AP_KEY` with `KEY_PRTSC` / `KEY_PAUSE`). A first try in the kernel (the parent's focus) did nothing:
+  `kapi_exec_as` starts a program with no parent. It was reverted.
+- `vncd` passes Print Screen, Pause and F1-F12 as held keys. Tried on the Pi over VNC with a small RFB client (a
+  Python script in the session's scratchpad, not in the repository): Select = prtsc and Start = pause saved.
+- On the way the PocketTerm's keyboard stopped answering: its RP2040 was stuck, and a hard reset brought it back.
+  Not Onyx: the 22:09 kernel did the same.
+
 **The device's ready card** (the user's request, the same day): `python3 tools/pocketterm35/mkcard.py` makes
 `SD_PocketTerm35/` (not committed: made again from `sdcard/`). It is the whole card plus `tools/pocketterm35/overlay/`:
 - `cmdline.txt`: `width=800 height=600 usbc=1 touch=1 keyboard=US` (the user's 800 x 600);
