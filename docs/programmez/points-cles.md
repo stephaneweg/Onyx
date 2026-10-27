@@ -52,16 +52,27 @@ FAT32.
 
 ### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
 
-- **Démarrage** : le serveur graphique a l'écran **16 à 17 s** après la commande `reboot`, et le bureau est
-  complet (agenda, notes, dock, barre de menus lancés) **moins d'une seconde** plus tard. Ce temps comprend
-  l'arrêt et le firmware du Pi, qui n'ont pas pu être isolés. Le réseau vient ensuite : la connexion Wi-Fi
-  (plus de 10 s d'association, un premier essai DHCP sans réponse) le rend joignable vers 31 s.
-  *Comment c'est mesuré* : `kmsg` ne date pas ses lignes ; le journal de Circle, lui, est horodaté. Il a été
-  relu avec le mécanisme d'essai réseau du noyau (`SD:/etc/net-trial.txt` contenant seulement `secs=…` : aucun
-  réglage changé, le journal écrit dans `SD:/etc/net-trial.log`, puis un redémarrage). La ligne
-  `wsrv: the graphics server (elegant) has the display` donne le moment où Elegant a l'écran ; les
-  statistiques d'Elegant, toutes les 5 s depuis son démarrage, le recalent sur l'horloge du PC. Le journal ne
-  garde que 16 Ko : le début du noyau y est déjà perdu.
+- **Démarrage**, relevé dans `kmsg`, qui date chaque ligne depuis la mise en route de la puce (Pi 4, mode
+  pocket 640 × 480) :
+
+| Étape | Temps depuis la mise en route |
+|---|---|
+| Firmware du Pi (avant la première ligne du noyau) | 0 → **4,5 s** |
+| Le noyau démarre (Circle, les 4 cœurs, la carte SD montée) | 4,5 s → 5,3 s |
+| L'USB (hub, clavier, manette) | 5,4 s → 7,2 s |
+| **Le serveur graphique a l'écran** | **8,0 s**, soit **3,5 s de noyau** |
+| Le shell est prêt (l'accueil affiché) | **8,5 s** |
+| Le réseau (association Wi-Fi, DHCP) | 23,2 s |
+
+  Le noyau lui-même met donc **3,5 s** pour donner l'écran au serveur graphique, dont près de 1,8 s pour
+  l'USB. Depuis la commande `reboot`, il faut ajouter environ 7 s (l'arrêt et le redémarrage de la puce, le
+  chargeur du Pi) : le bureau s'affiche vers 15-17 s. La connexion Wi-Fi (plus de 10 s d'association, un
+  premier essai DHCP sans réponse) arrive ensuite ; elle ne bloque pas l'interface. Pendant ce temps, le
+  préchargement lit le navigateur Jet (100 Mo) en 6 s, en arrière-plan.
+  *Comment c'est mesuré* : depuis le 27 octobre, `kmsg` préfixe chaque ligne de son temps depuis le démarrage
+  (kapi v100 ; le journal de Circle note l'horloge système de chaque événement et en garde 1 024, assez pour
+  tout le démarrage). Le temps du redémarrage complet vient de l'horloge du PC (telnet joignable 30,6 s après
+  `reboot`, à 23,3 s sur l'horloge du Pi).
 - **Lancement des applications**, du lancement à l'app prête, la mémoire du processus stable (trois
   essais, depuis la carte SD, sans préchargement) :
 

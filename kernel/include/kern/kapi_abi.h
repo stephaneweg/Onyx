@@ -269,7 +269,10 @@
 //      one; SD:/etc/sound.ini "input =", "input_gain =") and its gain; _OPEN at a rate -> the rate it records at;
 //      _READ 16-bit mono samples, never waiting; _CLOSE (the process gone: closed). Reached through AudioKit
 //      (ak_in_*), the Sound applet chooses the input.
-#define KAPI_ABI_VERSION	99
+// v100: the kernel log's time: + klog_read_at (slot 236) -- klog_read with the event's time since boot
+//      (microseconds, the system timer; Circle's logger patched: docs/05 #37). Circle's event queue keeps
+//      1024 events (50 before): a whole boot for kmsg, which prints "[   12.345]" before each line.
+#define KAPI_ABI_VERSION	100
 
 #define KAPI_WAIT_FOREVER	0xFFFFFFFFu	// (v67) a wait's timeout: none
 
@@ -2183,6 +2186,9 @@ struct TKApiTable
 	const void *(*lib_open_as) (const char *path, const char *alias, unsigned min_version, int *err);
 	// (v99) The microphone (KAPI_SND_IN_*): op SELECT / OPEN / READ / CLOSE -> as each says, or -KAPI_E*.
 	long (*sound_input) (int op, long a0, long a1);
+	// (v100) klog_read with the event's time since boot, in microseconds (*uptime_us; may be 0).
+	int (*klog_read_at) (int *severity, unsigned long long *uptime_us, char *src, unsigned src_cap,
+			     char *msg, unsigned msg_cap);
 
 #ifndef __aarch64__
 	// --- NOT ON ONYX: the windows, for a stand-in kernel that has a window manager (the PC's simulator,
@@ -2419,6 +2425,7 @@ KAPI_CHECK_SLOT (vol_mount, 232);
 KAPI_CHECK_SLOT (vol_format, 233);
 KAPI_CHECK_SLOT (lib_open_as, 234);
 KAPI_CHECK_SLOT (sound_input, 235);
+KAPI_CHECK_SLOT (klog_read_at, 236);
 
 #ifdef __cplusplus
 }

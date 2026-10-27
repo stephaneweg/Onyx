@@ -58,6 +58,7 @@ git -C circle diff Step51.1.1..onyx
 | 28 | **USB volumes**: `f_mkfs` and the labels on (`FF_USE_MKFS`, `FF_USE_LABEL`), FatFs' objects checked again once the volume lock is held, the volume mutex kept across an unmount, a yield between two USB transfers, SCSI SYNCHRONIZE CACHE for the eject | `addon/fatfs/ffconf.h`, `ff.c`, `ffsystem.cpp`, `diskio.cpp`, `lib/usb/usbmassdevice.cpp`, `include/circle/usb/usbmassdevice.h` | `libfatfs`, `libusb` + the kernel (no structure changes: no clean rebuild) |
 | 29 | **The Pi 5's high RAM registered once**: seg0 = [1 GB, 8 GB) is all of it; no reclaim above it (its fallback registered [4 GB, 8 GB) a second time: two allocators, the same frames); the crash record at seg0's top. The Pi 4 unchanged | `lib/memory64.cpp` | `libcircle` (the Pi 5's, `circle5/`) |
 | 12 | **2D DMA with a source stride** (a rectangle read in place: no gathering) + an **asynchronous** partial update (the compositor yields instead of spinning) | `dmachannel.{h,cpp}`, `dma4channel.{h,cpp}`, `bcmframebuffer.{h,cpp}`, `2dgraphics.{h,cpp}` | `libcircle` |
+| 37 | **The log's events timed since boot** (`ReadEvent`'s overload with `u64 *pUptimeMicros`, the system timer) and **1024 events kept** (`LOG_QUEUE_SIZE`, 50 upstream): `kmsg` shows a whole boot, timed (kapi v100 `klog_read_at`) | `include/circle/logger.h`, `lib/logger.cpp` | **every library** (`CLogger`'s size) + the kernel |
 
 ---
 
@@ -1179,6 +1180,19 @@ only a range of one rate worked. PocketQI found it with a USB headset's micropho
 
 **What.** `lib/usb/usbaudiostreaming.cpp`: `Min <= rate && Max >= rate` (2026-10-26, Onyx's microphone: kapi
 v99 `sound_input`; PocketQI's patch `11-usb-audio-plage`).
+
+## 37. The log's events timed since boot, a whole boot kept
+
+**Why.** `kmsg` (kapi `klog_read`) could not time a boot: Circle's events carry the wall clock only (`GetLocalTime`,
+set later by NTP: the boot's events and the later ones do not share an origin), and the event queue kept the
+last 50, long gone when a telnet session can start `kmsg` (the Programmez! article asked how long Onyx takes to
+start, 2026-10-27).
+
+**What.** `TLogEvent` notes `CTimer::GetClockTicks64 ()` (microseconds since boot) as it is written; a second
+`CLogger::ReadEvent` returns it in `u64 *pUptimeMicros` (the upstream one is kept, it calls the new one).
+`LOG_QUEUE_SIZE` 50 → 1024 (an event is about 270 bytes on the heap, only while it is queued: 270 KB at most).
+The kernel's `kapi_klog_read_at` (kapi v100) passes it on; `kmsg` prints `[   12.345]` before each line. Every
+library is rebuilt (`CLogger` changed size).
 
 ## Contributions to upstream Circle
 

@@ -351,6 +351,8 @@ KAPI_CALL (int, kapi_sound_output, (int out),
 	{ return KT->version >= 84 && KT->sound_output ? KT->sound_output (out) : -KAPI_ENOSYS; })
 KAPI_CALL (long, kapi_sound_input, (int op, long a0, long a1),
 	{ return KT->version >= 99 && KT->sound_input ? KT->sound_input (op, a0, a1) : -KAPI_ENOSYS; })
+KAPI_CALL (int, kapi_klog_read_at, (int *sev, unsigned long long *us, char *src, unsigned sc, char *msg, unsigned mc),
+	{ return KT->version >= 100 && KT->klog_read_at ? KT->klog_read_at (sev, us, src, sc, msg, mc) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_sound_clients, (struct kapi_sound_client *out, int max),
 	{ return KT->version >= 85 && KT->sound_clients ? KT->sound_clients (out, max) : -KAPI_ENOSYS; })
 KAPI_CALL (int, kapi_sound_client_volume, (unsigned pid, int volume, int mute),

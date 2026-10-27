@@ -233,8 +233,9 @@ bullets ([
 	"**Taille** : une image du noyau de 1,3 Mo, Circle compris ; une carte complète de 392 Mo (le système, plus de "
 	"100 applications, les polices, les exemples) ; une carte minimale de 127 Mo, le reste s'installant par paquets. "
 	"Pas d'ISO : on copie un dossier sur une carte SD.",
-	"**Démarrage** : le bureau s'affiche environ 17 s après un redémarrage, firmware du Pi compris ; la connexion "
-	"Wi-Fi suit une quinzaine de secondes plus tard.",
+	"**Démarrage** : le noyau donne l'écran au serveur graphique **3,5 s** après sa première ligne, et l'interface "
+	"est prête une demi-seconde plus tard ; le firmware du Pi, lui, prend 4,5 s avant le noyau. Depuis la commande "
+	"`reboot`, le bureau s'affiche en 15 à 17 s ; la connexion Wi-Fi suit, sans bloquer l'interface.",
 	"**Lancement des applications** : le traitement de texte est prêt en 0,3 s, le tableur en 0,8 s, avec ou sans "
 	"document ; le studio de musique, qui charge 87 Mo de sons, en 2,9 s.",
 	"**Tokens** : sur les trois dernières semaines, Claude a généré 3,8 millions de tokens (le code, les documents, "

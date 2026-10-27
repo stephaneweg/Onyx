@@ -375,3 +375,9 @@ sur le Pi et le résultat attendu.
   « Sous le capot » (le schéma, les kits, l'UIKit propre à chaque serveur, le préchargement), « Onyx en
   chiffres », les tokens dans « Le coût », les figures et leurs légendes, la photo de l'auteur (le Word et la
   photo ne sont pas dans git : personnels). Reste : les mesures face à Pi OS.
+- 2026-10-27, le démarrage : les 33 s comptaient le Wi-Fi (la remarque de l'auteur). Pour mesurer le noyau seul,
+  `kmsg` date maintenant chaque ligne depuis la mise en route (kapi v100, `klog_read_at` ; le journal de Circle
+  patché garde 1 024 événements : `docs/05` n° 37). Relevé sur le Pi 4 en mode pocket : firmware 0 → 4,5 s,
+  le serveur graphique a l'écran à 8,0 s (**3,5 s de noyau**, dont 1,8 s d'USB), le shell prêt à 8,5 s, le
+  réseau à 23,2 s ; environ 7 s avant le minuteur depuis la commande `reboot`. `points-cles.md` et le Word mis à
+  jour.

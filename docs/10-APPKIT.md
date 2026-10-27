@@ -19,7 +19,7 @@ AppKit is what makes a program run: its one link to the system. Every call a pro
 |---|---|
 | Include | `#include "appkit/appkit.h"` |
 | Link | nothing to link: the kernel binds AppKit to every program |
-| Library | `SD:/lib/appkit.so` — 316 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
+| Library | `SD:/lib/appkit.so` — 317 entries in its table (`user/Kits/appkit/appkit.abi`, append-only) |
 | Sources | `user/Kits/appkit/` |
 
 ## Using it
@@ -159,6 +159,7 @@ Everything the headers declare, in their order — the details are in each heade
 | `kapi_stdin` | This task's own stdin/stdout stream handles (for a shell wiring children). | `appkit.h` |
 | `kapi_stdout` | This task's own stdin/stdout stream handles (for a shell wiring children). | `appkit.h` |
 | `kapi_klog_read` | Read the next kernel log event (real-time tee). | `appkit.h` |
+| `kapi_klog_read_at` | (v100) the same + the event's time since boot in microseconds (*us) | `appkit.h` |
 | `kapi_set_verbose` | Verbose kernel logging | `appkit.h` |
 | `kapi_get_verbose` | Verbose kernel logging | `appkit.h` |
 | `kapi_net_status` | TCP/IP sockets over WLAN (ABI v21). | `appkit.h` |
@@ -739,6 +740,12 @@ Read the next kernel log event (real-time tee). 1 + fills fields, or 0 if empty.
 
 ```cpp
 int kapi_klog_read (int *sev, char *src, unsigned sc, char *msg, unsigned mc);
+```
+
+(v100) the same + the event's time since boot in microseconds (*us); -KAPI_ENOSYS on a kernel before v100.
+
+```cpp
+int kapi_klog_read_at (int *sev, unsigned long long *us, char *src, unsigned sc, char *msg, unsigned mc);
 ```
 
 Verbose kernel logging: toggle (1/0) at runtime + read the current state.

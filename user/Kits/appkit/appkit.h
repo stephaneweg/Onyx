@@ -247,6 +247,8 @@ KAPI_FN void * kapi_stdin (void);
 KAPI_FN void * kapi_stdout (void);
 // Read the next kernel log event (real-time tee). 1 + fills fields, or 0 if empty.
 KAPI_FN int kapi_klog_read (int *sev, char *src, unsigned sc, char *msg, unsigned mc);
+// (v100) the same + the event's time since boot in microseconds (*us); -KAPI_ENOSYS on a kernel before v100.
+KAPI_FN int kapi_klog_read_at (int *sev, unsigned long long *us, char *src, unsigned sc, char *msg, unsigned mc);
 // Verbose kernel logging: toggle (1/0) at runtime + read the current state.
 KAPI_FN int kapi_set_verbose (int on);
 KAPI_FN int kapi_get_verbose (void);

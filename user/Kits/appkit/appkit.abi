@@ -323,3 +323,4 @@
 313 kapi_retired_313
 314 kapi_lib_open_as
 315 kapi_sound_input
+316 kapi_klog_read_at

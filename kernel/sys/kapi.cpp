@@ -1592,25 +1592,34 @@ int kapi_stdout_write (const void *pBuf, unsigned nLen)
 // their normal target, this just also exposes them). Returns 1 + fills severity
 // (0=panic..4=debug) / source / message, or 0 if the queue is empty. A real-time
 // kernel log viewer (kmsg) polls this; nothing needs redirecting or restoring.
-int kapi_klog_read (int *pSeverity, char *pSrc, unsigned nSrcCap, char *pMsg, unsigned nMsgCap)
+// (v100) klog_read_at: the same + the event's time since boot in microseconds (Circle's
+// logger notes it: docs/05 #37) -- the wall clock is set later by NTP, it times no boot.
+int kapi_klog_read_at (int *pSeverity, unsigned long long *pUptime, char *pSrc, unsigned nSrcCap,
+		       char *pMsg, unsigned nMsgCap)
 {
 	TLogSeverity Sev; char Src[LOG_MAX_SOURCE]; char Msg[LOG_MAX_MESSAGE];
-	time_t t; unsigned ht; int tz;
+	time_t t; unsigned ht; int tz; u64 nUptime;
 	// (the outputs checked before an event is taken off the queue)
-	if (   !OutOK (pSeverity)
+	if (   !OutOK (pSeverity) || !OutOK (pUptime)
 	    || (pSrc != 0 && nSrcCap > 0 && !UserRange (pSrc, nSrcCap < sizeof Src ? nSrcCap : sizeof Src))
 	    || (pMsg != 0 && nMsgCap > 0 && !UserRange (pMsg, nMsgCap < sizeof Msg ? nMsgCap : sizeof Msg)))
 	{
 		return 0;
 	}
-	if (!CLogger::Get ()->ReadEvent (&Sev, Src, Msg, &t, &ht, &tz))
+	if (!CLogger::Get ()->ReadEvent (&Sev, Src, Msg, &t, &ht, &tz, &nUptime))
 	{
 		return 0;
 	}
 	OutPut (pSeverity, (int) Sev);
+	OutPut (pUptime, (unsigned long long) nUptime);
 	if (pSrc != 0 && nSrcCap > 0) UserStrOut (pSrc, nSrcCap, Src);
 	if (pMsg != 0 && nMsgCap > 0) UserStrOut (pMsg, nMsgCap, Msg);
 	return 1;
+}
+
+int kapi_klog_read (int *pSeverity, char *pSrc, unsigned nSrcCap, char *pMsg, unsigned nMsgCap)
+{
+	return kapi_klog_read_at (pSeverity, 0, pSrc, nSrcCap, pMsg, nMsgCap);
 }
 
 // This task's own stdin / stdout stream handles, so a shell (cmd) can wire them into

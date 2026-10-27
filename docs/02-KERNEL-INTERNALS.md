@@ -1244,6 +1244,11 @@ window features back) —, and `appkit_ws.inc` with them. They are UIKit's **`uk
 `uk_win_fullscreen_begin` does), `kapi_present_fb`, `kapi_fullscreen_direct`, the pump, `kapi_screen_size`.
 C programs reach UIKit through `lib/uikit.imp_c.a` (`libgen --bind-c`).
 
+v100 = **the kernel log's time** (2026-10-27): + `klog_read_at` (slot **236**): `klog_read` with each event's time
+since boot, in microseconds (Circle's logger notes it: `docs/05` patch 37; the wall clock is set later by NTP and
+times no boot). Circle's event queue keeps **1024** events (50 before), a whole boot: `kmsg` prints
+`[   12.345]` before each line (*v100: klog_read_at* below).
+
 v99 = **the sound's input** (2026-10-26): + `sound_input` (slot **235**), `KAPI_SND_IN_*`. A microphone, one program
 at a time: a USB one (a headset's) or an I2S one on the header. AudioKit's `ak_in_*` reach it, and the Sound
 applet chooses it (*v99: sound_input* below, §14).
@@ -1452,7 +1457,7 @@ by a Win32 layer. On Onyx it is the same type as before: no ABI change, no new v
 | Modal dialogs | none (v9/v10 `message_box`, `file_open`, `file_save` removed: §10.5) |
 | Desktop | `screen_size`, `wallpaper_generate`, `wallpaper_buffer`, `wallpaper_commit`, `cursor_pos` |
 | Appearance/keyboard | (`set_window_theme`, v16: removed — the chrome is drawn user-side), `set_keymap` (load a country map *by name* — deprecated: the kernel compiles in **no** maps, so it always returns 0; use `set_keymap_data`), `get_keymap`, `kbd_ready` (USB keyboard attached? v26 — informational; `keyb` no longer needs to poll it), `set_keymap_data` (load a layout from a `.kmap` blob, v27 — records it in a persistent snapshot and installs it on the keyboard whenever it attaches, so it needs no keyboard to be present; returns 1 once the blob is accepted, 0 only on a malformed blob. This removed the old boot race where `keyb` could time out waiting for USB enumeration and leave the keyboard map-less. **Ctrl with `-`, `=` / `+`, `0`** (2026-10-01, `CInputTask::SetKeyMapData`): Circle looks a key held with Ctrl up in the layout's Ctrl column unless it is a letter, and the `.kmap` files leave that column empty there -- nothing came; the snapshot's empty Ctrl entry of the key whose own character is `-`, `=` or `+`, or `0` (its own, or its Shift one on AZERTY) now gets the keypad's key of that character (`KeyKP_Subtract` / `KeyKP_Add` / `KeyKP_0`), whose string Circle sends with or without Ctrl: the app receives `-`, `+`, `0` and `get_modifiers()` says `MOD_CTRL` (Jet Browser's zoom keys; letters and the keypad untouched; Ctrl+Shift+= still nothing -- Shift's column wins)), `app_dir` |
-| Logging / memory | `klog_read`, `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
+| Logging / memory | `klog_read`, `klog_read_at` (v100: + the time since boot), `set_verbose`, `get_verbose`, `meminfo` (total/free/app KB + page size, v23), `sbrk` (per-process heap, v24) |
 | Networking (v21, v37) | `net_status` (live: 0 as soon as the Wi-Fi association drops — `CWPASupplicant::IsConnected ()` — not only before the first DHCP bind), `tcp_connect`, `tcp_send`, `tcp_recv`, `tcp_close`; server side (v37): `tcp_listen(port)` → listening handle (Circle `CSocket::Bind`+`Listen`; `-6` = port in use), `tcp_accept(h, ip, cap)` → **blocks** until a peer connects, returns a connected handle + the peer IP (Circle `Accept`). All handles share the 16-slot table in `sys/net.cpp` and are reclaimed when the owner dies. Used by `/bin/telnetd`. |
 | Power (v25) | `reboot` (restart the machine — applies settings read only at boot, e.g. the WLAN config rewritten by *wpaconf*) |
 | Remote screen (v38) | `screen_grab(dst, w, h)` — runs `CWindowManager::Composite` (windows, wallpaper, cursor; `bCountFrame = FALSE` so the watchdog's fps stays the real compositor's) straight into the caller's `w*h` 0x00RRGGBB buffer (`w`/`h` must be the screen size), or returns **2** without touching it when `g_nScreenGen` has not changed since the previous grab into the same buffer (vncd then skips the diff / encode); `inject_pointer(x, y, buttons, wheel)` → `OnMouse` (+ `OnMouseWheel`), `inject_key(keys)` → `OnKey` — the same paths as the USB mouse/keyboard. Used by `/bin/vncd`. |
@@ -1812,6 +1817,12 @@ libgcc's `__builtin___clear_cache` does it). `code_alloc` (v58: an eager region 
 stays for the GameCube emulator. Before v78 `EXEC` was `-KAPI_ENOTSUP` everywhere; libonyxposix's
 `mmap` / `mprotect` pass the kernel's answer on. Tests: `memtest` (code written, run, made `RX`,
 rewritten), `posixtest` (`mmap PROT_EXEC`).
+
+### v100: klog_read_at
+
+| Slot | Entry | What it does |
+|---|---|---|
+| 236 | `klog_read_at (severity, uptime_us, src, src_cap, msg, msg_cap)` | As `klog_read` (it takes the next event off Circle's queue: 1, or 0 if it is empty) + `*uptime_us`, the event's time since boot in microseconds (the system timer, 1 MHz; `uptime_us` may be 0). The queue keeps the last 1024 events (Circle patched, `docs/05` patch 37): run soon after a boot, `kmsg` shows it from its first line. AppKit: `kapi_klog_read_at` (`-KAPI_ENOSYS` before v100). |
 
 ### v99: sound_input
 
