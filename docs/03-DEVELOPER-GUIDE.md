@@ -3752,7 +3752,8 @@ and mbedTLS built for the PC, `SIM_REALNET`). **On the Pi** (the user, 2026-10-2
 tray hears "dis Pocket" (a USB microphone), Voxtral writes the sentence, Mistral answers in ~1.7 s. **PocketQI Studio's
 API** in the simulator with curl in Studio's place (the PC's sockets: `SIM_REALNET`, `SIM_PORT_OFFSET=8000` -- port 443
 on 8443; the simulator's `tcp_listen` / `tcp_accept`): the page and the certificate's fingerprint (the same as openssl's),
-a skill sent, fetched, run -- its sentence in the window --, the face, a skill removed, a request with an `Origin` refused.
+a skill sent, fetched, run -- its sentence in the window --, the face, a skill removed, a request with an `Origin` refused;
+then **PocketQI Studio itself on the Pi** (the user, 2026-10-27: a factorial app sent and run with F5).
 
 ### Photos, the photo library (`user/Apps/photos`)
 
