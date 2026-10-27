@@ -52,10 +52,16 @@ FAT32.
 
 ### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
 
-- **Démarrage** : **33 s** entre la commande `reboot` et le bureau complet (barre de menus, dock, Wi-Fi
-  connecté, accès à distance ouvert dès 31 s). En mode pocket (640 × 480) : **31 s** jusqu'au lanceur.
-  Ce temps comprend le firmware du Pi ; il s'agit d'un essai par mode, en redémarrage et non en mise sous
-  tension. Le premier démarrage après un changement de résolution a pris 57 s : à écarter.
+- **Démarrage** : le serveur graphique a l'écran **16 à 17 s** après la commande `reboot`, et le bureau est
+  complet (agenda, notes, dock, barre de menus lancés) **moins d'une seconde** plus tard. Ce temps comprend
+  l'arrêt et le firmware du Pi, qui n'ont pas pu être isolés. Le réseau vient ensuite : la connexion Wi-Fi
+  (plus de 10 s d'association, un premier essai DHCP sans réponse) le rend joignable vers 31 s.
+  *Comment c'est mesuré* : `kmsg` ne date pas ses lignes ; le journal de Circle, lui, est horodaté. Il a été
+  relu avec le mécanisme d'essai réseau du noyau (`SD:/etc/net-trial.txt` contenant seulement `secs=…` : aucun
+  réglage changé, le journal écrit dans `SD:/etc/net-trial.log`, puis un redémarrage). La ligne
+  `wsrv: the graphics server (elegant) has the display` donne le moment où Elegant a l'écran ; les
+  statistiques d'Elegant, toutes les 5 s depuis son démarrage, le recalent sur l'horloge du PC. Le journal ne
+  garde que 16 Ko : le début du noyau y est déjà perdu.
 - **Lancement des applications**, du lancement à l'app prête, la mémoire du processus stable (trois
   essais, depuis la carte SD, sans préchargement) :
 
