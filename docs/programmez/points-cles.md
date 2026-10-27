@@ -102,4 +102,6 @@ nouvelle version préchargée à nouveau.
   traitement de texte, le tableur. La même application, sans recompilation, que sur le bureau.
 - `bureau-*.png` : le mode bureau, en 1280 × 1024 sur le Pi : Jet affichant programmez.com
   (`bureau-jet.png`) ; Letters, le tableur et le terminal, où `ps` montre les processus du système
-  (`bureau-bureautique.png`) ; 3DForge, le logiciel de CAO, avec une pièce d'exemple (`bureau-3dforge.png`).
+  (`bureau-bureautique.png`) ; Koton Studio, le studio de musique (`bureau-koton.png`) ; GPIO Lab
+  (`bureau-gpiolab.png`) ; Turtle Quest, un niveau réussi (`bureau-turtle.png`) ; en réserve, 3DForge
+  (`bureau-3dforge.png`). Les rendez-vous de l'agenda sont floutés.

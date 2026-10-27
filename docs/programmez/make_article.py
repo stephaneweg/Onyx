@@ -115,10 +115,11 @@ figure ("architecture.png", "Figure 2 – L'architecture d'Onyx : le noyau et Ci
 para ("Entre les deux, les **kits** : une bibliothèque partagée par domaine (l'interface, le réseau, les fichiers, "
       "les images, le son, l'impression…). Les applications ne parlent jamais directement au noyau ; seul AppKit le "
       "fait. Une application compilée aujourd'hui continue donc de fonctionner quand le noyau évolue.")
-para ("Le même découpage rend l'interface **adaptative**. Onyx a deux serveurs graphiques : Elegant pour le bureau, "
-      "PocketUI pour un petit écran ou une manette. Chacun charge sa propre version d'UIKit, la bibliothèque des "
-      "widgets, sous le même nom. Une application ignore dans quel mode elle tourne : le même binaire, sans "
-      "recompilation, s'affiche en fenêtres sur le bureau et en plein écran sur une console de poche (figure 3).")
+para ("Le même découpage rend l'interface **adaptative**. Onyx a trois modes : le **bureau**, servi par Elegant ; "
+      "le mode **pocket**, pour le petit écran d'une console de poche ; le mode **console**, plein écran et piloté "
+      "à la manette, ces deux derniers servis par PocketUI. Chaque serveur charge sa propre version d'UIKit, la "
+      "bibliothèque des widgets, sous le même nom. Une application ignore dans quel mode elle tourne : le même "
+      "binaire, sans recompilation, s'affiche en fenêtres sur le bureau et en plein écran en mode pocket (figure 3).")
 figure ("bureau-bureautique.png", "Figure 3a – Le mode bureau : Letters, le tableur et le terminal, où ps liste "
         "les processus du système.", 14)
 figure ("pocket-letters.png", "Figure 3b – Le mode pocket (640 × 480) : la même application Letters, le même "
@@ -201,7 +202,8 @@ para ("Le noyau est multitâche préemptif, avec des processus isolés et la pag
       "d'applications tournent dessus, avec leurs bibliothèques partagées, un gestionnaire de paquets signés et une "
       "documentation tenue à jour par Claude lui-même. Onyx, conçu pour le Raspberry Pi 4, a depuis été porté sur "
       "le **Raspberry Pi 5**, testé et validé sur un Pi 500.")
-figure ("bureau-3dforge.png", "Figure 4 – 3DForge, la CAO paramétrique d'Onyx, avec une pièce d'exemple.", 14)
+figure ("bureau-koton.png", "Figure 4 – Koton Studio, le studio de musique d'Onyx : une chanson pensée en "
+        "accords, que les pistes d'accompagnement, de mélodie et de batterie suivent.", 14)
 h ("« Qu'est-ce qui manque à Onyx ? » : quand Claude devient Product Manager", 2)
 para ("Si la suite logicielle est si fournie, ce n'est pas parce que j'avais tout prévu. Je demandais souvent à "
       "Claude des idées de logiciels, ou de comparer Onyx aux systèmes grand public : que chercherait en vain un "
@@ -213,6 +215,10 @@ para ("C'est ainsi que sont venus des émulateurs de consoles (la borne d'arcade
       "CNC. Et des outils pour programmer : QBasic, bien sûr, clin d'œil à mes débuts, un studio pour dessiner des "
       "applications fenêtrées en BASIC, un atelier pour piloter les broches du Pi, et un jeu de tortue pour "
       "apprendre la programmation aux enfants.")
+figure ("bureau-gpiolab.png", "Figure 5a – GPIO Lab : les 40 broches du connecteur du Pi, leur mode et leur "
+        "chronogramme.", 13)
+figure ("bureau-turtle.png", "Figure 5b – Turtle Quest : un niveau réussi, un sous-programme qui dessine tous les "
+        "polygones.", 13)
 para ("L'IA n'est donc pas seulement un développeur. Elle tient aussi le rôle d'un Product Manager : elle connaît "
       "ce que font les autres systèmes, propose quoi construire ensuite, et organise le travail. La décision, elle, "
       "reste la mienne.")
@@ -312,8 +318,11 @@ bullets ([
 	"`architecture.png` – L'architecture d'Onyx : le noyau et Circle, les serveurs, les kits, les applications.",
 	"`bureau-bureautique.png` – Le mode bureau : Letters, le tableur et le terminal.",
 	"`pocket-letters.png` – Le mode pocket (640 × 480) : la même application Letters, le même binaire.",
-	"`bureau-3dforge.png` – 3DForge, la CAO paramétrique d'Onyx.",
-	"En réserve : `pocket-lanceur.png` (le lanceur du mode pocket), `pocket-tableur.png` (le tableur en mode pocket).",
+	"`bureau-koton.png` – Koton Studio, le studio de musique d'Onyx.",
+	"`bureau-gpiolab.png` – GPIO Lab : les broches du Pi, leur mode et leur chronogramme.",
+	"`bureau-turtle.png` – Turtle Quest : un niveau réussi.",
+	"En réserve : `bureau-3dforge.png` (3DForge, la CAO paramétrique), `pocket-lanceur.png` (le lanceur du mode "
+	"pocket), `pocket-tableur.png` (le tableur en mode pocket).",
 ])
 
 doc.save (OUT)
