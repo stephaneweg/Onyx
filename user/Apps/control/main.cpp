@@ -457,6 +457,22 @@ public:
 			sized = true; place ();
 			if (wanted < 0 && g_cur < 0 && !narrow () && g_nl > 0) { int i = last_read (); wanted = i >= 0 ? i : 0; }
 		}
+		// Print Screen and Pause make no key event (the PocketTerm35's Select and Start): the window that has the
+		// keyboard sees them held, the applet does not -- a press passed on as a key (the Gamepad applet maps them)
+		{
+			static bool was[2];
+			static const int Q[2] = { KEY_PRTSC, KEY_PAUSE };
+			for (int q = 0; q < 2; q++)
+			{
+				bool now = kapi_key_held (Q[q]) != 0;
+				if (now && !was[q] && g_cur >= 0 && g_pid > 0 && !g_closing)
+				{
+					ApKey key = { Q[q], kapi_get_modifiers () };
+					kapi_mailbox_send (g_pid, AP_KEY, &key, sizeof key);
+				}
+				was[q] = now;
+			}
+		}
 		int from = 0, type = 0, n;
 		unsigned char buf[80];
 		while ((n = kapi_mailbox_recv (&from, &type, buf, sizeof buf - 1, 0)) >= 0)

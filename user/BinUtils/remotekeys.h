@@ -57,7 +57,10 @@ static int held_code (unsigned sym)
 	case 0xFF57: case 0xFF9C: return KEY_END;
 	case 0xFF55: case 0xFF9A: return KEY_PGUP;
 	case 0xFF56: case 0xFF9B: return KEY_PGDN;
+	case 0xFF61: return KEY_PRTSC;				// (held only, as on the PocketTerm35: its Select)
+	case 0xFF13: return KEY_PAUSE;				// (its Start)
 	}
+	if (sym >= 0xFFBE && sym <= 0xFFC9) return KEY_F1 + (int) (sym - 0xFFBE);	// F1..F12
 	if (sym >= 'a' && sym <= 'z') return (int) sym;
 	if (sym >= 'A' && sym <= 'Z') return (int) (sym - 'A' + 'a');
 	if (sym >= '0' && sym <= '9') return (int) sym;
