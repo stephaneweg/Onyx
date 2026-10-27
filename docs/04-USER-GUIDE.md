@@ -1598,7 +1598,7 @@ Exit codes (for scripts and packages): `0` all right, `1` a warning (files skipp
 | `pkg upgrade` | `pkg upgrade` | One round of the update daemon: the packages set `auto` updated, the others listed. |
 | `pkg check` | `pkg check` | Reads the index again: the updates available. |
 | `pkg mode` | `pkg mode <name> manual\|auto\|never` | How the package is updated: asked (`manual`, the default), in the background (`auto`), never. |
-| `pkg commit` | `pkg commit` | Moves in the packages staged for the next boot (run by `etc/autostart`, before the desktop); restarts when the kernel or the firmware changed. |
+| `pkg commit` | `pkg commit` | Moves in the packages staged for the next boot (run by `etc/autostart`, before the desktop); restarts when the kernel or the firmware changed. What it did each time -- nothing staged, a package and its files moved in, a stage it could not read and left -- is kept in **`SD:/var/pkg/commit.log`** (the last ones, with the time and the seconds since the boot; at boot the clock is not set yet): an update that stays staged is explained there (2026-10-27). |
 
 `-r <repository>` before the command uses another repository for once (a URL or a folder: `pkg -r
 SD:/myrepo add tetris`). The repository and its key: `SD:/etc/pkg/pkg.ini` (`repo =`, `key =`). Each

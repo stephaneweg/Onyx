@@ -28,7 +28,12 @@ using namespace pkg;
 
 struct Out : Report
 {
-	void say (const char *s) override { printf ("%s\n", s); fflush (stdout); }
+	char *log = 0; int logN = 0;			// (commit: what it said, for SD:/var/pkg/commit.log)
+	void say (const char *s) override
+	{
+		printf ("%s\n", s); fflush (stdout);
+		if (log) { int l = (int) strlen (s); if (logN + l + 2 < 4096) { memcpy (log + logN, s, l); logN += l; log[logN++] = '\n'; } }
+	}
 };
 
 static Manager *M;
@@ -261,7 +266,23 @@ static int run (const char *c, char **rest, int nr)
 	}
 	if (eq (c, "commit"))
 	{
+		// what it did, kept in SD:/var/pkg/commit.log (the last ones; at boot its lines leave the kernel's log
+		// before anyone reads them -- 2026-10-27: an update once stayed staged across two boots, unexplained)
+		static char said[4096]; R.log = said; R.logN = 0;
 		m.commit (R);
+		R.log = 0;
+		{
+			int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0; kapi_get_datetime (&y, &mo, &d, &h, &mi, &se);
+			static char old[8192], out[8192 + 4096 + 96];
+			int n = 0; void *f = kapi_open ("SD:/var/pkg/commit.log");
+			if (f) { n = kapi_read (f, old, sizeof old - 1); kapi_close (f); if (n < 0) n = 0; }
+			int keep = n > 6000 ? n - 6000 : 0;		// (the last ones)
+			while (keep > 0 && keep < n && old[keep - 1] != '\n') keep++;
+			int o = snprintf (out, sizeof out, "%.*s%04d-%02d-%02d %02d:%02d:%02d pkg commit (%u s after boot)\n", n - keep, old + keep,
+					  y, mo, d, h, mi, se, kapi_get_ticks () / 100);
+			memcpy (out + o, said, (size_t) R.logN); o += R.logN;
+			kapi_save_file ("SD:/var/pkg/commit.log", out, (unsigned) o);
+		}
 		// the sessions (2026-10-08): a card from before them has the desktop's lines in its autostart -- moved
 		// into etc/session/desktop once (the autostart then has a `session` line: nothing done the next times)
 		int s = session_migrate ();

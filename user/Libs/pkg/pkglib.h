@@ -943,7 +943,7 @@ public:
 	int commit (Report &r)
 	{
 		void *d = kapi_opendir (PKG_STAGE);
-		if (!d) return OK;
+		if (!d) { if (exists (PKG_STAGE)) r.say ("the staged packages' folder cannot be read: left as it is"); else r.say ("nothing staged"); return OK; }
 		char names[32][64]; int n = 0;
 		struct kapi_dirent e;
 		while (n < 32 && kapi_readdir (d, &e))
@@ -955,15 +955,15 @@ public:
 		for (int k = 0; k < n; k++)
 		{
 			char ip[200], dir[200]; snprintf (ip, sizeof ip, PKG_STAGE "/%s.ini", names[k]); snprintf (dir, sizeof dir, PKG_STAGE "/%s", names[k]);
-			Ini st; if (!st.load (ip)) continue;
-			int moved = 0;
+			Ini st; if (!st.load (ip)) { r.sayf ("%s: its stage file cannot be read: left staged", names[k]); continue; }
+			int moved = 0, missing = 0;
 			for (int i = 0; i < st.n; i++)
 			{
 				const char *f = st.kv[i].key;
 				if (eq (st.kv[i].sec, "moves"))
 				{
 					char from[300], to[300]; snprintf (from, sizeof from, "%s/%s", dir, f); snprintf (to, sizeof to, "SD:/%s", f);
-					if (!exists (from)) continue;
+					if (!exists (from)) { missing++; continue; }
 					if (eq (f, "kernel8-rpi4.img") || eq (f, "kernel_2712.img") || eq (f, "start4.elf") || eq (f, "fixup4.dat")
 					    || eq (f, "armstub8-rpi4.bin") || strstr (f, ".dtb"))		// (.dtbo too: the Pi 5's overlays/)
 					{
@@ -979,6 +979,7 @@ public:
 			move (ip, dbp);
 			remove_tree (dir);
 			char t[200]; snprintf (t, sizeof t, "%s %s: %d files moved in", names[k], st.get ("package", "version"), moved);
+			if (missing) snprintf (t + strlen (t), sizeof t - strlen (t), " (%d listed were not staged)", missing);
 			r.say (t);
 		}
 		remove_tree (PKG_STAGE);

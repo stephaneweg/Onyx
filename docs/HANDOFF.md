@@ -180,6 +180,9 @@ Control Panel's desktop window does not fit 640 x 480.
   `kapi_exec_as` starts a program with no parent. It was reverted.
 - `vncd` passes Print Screen, Pause and F1-F12 as held keys. Tried on the Pi over VNC with a small RFB client (a
   Python script in the session's scratchpad, not in the repository): Select = prtsc and Start = pause saved.
+- The 2026.10.177 update stayed staged across two boots (`wait pkg commit` did not move it in); `pkg commit` by hand
+  did. Not reproduced: a test stage was moved in at boot. `pkg commit` now writes `SD:/var/pkg/commit.log` (what it
+  did, at boot too), and says a stage it cannot read: look there the next time.
 - On the way the PocketTerm's keyboard stopped answering: its RP2040 was stuck, and a hard reset brought it back.
   Not Onyx: the 22:09 kernel did the same.
 
