@@ -1334,6 +1334,30 @@ static int net_resolve (const char *host, char *ip, unsigned cap)
 	return 1;
 }
 static void tcp_close (int s) { if (s >= 1000) { close (s - 1000); __atomic_sub_fetch (&g_socks, 1, __ATOMIC_SEQ_CST); } }
+// the server side (SIM_REALNET): a PC's listening socket on the port + SIM_PORT_OFFSET (443 needs root: 8443 with 8000)
+static int tcp_listen (unsigned port)
+{
+	if (!getenv ("SIM_REALNET")) return -5;
+	unsigned p = port + (getenv ("SIM_PORT_OFFSET") ? (unsigned) atoi (getenv ("SIM_PORT_OFFSET")) : 0);
+	int fd = socket (AF_INET, SOCK_STREAM, 0), one = 1;
+	if (fd < 0) return -5;
+	setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+	struct sockaddr_in a; memset (&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons ((unsigned short) p); a.sin_addr.s_addr = htonl (INADDR_ANY);
+	if (bind (fd, (struct sockaddr *) &a, sizeof a) != 0 || listen (fd, 4) != 0) { close (fd); return -6; }
+	fprintf (stderr, "sim: tcp_listen %u (the PC's port %u)\n", port, p);
+	return fd + 1000;
+}
+static int tcp_accept (int ls, char *ip, unsigned cap)
+{
+	if (ls < 1000) return -1;
+	struct sockaddr_in a; socklen_t n = sizeof a;
+	int fd = accept (ls - 1000, (struct sockaddr *) &a, &n);
+	if (fd < 0) return -1;
+	const unsigned char *b = (const unsigned char *) &a.sin_addr;
+	if (ip && cap) snprintf (ip, cap, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
+	__atomic_add_fetch (&g_socks, 1, __ATOMIC_SEQ_CST);
+	return fd + 1000;
+}
 // the Wi-Fi around (the Wi-Fi menu)
 static int wlan_scan (struct kapi_wlan_ap *o, int max)
 {
@@ -1801,7 +1825,7 @@ static void setup (void)
 	T->tray_set = tray_set; T->tray_clear = tray_clear; T->tray_list = tray_list; T->tray_icon = tray_icon; T->tray_activate = tray_activate;
 	T->list_procs = list_procs; T->proc_stats = proc_stats; T->meminfo = meminfo; T->mailbox_recv = mailbox_recv_note;
 	T->ipc_register = ipc_register_note; T->pad_state = pad_state_sim; T->inject_key = inject_key_sim;
-	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close;
+	T->tcp_connect = tcp_connect; T->tcp_send = tcp_send; T->tcp_recv = tcp_recv; T->tcp_close = tcp_close; T->tcp_listen = tcp_listen; T->tcp_accept = tcp_accept;
 	T->net_resolve = net_resolve;
 	T->wlan_scan = wlan_scan; T->wlan_reconnect = wlan_reconnect; T->screen_set = screen_set;
 	T->surface_create = surface_create; T->surface_map = surface_map; T->surface_size = surface_size; T->surface_destroy = surface_destroy; T->kill_pid = kill_pid;

@@ -3022,6 +3022,7 @@ the questions and the conversation; the menus are the CMD key (or F10) as in eve
 | | Skills... | | the skills installed, with what they do |
 | | Settings... | | below |
 | | Voice and Listening... | | Pocket's voice, *dis Pocket* in the background: below |
+| | PocketQI Studio... | | PocketQI Studio reaches Pocket over the network: below |
 | | Quit | Ctrl+Q | |
 | Edit | Copy Last Answer | | Pocket's last answer to the clipboard |
 | | Copy Conversation | | the whole conversation as text |
@@ -3060,6 +3061,17 @@ of your own -- the address of an OpenAI-compatible `chat/completions` endpoint o
   microphone is not listened to (Pocket does not hear itself). The wake word is tuned for French; a voice it does not
   recognise at once: say it again, a little slower.
 
+**PocketQI Studio** (Pocket > PocketQI Studio...): **PocketQI Studio**, PocketQI's Windows IDE for skills (diagrams or
+code, in Onyx BASIC), reaches Onyx's Pocket as it reaches PocketQI's robot. Tick *PocketQI Studio can reach Pocket*;
+the dialog says what to give Studio: the target **Pocket QI physique** and the address `https://<the Pi's address>`,
+and the **certificate's SHA-256 fingerprint** to accept the first time (the certificate is Pocket's own, made on the
+device at the first start; `https://<the Pi's address>/` in a browser shows the same fingerprint). Then, from Studio:
+**⇪ Envoyer** installs a skill (checked and compiled first: an error opens Studio's code at its line; Pocket knows it
+at the next sentence), **Apps installées... / Récupérer...** lists and fetches Pocket's skills, **F5** runs one at once
+without the model (its words in the conversation and aloud), the **Visage** window shows Pocket's mood. It serves
+while PocketQI's window or its background listening runs (port 443). A password (optional, as on PocketQI's robot):
+`SD:/apps/pocketqi.app/etc/admin.pass`. A page on the web cannot install a skill (refused).
+
 **Privacy**: what you type goes to the model's provider (Mistral, Groq) with the last six exchanges, today's date and
 the skills' descriptions. **What Pocket remembers never leaves the device**: the model only sees a marker in braces --
 *My name is Lea* goes as *My name is {nom}*, the answer comes back as *Nice to meet you, {nom}!* and Pocket puts the
@@ -3095,7 +3107,8 @@ voices made on the device (PicoTTS: PocketQI's robot has it; here the voice is M
 
 | File | What |
 |---|---|
-| `config.ini` | the settings: `provider`, `mistral_key`, `groq_key`, `model`, `url`, `url_key`, `character`, `voice`, `voice_fr`, `voice_en`, `listen` (`config.ini.example` says each) -- **your API keys: keep it private** |
+| `config.ini` | the settings: `provider`, `mistral_key`, `groq_key`, `model`, `url`, `url_key`, `character`, `voice`, `voice_fr`, `voice_en`, `listen`, `studio` (`config.ini.example` says each) -- **your API keys: keep it private** |
+| `etc/https.key`, `etc/https.crt` | the HTTPS certificate PocketQI Studio checks (made by Pocket; private) |
 | `ps/` | the wake word's model (PocketSphinx's French acoustic model, `ps/model/`, 4 MB) and its words (`ps/eveil.dict`) |
 | `etc/memoire.txt` | what Pocket remembers, `name = value` a line |
 | `etc/cron.txt` | the reminders and the tasks watched (*warn me...*) |

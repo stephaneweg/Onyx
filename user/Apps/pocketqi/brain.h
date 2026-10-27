@@ -53,6 +53,7 @@ struct Config
 	bool voice = true;				// Pocket speaks (Mistral's voice: voice.h)
 	std::string voiceFr, voiceEn;			// its voice in French, in English ("": voice.h's default)
 	bool listen = false;				// Pocket listens for "dis Pocket" in the background (tray.h)
+	bool studio = false;				// PocketQI Studio reaches Pocket (studio.h: HTTPS, port 443)
 };
 
 class Brain : public SkillIo
@@ -786,6 +787,28 @@ public:
 			ui->note (NOTE_APP, "SendLLM: " + s);
 			chat (s);
 		}
+	}
+
+	// a skill run without the LLM, as "/run <id> <action> args" on PocketQI's console (PocketQI Studio's F5: POST
+	// /api/apps/<id>/run, studio.h); the skills read again first (Studio may have just sent it)
+	void runDirect (const std::string &id, const std::vector<std::string> &args)
+	{
+		skillsReload ();
+		static groq_outcome o;
+		memset (&o, 0, sizeof o);
+		snprintf (o.app, sizeof o.app, "%s", id.c_str ());
+		for (auto &a : args) if (o.nargs < GROQ_MAX_ARGS) snprintf (o.args[o.nargs++], sizeof o.args[0], "%s", a.c_str ());
+		said.clear ();
+		std::string why, err, all;
+		for (unsigned k = 0; k < o.nargs; k++) all += std::string (" ") + o.args[k];
+		const Skill *s = skills_check (skills, o, why);
+		if (!s) { ui->note (NOTE_ERROR, "PocketQI Studio: " + id + ": " + why); return; }
+		ui->note (NOTE_APP, "PocketQI Studio: " + s->id + all);
+		speakLang = s->native ? ui->lang () : "fr";
+		ui->state (VISAGE_REFLECHIT);
+		if (skill_run (home, *s, o, this, err, &llmQueue) != 0) ui->note (NOTE_ERROR, s->id + ": " + err);
+		llmQueue.clear ();
+		ui->state (VISAGE_VEILLE);
 	}
 
 	void start ()

@@ -13,6 +13,7 @@
 # voice_fr     its French voice: voice_589 (Léa), fr_marie (Marie, with Pocket's moods), voice_3137 (Manon), voice_3141 (Camille)
 # voice_en     its English voice: en_paul (Paul, with the moods), gb_oliver, gb_jane, voice_3150 (James)... (Pocket > Voice and Listening)
 # listen       on: Pocket waits for "dis Pocket" in the background (`pocketqi --tray`, its icon in the menu bar)
+# studio       on: PocketQI Studio reaches Pocket over the network (HTTPS, port 443: Pocket > PocketQI Studio...)
 provider = mistral
 mistral_key =
 groq_key =
@@ -24,3 +25,4 @@ voice = on
 voice_fr = voice_589
 voice_en = en_paul
 listen = off
+studio = off

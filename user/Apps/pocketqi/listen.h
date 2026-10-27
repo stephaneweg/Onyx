@@ -66,7 +66,7 @@ static int voxtral_transcribe (const std::string &key, const short *pcm, size_t 
 	c.user_agent ("Onyx-PocketQI/1.0").timeout_ms (20000).progress (http_complete, buf);
 	c.header ("Authorization", ("Bearer " + key).c_str ());
 	c.accept ("application/json");
-	HttpResponse r = c.post (VOXTRAL_URL, "multipart/form-data; boundary=" VOXTRAL_BOUNDARY, body.data (), (int) body.size (), buf, CAP);
+	struct HttpResponse r = c.post (VOXTRAL_URL, "multipart/form-data; boundary=" VOXTRAL_BOUNDARY, body.data (), (int) body.size (), buf, CAP);
 	if (r.status <= 0) { err = "no answer (" + num (r.status) + ")"; return r.status; }
 	std::string b (r.body, (size_t) r.body_len);
 	if (r.status != 200) { err = "HTTP " + num (r.status) + ": " + b.substr (0, 200); return r.status; }

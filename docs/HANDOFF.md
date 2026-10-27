@@ -31,8 +31,10 @@ chosen in its settings) and to **wait in the menu bar for "dis Pocket"** (a popu
   and writes in the Calendar. **Not checked by us**: Mistral / Groq over mbedTLS on the Pi (the
   certificate is not verified, as `/bin/llm`), the face's cost at 25 images a second on the Pi 4, a key typed in the
   Settings on the PocketTerm35, a real printer (the PC's test stood PrinterKit in by a stub that logs its calls).
-- **Next** (the user, 2026-10-26): **PocketQI Studio** (PocketQI's Windows IDE) reaching Onyx's Pocket, to send it
-  commands and skills directly. Other ideas: the tray's ~1000 system calls a second (the microphone polled every 8 ms:
+- **PocketQI Studio** (2026-10-27): PocketQI's administration server's core (`core/admin_*.cpp`, unchanged) under
+  `studio.h`: Studio's target "Pocket QI physique" at `https://<the Pi>` (port 443, a self-signed certificate made by
+  Pocket, its fingerprint in Pocket > PocketQI Studio...) sends, fetches, removes, runs (F5) skills and shows the face.
+  Tried with curl in the simulator; **not yet with Studio itself nor on the Pi**. Other ideas: the tray's ~1000 system calls a second (the microphone polled every 8 ms:
   a blocking read would do), a beep after "dis Pocket" (`GEC_BIP`), PicoTTS for a voice without the network,
   `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
   itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.
