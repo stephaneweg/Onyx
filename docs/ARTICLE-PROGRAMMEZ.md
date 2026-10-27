@@ -362,3 +362,11 @@ sur le Pi et le résultat attendu.
   NetSurf → WebKit (POSIX, dépendances, GC), la chronologie ; la vitesse du chantier POSIX/WebKit
   confirmée par l'utilisateur, citable. Specs reçues ; article v0 rédigé dans le document Claude
   (voir « Le brouillon de l'article »).
+- 2026-10-27 : retour de François Tonic (« très intéressant texte bravo »). Il demande : la photo de
+  l'auteur ; un résumé des points clés (temps de génération, tokens et coût estimés, performances face à
+  Pi OS, taille des binaires / de l'image) ; un schéma d'architecture ; 2 ou 3 images de plus. Préparé
+  dans **`docs/programmez/`** : `points-cles.md` (le résumé chiffré, le préchargement, un protocole de
+  comparaison avec Pi OS, à mesurer), `architecture.svg/.png`, les captures du mode pocket (640 × 480).
+  Les tokens viennent des transcriptions de Claude Code sur le PC (du 7 au 27 octobre seulement). Restent :
+  les captures du mode bureau (le Pi, mis en 3840 × 2160, n'est pas revenu sur le réseau), la photo, les
+  mesures face à Pi OS.

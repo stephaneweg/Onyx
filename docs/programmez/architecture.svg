@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1262" viewBox="0 0 1600 1262" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#3b4a5e"/>
+    </marker>
+    <marker id="arv" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7a3fb0"/>
+    </marker>
+    <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1f7a4a"/>
+    </marker>
+    <style>
+      .t  { font-size: 19px; font-weight: 600; fill: #1b2430; }
+      .h  { font-size: 26px; font-weight: 700; fill: #1b2430; }
+      .s  { font-size: 15px; fill: #3b4a5e; }
+      .sm { font-size: 13.5px; fill: #3b4a5e; }
+      .w  { font-size: 17px; font-weight: 600; fill: #ffffff; }
+      .ws { font-size: 13.5px; fill: #e8eef7; }
+      .lab{ font-size: 14px; font-weight: 600; letter-spacing: 1.5px; fill: #6a7788; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1262" fill="#ffffff"/>
+  <text x="40" y="52" class="h">Onyx sur Raspberry Pi 4 : l'architecture</text>
+  <text x="40" y="80" class="s">Chaque programme tourne dans son propre espace mémoire ; il ne parle au noyau qu'à travers AppKit.</text>
+
+  <!-- ===================== USER SPACE ===================== -->
+  <rect x="24" y="100" width="1552" height="682" rx="16" fill="#f4f7fb" stroke="#c9d3e0"/>
+  <text x="44" y="128" class="lab">ESPACE UTILISATEUR (EL0) — UN ESPACE D'ADRESSAGE PAR PROCESSUS</text>
+
+  <!-- Applications -->
+  <rect x="44" y="144" width="1040" height="150" rx="12" fill="#ffffff" stroke="#9fb3cc"/>
+  <text x="64" y="172" class="t">Applications — un seul binaire par app, quel que soit le mode</text>
+  <g>
+    <rect x="64"  y="188" width="150" height="40" rx="8" fill="#e6eef8"/><text x="139" y="214" class="s" text-anchor="middle">Letters</text>
+    <rect x="224" y="188" width="150" height="40" rx="8" fill="#e6eef8"/><text x="299" y="214" class="s" text-anchor="middle">Tableur, Slides</text>
+    <rect x="384" y="188" width="150" height="40" rx="8" fill="#e6eef8"/><text x="459" y="214" class="s" text-anchor="middle">Jet (WebKit)</text>
+    <rect x="544" y="188" width="150" height="40" rx="8" fill="#e6eef8"/><text x="619" y="214" class="s" text-anchor="middle">Mail, Telegram</text>
+    <rect x="704" y="188" width="150" height="40" rx="8" fill="#e6eef8"/><text x="779" y="214" class="s" text-anchor="middle">3DForge</text>
+    <rect x="864" y="188" width="200" height="40" rx="8" fill="#e6eef8"/><text x="964" y="214" class="s" text-anchor="middle">Émulateurs, jeux</text>
+    <rect x="64"  y="238" width="230" height="40" rx="8" fill="#e6eef8"/><text x="179" y="264" class="s" text-anchor="middle">Panneau de configuration</text>
+    <rect x="304" y="238" width="230" height="40" rx="8" fill="#e6eef8"/><text x="419" y="264" class="s" text-anchor="middle">Terminal et outils /bin</text>
+    <text x="554" y="264" class="s">… plus de 100 applications et outils</text>
+  </g>
+
+  <!-- Kits -->
+  <rect x="44" y="314" width="1040" height="250" rx="12" fill="#ffffff" stroke="#9fb3cc"/>
+  <text x="64" y="342" class="t">Les kits — bibliothèques partagées (SD:/lib/*.so), une par domaine</text>
+  <text x="64" y="364" class="sm">Table d'export qui ne fait que s'allonger : une app compilée hier fonctionne avec les kits de demain.</text>
+
+  <!-- UIKit, two variants -->
+  <rect x="64" y="380" width="420" height="120" rx="10" fill="#efe6f8" stroke="#7a3fb0" stroke-width="2"/>
+  <text x="80" y="406" class="t" fill="#4a1f73">UIKit — l'interface (widgets adaptatifs)</text>
+  <text x="80" y="428" class="sm">L'app ouvre toujours « uikit » ; elle reçoit celui du serveur :</text>
+  <rect x="80"  y="440" width="190" height="48" rx="8" fill="#ffffff" stroke="#b693d6"/>
+  <text x="175" y="461" class="sm" text-anchor="middle" font-weight="600">uikit.so</text>
+  <text x="175" y="479" class="sm" text-anchor="middle">bureau (fenêtres)</text>
+  <rect x="280" y="440" width="190" height="48" rx="8" fill="#ffffff" stroke="#b693d6"/>
+  <text x="375" y="461" class="sm" text-anchor="middle" font-weight="600">pocket/uikit.so</text>
+  <text x="375" y="479" class="sm" text-anchor="middle">pocket, console</text>
+
+  <g class="s">
+    <rect x="500" y="380" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="567" y="404" text-anchor="middle">SystemKit</text>
+    <rect x="644" y="380" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="711" y="404" text-anchor="middle">NetKit</text>
+    <rect x="788" y="380" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="855" y="404" text-anchor="middle">FileKit</text>
+    <rect x="932" y="380" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="999" y="404" text-anchor="middle">ImageKit</text>
+    <rect x="500" y="422" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="567" y="446" text-anchor="middle">AudioKit</text>
+    <rect x="644" y="422" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="711" y="446" text-anchor="middle">FontKit</text>
+    <rect x="788" y="422" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="855" y="446" text-anchor="middle">PrinterKit</text>
+    <rect x="932" y="422" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="999" y="446" text-anchor="middle">GameKit</text>
+    <rect x="500" y="464" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="567" y="488" text-anchor="middle">InputKit</text>
+    <rect x="644" y="464" width="134" height="36" rx="8" fill="#e8f3ec"/><text x="711" y="488" text-anchor="middle">GpioKit</text>
+  </g>
+
+  <!-- AppKit -->
+  <rect x="64" y="512" width="1002" height="40" rx="8" fill="#2f4a6d"/>
+  <text x="80" y="538" class="w">AppKit</text>
+  <text x="150" y="538" class="ws">le seul pont vers le noyau : processus, fichiers, mémoire, fenêtres bas niveau, démarrage des programmes</text>
+
+  <!-- Servers -->
+  <rect x="1104" y="144" width="452" height="420" rx="12" fill="#ffffff" stroke="#9fb3cc"/>
+  <text x="1124" y="172" class="t">Serveurs système (processus utilisateur)</text>
+
+  <rect x="1124" y="188" width="412" height="158" rx="10" fill="#efe6f8" stroke="#7a3fb0" stroke-width="2"/>
+  <text x="1140" y="214" class="t" fill="#4a1f73">Serveur graphique — un actif à la fois</text>
+  <rect x="1140" y="228" width="182" height="62" rx="8" fill="#ffffff" stroke="#b693d6"/>
+  <text x="1231" y="252" class="s" text-anchor="middle" font-weight="600">Elegant</text>
+  <text x="1231" y="274" class="sm" text-anchor="middle">mode bureau</text>
+  <rect x="1338" y="228" width="182" height="62" rx="8" fill="#ffffff" stroke="#b693d6"/>
+  <text x="1429" y="252" class="s" text-anchor="middle" font-weight="600">PocketUI</text>
+  <text x="1429" y="274" class="sm" text-anchor="middle">modes pocket, console</text>
+  <text x="1140" y="314" class="sm">gestion des fenêtres, composition de l'écran,</text>
+  <text x="1140" y="333" class="sm">routage du clavier, de la souris, de la manette</text>
+
+  <rect x="1124" y="360" width="412" height="188" rx="10" fill="#f1f4f8"/>
+  <text x="1140" y="386" class="s" font-weight="600">Services d'arrière-plan</text>
+  <text x="1140" y="410" class="sm">pkgd — mises à jour des paquets signés</text>
+  <text x="1140" y="432" class="sm">printd — impression (IPP)</text>
+  <text x="1140" y="454" class="sm">clockd, clipd, notifyd — heure, presse-papiers, notifications</text>
+  <text x="1140" y="476" class="sm">telnetd, vncd, rdpd — accès à distance (Onyx Remote)</text>
+  <text x="1140" y="498" class="sm">session — démarre le shell du mode choisi</text>
+  <text x="1140" y="520" class="sm">(barre de menus, dock, lanceur pocket…)</text>
+
+
+  <!-- the server's UIKit, under the alias (the gutter between the kits and the servers) -->
+  <path d="M1124,318 H1094 V507 H476 V503" fill="none" stroke="#7a3fb0" stroke-width="3" stroke-dasharray="8 5" marker-end="url(#arv)"/>
+  <!-- Adaptive note -->
+  <rect x="44" y="584" width="1512" height="84" rx="10" fill="#faf5ff" stroke="#d8c3ee"/>
+  <text x="64" y="610" class="s"><tspan font-weight="700" fill="#4a1f73">Affichage adaptatif.</tspan> Une app ne sait pas dans quel mode elle tourne : elle décrit son interface avec les widgets d'UIKit.</text>
+  <text x="64" y="632" class="s">Sous Elegant, ils dessinent des fenêtres de bureau ; sous PocketUI, ils s'adaptent à un petit écran ou à une manette (barres d'outils repliables, focus au clavier).</text>
+  <text x="64" y="654" class="s"><tspan font-weight="700" fill="#4a1f73">Flèche violette :</tspan> le serveur graphique charge son propre UIKit sous l'alias SD:/lib/uikit.so ; chaque app qui ouvre « uikit » reçoit celui-là, à la même adresse, en une seule copie.</text>
+
+  <!-- Preload note -->
+  <rect x="44" y="682" width="1512" height="84" rx="10" fill="#eef8f2" stroke="#a9d7bd"/>
+  <text x="64" y="708" class="s"><tspan font-weight="700" fill="#1f5a3a">Préchargement.</tspan> Au démarrage, /bin/preload lit SD:/etc/preload.ini et demande au noyau de charger les programmes et les kits les plus</text>
+  <text x="64" y="730" class="s">utilisés, puis de les garder en mémoire. Lancer l'un d'eux ne lit plus la carte SD : le noyau associe ses pages de code, déjà chargées, au</text>
+  <text x="64" y="752" class="s">nouveau processus. Une seule copie du code en mémoire pour tous les processus ; seules les données sont propres à chacun.</text>
+
+  <!-- ===================== SYSCALL BOUNDARY ===================== -->
+  <line x1="24" y1="812" x2="1576" y2="812" stroke="#2f4a6d" stroke-width="3" stroke-dasharray="12 6"/>
+  <rect x="520" y="796" width="560" height="32" rx="16" fill="#2f4a6d"/>
+  <text x="800" y="818" class="w" text-anchor="middle">appels système (table kapi, numérotée, append-only)</text>
+
+  <!-- ===================== KERNEL ===================== -->
+  <rect x="24" y="842" width="1552" height="330" rx="16" fill="#eef1f6" stroke="#9aa8bb"/>
+  <text x="44" y="870" class="lab">NOYAU ONYX (EL1) — GPL-3.0 AVEC CIRCLE</text>
+
+  <g class="s">
+    <rect x="44"  y="884" width="300" height="78" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="60" y="910" font-weight="600" fill="#1b2430">Processus et ordonnanceur</text>
+    <text x="60" y="932" class="sm">multitâche préemptif ; une app fautive</text>
+    <text x="60" y="950" class="sm">est arrêtée, le système continue</text>
+
+    <rect x="356" y="884" width="300" height="78" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="372" y="910" font-weight="600" fill="#1b2430">Mémoire virtuelle</text>
+    <text x="372" y="932" class="sm">une table de pages par processus</text>
+    <text x="372" y="950" class="sm">(ASID), pages partagées en lecture seule</text>
+
+    <rect x="668" y="884" width="300" height="78" rx="10" fill="#e3f4ea" stroke="#1f7a4a" stroke-width="2"/>
+    <text x="684" y="910" font-weight="600" fill="#1f5a3a">Chargeur d'images</text>
+    <text x="684" y="932" class="sm">programmes et kits chargés une fois,</text>
+    <text x="684" y="950" class="sm">gardés (préchargement), partagés</text>
+
+    <rect x="980" y="884" width="280" height="78" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="996" y="910" font-weight="600" fill="#1b2430">Fichiers</text>
+    <text x="996" y="932" class="sm">carte SD (FAT), USB, RAM:,</text>
+    <text x="996" y="950" class="sm">FTP monté comme un volume</text>
+
+    <rect x="1272" y="884" width="284" height="78" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="1288" y="910" font-weight="600" fill="#1b2430">Les 4 cœurs</text>
+    <text x="1288" y="932" class="sm">0 : système · 1 : son</text>
+    <text x="1288" y="950" class="sm">2-3 : apps (ou réseau sur le 3)</text>
+
+    <rect x="44"  y="972" width="300" height="56" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="60" y="1006" font-weight="600" fill="#1b2430">IPC, tubes, mémoire partagée</text>
+    <rect x="356" y="972" width="300" height="56" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="372" y="1006" font-weight="600" fill="#1b2430">Pilote GPU V3D (3D, composition)</text>
+    <rect x="668" y="972" width="300" height="56" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="684" y="1006" font-weight="600" fill="#1b2430">Rôle de serveur graphique, alias</text>
+    <rect x="980" y="972" width="576" height="56" rx="10" fill="#ffffff" stroke="#b7c3d3"/>
+    <text x="996" y="1006" font-weight="600" fill="#1b2430">Réseau TCP/IP, Wi-Fi ; son ; entrées USB ; journal du noyau</text>
+  </g>
+
+  <!-- Circle inside the kernel -->
+  <rect x="44" y="1042" width="1512" height="114" rx="12" fill="#3b4a5e"/>
+  <text x="64" y="1072" class="w">Circle — la couche d'abstraction matérielle (HAL), intégrée au noyau</text>
+  <text x="64" y="1096" class="ws">bibliothèque C++ « bare metal » pour le Raspberry Pi, avec nos correctifs (fork) :</text>
+  <g class="ws">
+    <rect x="64"  y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="149" y="1130" text-anchor="middle">USB (xHCI)</text>
+    <rect x="244" y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="329" y="1130" text-anchor="middle">carte SD</text>
+    <rect x="424" y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="509" y="1130" text-anchor="middle">HDMI, framebuffer</text>
+    <rect x="604" y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="689" y="1130" text-anchor="middle">Wi-Fi, Ethernet</text>
+    <rect x="784" y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="869" y="1130" text-anchor="middle">son (jack, HDMI, USB)</text>
+    <rect x="964" y="1108" width="170" height="34" rx="7" fill="#52647c"/><text x="1049" y="1130" text-anchor="middle">GPIO, I2C</text>
+    <rect x="1144" y="1108" width="190" height="34" rx="7" fill="#52647c"/><text x="1239" y="1130" text-anchor="middle">interruptions, timers</text>
+    <rect x="1344" y="1108" width="196" height="34" rx="7" fill="#52647c"/><text x="1442" y="1130" text-anchor="middle">multicœur (SMP)</text>
+  </g>
+
+  <!-- Hardware -->
+  <rect x="24" y="1188" width="1552" height="54" rx="12" fill="#1b2430"/>
+  <text x="800" y="1222" class="w" text-anchor="middle">Raspberry Pi 4 / Pi 400 — 4 cœurs Cortex-A72, GPU VideoCore VI (V3D), 1 à 8 Go</text>
+</svg>
