@@ -34,7 +34,8 @@ chosen in its settings) and to **wait in the menu bar for "dis Pocket"** (a popu
 - **PocketQI Studio** (2026-10-27): PocketQI's administration server's core (`core/admin_*.cpp`, unchanged) under
   `studio.h`: Studio's target "Pocket QI physique" at `https://<the Pi>` (port 443, a self-signed certificate made by
   Pocket, its fingerprint in Pocket > PocketQI Studio...) sends, fetches, removes, runs (F5) skills and shows the face.
-  Tried with curl in the simulator; **not yet with Studio itself nor on the Pi**. Other ideas: the tray's ~1000 system calls a second (the microphone polled every 8 ms:
+  Tried with curl in the simulator, then **by the user with Studio on the Pi** (2026-10-27: a factorial app sent and run
+  with F5). Other ideas: the tray's ~1000 system calls a second (the microphone polled every 8 ms:
   a blocking read would do), a beep after "dis Pocket" (`GEC_BIP`), PicoTTS for a voice without the network,
   `draw` (PocketQI's drawings) in a pane, the skills' words in English (`LANG:` is there for them), Mail sending by
   itself with a confirmation, a Pocket shortcut on the PocketTerm35's home.

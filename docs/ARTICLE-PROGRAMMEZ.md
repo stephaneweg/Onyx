@@ -362,3 +362,16 @@ sur le Pi et le résultat attendu.
   NetSurf → WebKit (POSIX, dépendances, GC), la chronologie ; la vitesse du chantier POSIX/WebKit
   confirmée par l'utilisateur, citable. Specs reçues ; article v0 rédigé dans le document Claude
   (voir « Le brouillon de l'article »).
+- 2026-10-27 : retour de François Tonic (« très intéressant texte bravo »). Il demande : la photo de
+  l'auteur ; un résumé des points clés (temps de génération, tokens et coût estimés, performances face à
+  Pi OS, taille des binaires / de l'image) ; un schéma d'architecture ; 2 ou 3 images de plus. Préparé
+  dans **`docs/programmez/`** : `points-cles.md` (le résumé chiffré, le préchargement, un protocole de
+  comparaison avec Pi OS, à mesurer), `architecture.svg/.png`, les captures du mode pocket (640 × 480).
+  Les tokens viennent des transcriptions de Claude Code sur le PC (du 7 au 27 octobre seulement). Puis le même
+  jour : le Pi 5 dans le schéma ; les captures du bureau en 1280 × 1024 (la 4K a fait redémarrer le Pi en
+  boucle) ; mesuré sur le Pi : 33 s du `reboot` au bureau, Letters prête en 0,3 s, le tableur en 0,8 s,
+  Koton en 2,9 s. Puis l'ébauche Word v2 (`python docs/programmez/make_article.py` →
+  `Onyx-Programmez-v2.docx`, environ 18 100 signes, soit 4 pages) : le texte du document Claude, plus le Pi 5,
+  « Sous le capot » (le schéma, les kits, l'UIKit propre à chaque serveur, le préchargement), « Onyx en
+  chiffres », les tokens dans « Le coût », les figures et leurs légendes, la photo de l'auteur (le Word et la
+  photo ne sont pas dans git : personnels). Reste : les mesures face à Pi OS.
