@@ -101,6 +101,7 @@ namespace OnyxRemote
 				var was = Region;
 				Region = frame ? Rounded (ow, oh, KAPI_FRAME_RADIUS) : null;
 				was?.Dispose ();
+				shapeRows = null;			// (Shape: from the new frame's pixels)
 			}
 			if (placed && (m.X != piX || m.Y != piY)) placed = false;	// (moved on the Pi: follows)
 			piX = m.X; piY = m.Y; viewTop = top;
@@ -115,7 +116,7 @@ namespace OnyxRemote
 			if (m.Dirty || fresh)
 			{
 				Pix.Fill (content, m.Content, w, h);
-				if (frame) { Pix.Fill (chromeA, m.ChromeA, ow, oh); Pix.Fill (chromeI, m.ChromeI, ow, oh); }
+				if (frame) { Pix.Fill (chromeA, m.ChromeA, ow, oh); Pix.Fill (chromeI, m.ChromeI, ow, oh); Shape (m.ChromeA); }
 				m.Dirty = false;
 				Invalidate ();
 			}
@@ -128,6 +129,42 @@ namespace OnyxRemote
 			g.InterpolationMode = InterpolationMode.NearestNeighbor;
 			if (frame) { var c = keys ? chromeA : chromeI; if (c != null) g.DrawImageUnscaled (c, 0, 0); }
 			if (content != null) g.DrawImageUnscaled (content, frame ? il : 0, frame ? it : 0);
+		}
+
+		// A frame drawn with see-through pixels (ARMPI: the shadow rings around the window, top
+		// byte = transparency, 0 opaque): the window's shape is, row by row, from its first to its
+		// last mostly opaque pixel (TT < 0x80) -- the shadow is not drawn, the rounded corners
+		// follow. A frame without such pixels (Onyx's) keeps the rounded shape.
+		int[] shapeRows;
+		void Shape (int[] px)
+		{
+			if (px == null || ow <= 0 || oh <= 0 || px.Length < ow * oh) return;
+			var rows = new int[2 * oh];
+			bool seeThrough = false;
+			for (int y = 0; y < oh; y++)
+			{
+				int x0 = -1, x1 = -1, o = y * ow;
+				for (int x = 0; x < ow; x++)
+				{
+					if (((px[o + x] >> 24) & 0xFF) < 0x80) { if (x0 < 0) x0 = x; x1 = x; }
+					else seeThrough = true;
+				}
+				rows[2 * y] = x0; rows[2 * y + 1] = x1;
+			}
+			if (!seeThrough) return;
+			if (shapeRows != null && shapeRows.Length == rows.Length && ((System.Collections.IStructuralEquatable) shapeRows).Equals (rows, System.Collections.Generic.EqualityComparer<int>.Default)) return;
+			shapeRows = rows;
+			var r = new Region (Rectangle.Empty);
+			for (int y = 0; y < oh; )			// (rows of the same span as one rectangle)
+			{
+				int x0 = rows[2 * y], x1 = rows[2 * y + 1], y1 = y + 1;
+				while (y1 < oh && rows[2 * y1] == x0 && rows[2 * y1 + 1] == x1) y1++;
+				if (x0 >= 0) r.Union (new Rectangle (x0, y, x1 - x0 + 1, y1 - y));
+				y = y1;
+			}
+			var was = Region;
+			Region = r;
+			was?.Dispose ();
 		}
 
 		// the frame's rounded shape (its corners' outside see-through on the Pi)
