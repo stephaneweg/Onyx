@@ -26,7 +26,7 @@
   - Le total du projet est plus élevé : ce relevé ne couvre ni septembre et le début d'octobre, ni les
     sessions lancées dans le cloud ou sous WSL.
 - **Le coût réel est celui de l'abonnement**, pas un prix au token. Au départ, il s'agissait de
-  l'abonnement Max à 100 € par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
+  l'abonnement Max à 100 $ par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
   trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 200 $ par mois ; les prix sont
   à vérifier sur claude.com/pricing). À la facturation à l'usage de l'API, le même volume coûterait
   nettement plus cher : c'est tout l'intérêt de l'abonnement pour un projet de cette taille.
@@ -35,7 +35,7 @@
 
 | | |
 |---|---|
-| Image du noyau | **1,3 Mo**, Circle compris : `kernel8-rpi4.img` (Pi 4, Pi 400), `kernel_2712.img` (Pi 5, Pi 500 ; testé et validé) |
+| Image du noyau | **1,3 Mo**, Circle compris : `kernel8-rpi4.img` (Pi 4, Pi 400), `kernel_2712.img` (Pi 5, Pi 500 ; bureau et Wi-Fi vérifiés, GPU et Ethernet à tester) |
 | Cartes Pi 5 | une distribution à part : `sdcard5/` (388 Mo) et `sdcard5_lite/` |
 | Serveurs graphiques | Elegant 162 Ko, PocketUI 230 Ko |
 | Les kits (bibliothèques partagées) | de 90 Ko (AppKit, NetKit) à 800 Ko (AudioKit) ; UIKit 590 Ko |

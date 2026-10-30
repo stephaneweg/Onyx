@@ -387,3 +387,7 @@ sur le Pi et le résultat attendu.
 - 2026-10-30 : les chiffres de démarrage retenus par l'auteur, un ordre de grandeur et non une comparaison
   scientifique : **9 s pour le bureau, 25 s pour le réseau, après la mise sous tension ; environ 30 s pour le
   bureau de Raspberry Pi OS**.
+- 2026-10-30 : nouvelle section « Quand Claude se trompe » (six incidents réels : le noyau sans Wi-Fi, les tests
+  masqués par les fichiers copiés à la main, l'agrégation Wi-Fi, le paquet Jet vide, la table des appels système,
+  les 33 s de cet article) ; Pi 5 précisé (bureau et Wi-Fi vérifiés, GPU et Ethernet à tester) ; prix en dollars.
+  Le Word fait environ 22 100 signes, soit 5 pages. Reste : le coût total estimé, à partir des factures de l'auteur.
