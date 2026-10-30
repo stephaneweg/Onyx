@@ -72,8 +72,8 @@ para ("**Un noyau multitâche préemptif, une centaine d'applications, un naviga
       "développeur, ici, n'est pas celui qu'on croit : retour d'expérience sur une méthode de travail où l'humain "
       "tient la vision, et l'IA le clavier.**")
 
-figure ("bureau-jet.png", "Figure 1 – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! "
-        "sur un Raspberry Pi 4.")
+figure ("bureau-koton.png", "Figure 1 – Koton Studio, le studio de musique d'Onyx : une chanson pensée en "
+        "accords, que les pistes d'accompagnement, de mélodie et de batterie suivent.")
 
 h ("La genèse : de la borne d'arcade à Claude")
 para ("Tout est parti d'un loisir : une petite borne d'arcade animée par un Raspberry Pi sous Linux. Pour une machine "
@@ -156,6 +156,8 @@ para ("Le plan estimait 45 à 60 « jours-agent », soit 6 à 8 semaines, pour c
       "processus, une vraie chaîne de compilation (GCC 14.2 avec threads POSIX) et les dépendances de WebKit (ICU, "
       "FreeType, HarfBuzz, Skia…). Des portages de test (SQLite, libxml2, curl) prouvaient chaque étape. Le "
       "lendemain, le navigateur WebKit affichait une page en HTTPS sur le Raspberry Pi.")
+figure ("bureau-jet.png", "Figure 4 – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! "
+        "sur un Raspberry Pi 4.")
 para ("Ce n'est possible que parce que le plan existait : des lots aux interfaces fixées à l'avance, et des tests "
       "prévus pour chacun. C'est ce qui permet à plusieurs agents de travailler en parallèle sans se marcher dessus.")
 h ("Une nuit en autonomie sur le Pi", 2)
@@ -182,8 +184,6 @@ para ("Le noyau est multitâche préemptif, avec des processus isolés et la pag
       "d'applications tournent dessus, avec leurs bibliothèques partagées, un gestionnaire de paquets signés et une "
       "documentation tenue à jour par Claude lui-même. Onyx, conçu pour le Raspberry Pi 4, a depuis été porté sur "
       "le **Raspberry Pi 5** : il démarre sur un Pi 500, bureau et Wi-Fi vérifiés ; le GPU et l'Ethernet restent à tester.")
-figure ("bureau-koton.png", "Figure 4 – Koton Studio, le studio de musique d'Onyx : une chanson pensée en "
-        "accords, que les pistes d'accompagnement, de mélodie et de batterie suivent.", 14)
 h ("« Qu'est-ce qui manque à Onyx ? » : quand Claude devient Product Manager", 2)
 para ("Si la suite logicielle est si fournie, ce n'est pas parce que j'avais tout prévu. Je demandais souvent à "
       "Claude des idées de logiciels, ou de comparer Onyx aux systèmes grand public : que chercherait en vain un "
@@ -335,11 +335,11 @@ para ("Le gros du travail a tenu en trois jours intensifs. Surtout, rien de ce q
 doc.add_page_break ()
 h ("Illustrations (fichiers PNG fournis à part)")
 bullets ([
-	"`bureau-jet.png` – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! sur un Raspberry Pi 4.",
+	"`bureau-koton.png` – Koton Studio, le studio de musique d'Onyx.",
 	"`architecture.png` – L'architecture d'Onyx : le noyau et Circle, les serveurs, les kits, les applications.",
 	"`bureau-bureautique.png` – Le mode bureau : Letters, le tableur et le terminal.",
 	"`pocket-letters.png` – Le mode pocket (640 × 480) : la même application Letters, le même binaire.",
-	"`bureau-koton.png` – Koton Studio, le studio de musique d'Onyx.",
+	"`bureau-jet.png` – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! sur un Raspberry Pi 4.",
 	"`bureau-gpiolab.png` – GPIO Lab : les broches du Pi, leur mode et leur chronogramme.",
 	"`bureau-turtle.png` – Turtle Quest : un niveau réussi.",
 	"En réserve : `bureau-3dforge.png` (3DForge, la CAO paramétrique), `pocket-lanceur.png` (le lanceur du mode "
