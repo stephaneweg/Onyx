@@ -91,29 +91,24 @@ para ("Circle fournit les pilotes d'un matériel unique et connu, mais avec un m
       "bon moment.")
 
 h ("Sous le capot, en un coup d'œil")
-para ("Le schéma de la figure 2 montre ce que le projet est devenu. En bas, le noyau d'Onyx, qui intègre Circle "
-      "comme couche d'abstraction du matériel : les pilotes USB, la carte SD, l'écran, le Wi-Fi, le son. Au-dessus "
-      "de la frontière des appels système, tout tourne en mode utilisateur, chaque programme dans son propre "
-      "espace mémoire : le serveur graphique, les services, les applications.")
+para ("La figure 2 montre ce que le projet est devenu. En bas, le noyau intègre Circle comme couche d'abstraction du "
+      "matériel. Au-dessus des appels système, tout tourne en mode utilisateur, chaque programme dans son propre "
+      "espace mémoire.")
 figure ("architecture.png", "Figure 2 – L'architecture d'Onyx : le noyau et Circle, les serveurs, les kits, les "
         "applications.", 16)
-para ("Entre les deux, les **kits** : une bibliothèque partagée par domaine (l'interface, le réseau, les fichiers, "
-      "les images, le son, l'impression…). Les applications ne parlent jamais directement au noyau ; seul AppKit le "
-      "fait. Une application compilée aujourd'hui continue donc de fonctionner quand le noyau évolue.")
-para ("Le même découpage rend l'interface **adaptative**. Onyx a trois modes : le **bureau**, servi par Elegant ; "
-      "le mode **pocket**, pour le petit écran d'une console de poche ; le mode **console**, plein écran et piloté "
-      "à la manette, ces deux derniers servis par PocketUI. Chaque serveur charge sa propre version d'UIKit, la "
-      "bibliothèque des widgets, sous le même nom. Une application ignore dans quel mode elle tourne : le même "
-      "binaire, sans recompilation, s'affiche en fenêtres sur le bureau et en plein écran en mode pocket (figure 3).")
+para ("Entre les deux, les **kits** : une bibliothèque partagée par domaine (interface, réseau, fichiers, son…). Seul "
+      "AppKit parle au noyau : une application compilée aujourd'hui continue de fonctionner quand le noyau évolue.")
+para ("Ce découpage rend aussi l'interface **adaptative**. Elegant sert le mode **bureau**, PocketUI les modes "
+      "**pocket** (petit écran) et **console** (plein écran, à la manette). Chaque serveur charge sa propre version "
+      "d'UIKit sous le même nom : sans recompilation, le même binaire s'affiche en fenêtres ou en plein écran "
+      "(figure 3).")
 figure ("bureau-bureautique.png", "Figure 3a – Le mode bureau : Letters, le tableur et le terminal, où ps liste "
         "les processus du système.", 14)
 figure ("pocket-letters.png", "Figure 3b – Le mode pocket (640 × 480) : la même application Letters, le même "
         "binaire.", 10)
-para ("Dernier mécanisme : le **préchargement**. Au démarrage, Onyx peut charger en mémoire les programmes et les "
-      "kits les plus utilisés, et les y garder. Lancer l'un d'eux ne lit alors plus la carte SD : le noyau associe "
-      "au nouveau processus les pages de code déjà présentes, partagées en lecture seule, et ne lui donne en propre "
-      "que ses données. Le code d'UIKit, par exemple, n'existe qu'en un exemplaire, quel que soit le nombre "
-      "d'applications ouvertes.")
+para ("Enfin, le **préchargement** : Onyx garde en mémoire les programmes et les kits les plus utilisés. Les lancer ne "
+      "lit plus la carte SD : le noyau partage leurs pages de code en lecture seule, et chaque processus ne reçoit en "
+      "propre que ses données.")
 
 h ("La méthode : je suis l'architecte, Claude est le développeur")
 para ("J'utilise Claude Opus : pour un travail de réflexion aussi technique, il me semblait plus adapté que Sonnet, "
