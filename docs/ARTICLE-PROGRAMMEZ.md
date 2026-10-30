@@ -400,3 +400,6 @@ sur le Pi et le résultat attendu.
   l'auteur (Max à environ 90 € HT, juin, pause, reprise fin septembre, un ou deux mois auraient suffi, l'abonnement
   sert aussi ailleurs) ; le Product Manager avant « Ce que ça a donné », « Onyx en chiffres » dedans ; figures
   renumérotées (5a, 5b GPIO Lab et Turtle Quest, 6 Koton) ; typographie française ; environ 20 400 signes.
+- 2026-10-30 : ajoutés à la méthode : trois extraits réels de `CLAUDE.md` et « Mes demandes, telles quelles »,
+  quatre prompts réels de l'auteur, orthographe corrigée (transcriptions du 8 au 27 octobre, sauf la question du
+  coût, rapportée par l'auteur). Environ 22 000 signes, 5 pages.

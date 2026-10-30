@@ -142,9 +142,36 @@ para ("**5. Le passage de relais.** À la fin, il rédige un *handoff* : un docu
       "distingue toujours ce qui est vérifié de ce qui ne l'est pas.")
 para ("**6. Le test sur le vrai matériel.** À chaque phase, il m'indique quoi tester sur le Pi et le résultat "
       "attendu. C'est moi qui joue le rôle de banc d'essai, et mes retours relancent le cycle.")
-para ("Un fichier `CLAUDE.md`, à la racine du dépôt, fixe les règles permanentes : garder la documentation à jour, "
-      "publier les paquets, mettre notre code sous licence MIT… C'est une sorte de contrat entre l'humain et l'IA, "
-      "relu au début de chaque session.")
+para ("Un fichier `CLAUDE.md`, à la racine du dépôt, fixe les règles permanentes. C'est une sorte de contrat entre "
+      "l'humain et l'IA, relu au début de chaque session. Il est en anglais, comme la documentation du projet. Trois "
+      "extraits :")
+code (["## RULE -- keep the documentation up to date automatically",
+       "When you add or change a kapi function or an application, you update the",
+       "documentation in the same session, without being asked again.",
+       "",
+       "## RULE -- kits first",
+       "Reusable code goes into the adequate kit -- not a new shared header,",
+       "not a copy in an app.",
+       "",
+       "## RULE -- publish the packages automatically",
+       "[...] The signing key comes from the environment; without it, say so to",
+       "the user and do not publish. Never generate another key."])
+para ("Ces règles sont suivies. Quand j'ai fait ajouter l'heure au journal du noyau pour cet article, la documentation "
+      "a suivi sans que je le demande ; et comme la clé de signature n'était pas sur la machine, Claude n'a rien publié "
+      "et me l'a dit.")
+h ("Mes demandes, telles quelles", 2)
+para ("Mes prompts n'ont rien de savant : je parle à Claude comme à un collègue, souvent en une phrase. Le cadre vient "
+      "du dépôt et des règles. Quelques exemples réels, dont j'ai seulement corrigé l'orthographe :")
+bullets ([
+	"Pour lancer un chantier : « Quel est le coût pour faire ceci sur Onyx ? »",
+	"Pour explorer une interface : « Tu peux déjà voir ce que donnerait PocketUI en 640 x 480, et voir si on peut le "
+	"moderniser pour qu'il colle bien au look de cet appareil. »",
+	"Pour une tâche précise : « Est-ce que tu peux mettre à jour Jet ? Depuis les dernières modifs, les apps doivent "
+	"passer par UIKit pour créer la fenêtre. Ensuite tu me lances un build (pas encore de déploiement de package). »",
+	"Pour corriger un résultat : « Pour le temps de démarrage de l'OS, t'as été un peu haut, car tu comptes jusqu'à ce "
+	"que le Wi-Fi soit prêt. »",
+])
+para ("Aucune de ces demandes ne dit comment faire : Claude le propose, et je valide.")
 
 h ("Étude de cas : de NetSurf à WebKit")
 para ("Le premier navigateur d'Onyx était un portage de NetSurf, enrichi commit après commit : grilles CSS, "
