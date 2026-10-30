@@ -233,10 +233,9 @@ bullets ([
 	"**Taille** : une image du noyau de 1,3 Mo, Circle compris ; une carte complète de 392 Mo (le système, plus de "
 	"100 applications, les polices, les exemples) ; une carte minimale de 127 Mo, le reste s'installant par paquets. "
 	"Pas d'ISO : on copie un dossier sur une carte SD.",
-	"**Démarrage** : chronométré sur le Pi 4, **moins de 30 s** entre la mise sous tension et un bureau prêt, Wi-Fi "
-	"connecté, accessible à distance. Le journal du noyau détaille ce temps : le firmware du Pi prend 4,5 s, le noyau "
-	"donne l'écran au serveur graphique **3,5 s** après sa première ligne, et l'interface est prête une demi-seconde "
-	"plus tard ; la connexion Wi-Fi suit, sans bloquer l'interface.",
+	"**Démarrage** : sur le Pi 4, le bureau est là en **8 s environ**, et le réseau en **23,2 s**. Le journal du noyau "
+	"détaille ce temps : le firmware du Pi prend 4,5 s, puis le noyau donne l'écran au serveur graphique en **3,5 s**. "
+	"La connexion Wi-Fi suit, sans bloquer l'interface.",
 	"**Lancement des applications** : le traitement de texte est prêt en 0,3 s, le tableur en 0,8 s, avec ou sans "
 	"document ; le studio de musique, qui charge 87 Mo de sons, en 2,9 s.",
 	"**Tokens** : sur les trois dernières semaines, Claude a généré 3,8 millions de tokens (le code, les documents, "

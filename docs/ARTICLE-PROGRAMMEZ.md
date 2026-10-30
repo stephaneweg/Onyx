@@ -384,5 +384,5 @@ sur le Pi et le résultat attendu.
 - 2026-10-29 : François Tonic accepte la série PocketQI. **Onyx dans le numéro IA, avant le 2 décembre** ; le
   279 idéalement avant le 23 décembre, le 280 avant mi-février (sans doute les parties de PocketQI, à confirmer ;
   longueur et format non précisés).
-- 2026-10-30 : le chrono de l'auteur repris comme chiffre de démarrage d'Onyx (moins de 30 s de la mise sous
-  tension au bureau prêt, Wi-Fi connecté, celui de sa proposition) ; repère Pi OS : 37 s chez Hackaday.
+- 2026-10-30 : les chiffres de démarrage retenus par l'auteur : **8 s environ pour le bureau, 23,2 s pour le
+  réseau** ; repère Pi OS : 37 s chez Hackaday.
