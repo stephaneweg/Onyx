@@ -391,6 +391,6 @@ sur le Pi et le résultat attendu.
   masqués par les fichiers copiés à la main, l'agrégation Wi-Fi, le paquet Jet vide, la table des appels système,
   les 33 s de cet article) ; Pi 5 précisé (bureau et Wi-Fi vérifiés, GPU et Ethernet à tester) ; prix en dollars.
   Le Word fait environ 22 100 signes, soit 5 pages. Reste : le coût total estimé, à partir des factures de l'auteur.
-- 2026-10-30 : prologue ajouté (ARMPI OS, `C:\Projects\ARMPi` : assembleur FASM ARM, micronoyau, sans Circle,
+- 2026-10-30 : épilogue ajouté, en fin d'article (ARMPI OS, `C:\Projects\ARMPi` : assembleur FASM ARM, micronoyau, sans Circle,
   WebKit porté en quelques heures, GCC porté) ; prix en euros HTVA (Pro 18 €, Max 90 € ou 175 €, convertis depuis
   les dollars). Brouillon de mail à François Tonic préparé.

@@ -75,14 +75,6 @@ para ("**Un noyau multitâche préemptif, une centaine d'applications, un naviga
 figure ("bureau-jet.png", "Figure 1 – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! "
         "sur un Raspberry Pi 4.")
 
-h ("Prologue : repartir de zéro")
-para ("Au moment où je termine cet article, je suis déjà sur le projet suivant. Avec Claude, j'ai commencé un nouvel "
-      "OS pour le Raspberry Pi 4, ARMPI, et cette fois de zéro, sans m'appuyer sur Circle. Le système est écrit en "
-      "assembleur AArch64, avec FASM ARM. C'est un micronoyau : comme dans Minix ou QNX, les services et les pilotes "
-      "tournent en espace utilisateur.")
-para ("Le gros du travail a tenu en trois jours intensifs. Surtout, rien de ce qui a été appris sur Onyx n'a été perdu : "
-      "sur cette base, WebKit, le moteur de Jet, a été porté en quelques heures seulement, et la chaîne de compilation "
-      "GCC tourne désormais sur ce nouvel OS. Ce qui suit raconte comment tout cela est devenu possible.")
 h ("La genèse : une borne d'arcade")
 para ("Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un Raspberry Pi sous "
       "Linux. Très vite, une idée s'impose : pour une machine dédiée au jeu, un système généraliste est "
@@ -345,6 +337,15 @@ para ("Le script télécharge la chaîne de compilation d'Arm (GCC pour AArch64)
       "n'est pas compilé par le script, car WebKit demande des heures de compilation : il s'installe, là aussi, par "
       "le gestionnaire de paquets. Pour le recompiler depuis ses sources, un second script, `tools/build-jet.sh`, "
       "s'en charge en deux heures environ sur quatre cœurs.")
+
+h ("Épilogue : repartir de zéro")
+para ("Au moment où je termine cet article, je suis déjà sur le projet suivant. Avec Claude, j'ai commencé un nouvel "
+      "OS pour le Raspberry Pi 4, ARMPI, et cette fois de zéro, sans m'appuyer sur Circle. Le système est écrit en "
+      "assembleur AArch64, avec FASM ARM. C'est un micronoyau : comme dans Minix ou QNX, les services et les pilotes "
+      "tournent en espace utilisateur.")
+para ("Le gros du travail a tenu en trois jours intensifs. Surtout, rien de ce qui a été appris sur Onyx n'a été perdu : "
+      "sur cette base, WebKit, le moteur de Jet, a été porté en quelques heures seulement, et la chaîne de compilation "
+      "GCC tourne désormais sur ce nouvel OS.")
 
 # ---------------------------------------------------------------- for the editor
 doc.add_page_break ()
