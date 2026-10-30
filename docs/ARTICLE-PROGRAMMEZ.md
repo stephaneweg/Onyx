@@ -395,3 +395,8 @@ sur le Pi et le résultat attendu.
   WebKit porté en quelques heures, GCC porté) ; prix en euros HTVA (Pro 18 €, Max 90 € ou 175 €, convertis depuis
   les dollars). Brouillon de mail à François Tonic préparé. Coût total ajouté à « Onyx en chiffres » : environ
   2 mois d'abonnement, 180 à 350 € HTVA, un maximum car l'abonnement sert aussi à d'autres projets.
+- 2026-10-30, après la relecture d'un agent rédacteur : l'épilogue sur ARMPI retiré (« trop pub », l'auteur) ; plus
+  de gain Wi-Fi ni d'épisode sur l'agrégation (cinq incidents) ; le titre dit « construit » ; le coût raconté par
+  l'auteur (Max à environ 90 € HT, juin, pause, reprise fin septembre, un ou deux mois auraient suffi, l'abonnement
+  sert aussi ailleurs) ; le Product Manager avant « Ce que ça a donné », « Onyx en chiffres » dedans ; figures
+  renumérotées (5a, 5b GPIO Lab et Turtle Quest, 6 Koton) ; typographie française ; environ 20 400 signes.

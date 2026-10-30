@@ -25,11 +25,13 @@
     qu'une lecture neuve.
   - Le total du projet est plus élevé : ce relevé ne couvre ni septembre et le début d'octobre, ni les
     sessions lancées dans le cloud ou sous WSL.
-- **Coût total : environ 2 mois d'abonnement**, soit de 180 à 350 € HTVA selon la formule (Max à environ 90 € ou
-  175 €). C'est un maximum : le même abonnement sert aussi à d'autres projets.
+- **Coût total** : l'abonnement Max coûte environ 90 € HT par mois (175 € pour la formule supérieure). L'auteur a
+  commencé en juin, s'est arrêté, puis a repris fin septembre : au total, un peu plus d'un mois effectif pour
+  construire l'OS. Sans interruption, un ou deux mois d'abonnement auraient sans doute suffi. À nuancer : le même
+  abonnement sert aussi à d'autres projets.
 - **Le coût réel est celui de l'abonnement**, pas un prix au token. Au départ, il s'agissait de
-  l'abonnement Max, à environ 90 € HTVA par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
-  trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 175 € HTVA par mois ; prix convertis depuis les tarifs en dollars, à
+  l'abonnement Max, à environ 90 € HT par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
+  trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 175 € HT par mois ; prix convertis depuis les tarifs en dollars, à
   vérifier sur claude.com/pricing). À la facturation à l'usage de l'API, le même volume coûterait
   nettement plus cher : c'est tout l'intérêt de l'abonnement pour un projet de cette taille.
 
