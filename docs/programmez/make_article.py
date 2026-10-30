@@ -75,33 +75,20 @@ para ("**Un noyau multitâche préemptif, une centaine d'applications, un naviga
 figure ("bureau-jet.png", "Figure 1 – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! "
         "sur un Raspberry Pi 4.")
 
-h ("La genèse : une borne d'arcade")
-para ("Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un Raspberry Pi sous "
-      "Linux. Très vite, une idée s'impose : pour une machine dédiée au jeu, un système généraliste est "
-      "surdimensionné. Un OS dédié, voire un programme *bare metal* qui tourne directement sur le matériel, serait "
-      "plus adapté, surtout si je voulais porter ou écrire moi-même des jeux.")
-para ("C'est là que je découvre **Circle**, un environnement bare metal en C++ pour le Raspberry Pi. Les premiers "
-      "essais sont concluants : un *snake* jouable à deux, avec deux contrôleurs de boutons branchés en USB. De là "
-      "naît une ambition plus grande : bâtir un vrai système d'exploitation sur le Pi.")
-para ("Mais la marche est haute, le temps libre limité. Le projet s'essouffle, et finit dans un tiroir.")
-
-h ("Le renouveau : l'IA entre en scène")
-para ("Dans le cadre de mon travail, nous avons été amenés à explorer l'usage de l'IA pour programmer. À force de "
-      "l'utiliser, j'ai pris la mesure de ce dont Claude était capable. Une idée m'est alors venue : et si je lui "
-      "confiais le travail technique pour reprendre mon OS ?")
-para ("Je lui ai fait lire Circle et mon ébauche de snake, puis je lui ai exposé ma vision : partir des briques de "
-      "Circle pour en faire un vrai système multitâche. Je garderais la vision, les choix et la validation ; Claude "
-      "écrirait le code. Le 22 juin 2026, le premier commit s'intitulait sobrement « *Bootstrap: multi-process "
-      "kernel on Circle* ».")
-
-h ("De Circle à Onyx : le fossé à combler")
-para ("Le Raspberry Pi est aussi un choix pratique : contrairement au PC x86 et à sa myriade de pilotes, son "
-      "matériel est unique et connu. Circle en fournit déjà les pilotes, mais avec un multitâche coopératif, sans "
-      "aucune protection entre les tâches. Il fallait en faire un vrai système : multitâche préemptif, chaque "
-      "programme isolé dans son propre espace mémoire, et un plantage qui ne fait pas tomber le reste.")
-para ("Le chemin n'a pas été linéaire. Pour avancer plus vite sur le reste, nous avons renoncé à cette isolation "
-      "dès le premier jour, et ne l'avons rétablie qu'en octobre, une fois le système mûr. Un raccourci assumé, "
-      "puis une dette remboursée au bon moment.")
+h ("La genèse : de la borne d'arcade à Claude")
+para ("Tout est parti d'un loisir : une petite borne d'arcade animée par un Raspberry Pi sous Linux. Pour une machine "
+      "dédiée au jeu, un système généraliste était surdimensionné. J'ai alors découvert **Circle**, un environnement "
+      "*bare metal* en C++ pour le Pi, et écrit un *snake* jouable à deux. De là est née l'envie d'un vrai système "
+      "d'exploitation. Mais la marche était haute, le temps libre limité : le projet a fini dans un tiroir.")
+para ("Puis, au travail, nous avons exploré l'usage de l'IA pour programmer, et j'ai pris la mesure de ce dont Claude "
+      "était capable. Et si je lui confiais le travail technique ? Je lui ai fait lire Circle et mon snake, et je lui "
+      "ai exposé ma vision : je garderais les choix et la validation, Claude écrirait le code. Le 22 juin 2026, le "
+      "premier commit s'intitulait sobrement « *Bootstrap: multi-process kernel on Circle* ».")
+para ("Circle fournit les pilotes d'un matériel unique et connu, mais avec un multitâche coopératif, sans protection "
+      "entre les tâches. Il fallait en faire un vrai système : multitâche préemptif, programmes isolés dans leur "
+      "propre espace mémoire, un plantage qui ne fait pas tomber le reste. Pour avancer plus vite, nous avons d'abord "
+      "renoncé à cette isolation, rétablie seulement en octobre : un raccourci assumé, puis une dette remboursée au "
+      "bon moment.")
 
 h ("Sous le capot, en un coup d'œil")
 para ("Le schéma de la figure 2 montre ce que le projet est devenu. En bas, le noyau d'Onyx, qui intègre Circle "
