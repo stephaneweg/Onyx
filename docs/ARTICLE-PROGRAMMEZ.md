@@ -393,4 +393,5 @@ sur le Pi et le résultat attendu.
   Le Word fait environ 22 100 signes, soit 5 pages. Reste : le coût total estimé, à partir des factures de l'auteur.
 - 2026-10-30 : épilogue ajouté, en fin d'article (ARMPI OS, `C:\Projects\ARMPi` : assembleur FASM ARM, micronoyau, sans Circle,
   WebKit porté en quelques heures, GCC porté) ; prix en euros HTVA (Pro 18 €, Max 90 € ou 175 €, convertis depuis
-  les dollars). Brouillon de mail à François Tonic préparé.
+  les dollars). Brouillon de mail à François Tonic préparé. Coût total ajouté à « Onyx en chiffres » : environ
+  2 mois d'abonnement, 180 à 350 € HTVA, un maximum car l'abonnement sert aussi à d'autres projets.

@@ -238,6 +238,8 @@ bullets ([
 	"document ; le studio de musique, qui charge 87 Mo de sons, en 2,9 s.",
 	"**Tokens** : sur les trois dernières semaines, Claude a généré 3,8 millions de tokens (le code, les documents, "
 	"les réponses) et relu 2,3 milliards de tokens de contexte, presque tous depuis le cache.",
+	"**Coût total** : environ 2 mois d'abonnement, soit de 180 à 350 € HTVA selon la formule. C'est un maximum : le même "
+	"abonnement m'a aussi servi pour d'autres projets.",
 ])
 
 h ("Les forces, et le revers de la médaille")

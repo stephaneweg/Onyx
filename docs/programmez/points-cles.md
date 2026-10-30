@@ -25,6 +25,8 @@
     qu'une lecture neuve.
   - Le total du projet est plus élevé : ce relevé ne couvre ni septembre et le début d'octobre, ni les
     sessions lancées dans le cloud ou sous WSL.
+- **Coût total : environ 2 mois d'abonnement**, soit de 180 à 350 € HTVA selon la formule (Max à environ 90 € ou
+  175 €). C'est un maximum : le même abonnement sert aussi à d'autres projets.
 - **Le coût réel est celui de l'abonnement**, pas un prix au token. Au départ, il s'agissait de
   l'abonnement Max, à environ 90 € HTVA par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
   trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 175 € HTVA par mois ; prix convertis depuis les tarifs en dollars, à
