@@ -52,7 +52,9 @@ FAT32.
 
 ### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
 
-- **Démarrage**, relevé dans `kmsg`, qui date chaque ligne depuis la mise en route de la puce (Pi 4, mode
+- **Démarrage, au chronomètre** (l'auteur, Pi 4) : **moins de 30 s** entre la mise sous tension et un bureau
+  prêt, Wi-Fi connecté, accessible à distance.
+- **Démarrage, le détail**, relevé dans `kmsg`, qui date chaque ligne depuis la mise en route de la puce (Pi 4, mode
   pocket 640 × 480) :
 
 | Étape | Temps depuis la mise en route |
@@ -87,6 +89,10 @@ FAT32.
   prend 31 ms au noyau (576 Ko) : les kits qu'elle utilise sont déjà en mémoire, partagés avec le bureau.
 
 ### Une comparaison avec Raspberry Pi OS (à faire)
+
+Un repère publié : [Hackaday](https://hackaday.com/tag/debian-bookworm/) a chronométré **37,14 s** pour
+Bookworm sur un Pi 4 de 8 Go (53,5 s pour Bullseye). Ce n'est pas une mesure faite sur le même Pi, ni forcément
+avec le même point d'arrivée : Onyx, lui, compte jusqu'au Wi-Fi connecté.
 
 Il n'existe pas encore de comparaison mesurée sur le même Pi. Voici un protocole proposé, avec la même
 machine et deux cartes :

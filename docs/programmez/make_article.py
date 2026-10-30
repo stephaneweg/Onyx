@@ -233,16 +233,18 @@ bullets ([
 	"**Taille** : une image du noyau de 1,3 Mo, Circle compris ; une carte complète de 392 Mo (le système, plus de "
 	"100 applications, les polices, les exemples) ; une carte minimale de 127 Mo, le reste s'installant par paquets. "
 	"Pas d'ISO : on copie un dossier sur une carte SD.",
-	"**Démarrage** : le noyau donne l'écran au serveur graphique **3,5 s** après sa première ligne, et l'interface "
-	"est prête une demi-seconde plus tard ; le firmware du Pi, lui, prend 4,5 s avant le noyau. Depuis la commande "
-	"`reboot`, le bureau s'affiche en 15 à 17 s ; la connexion Wi-Fi suit, sans bloquer l'interface.",
+	"**Démarrage** : chronométré sur le Pi 4, **moins de 30 s** entre la mise sous tension et un bureau prêt, Wi-Fi "
+	"connecté, accessible à distance. Le journal du noyau détaille ce temps : le firmware du Pi prend 4,5 s, le noyau "
+	"donne l'écran au serveur graphique **3,5 s** après sa première ligne, et l'interface est prête une demi-seconde "
+	"plus tard ; la connexion Wi-Fi suit, sans bloquer l'interface.",
 	"**Lancement des applications** : le traitement de texte est prêt en 0,3 s, le tableur en 0,8 s, avec ou sans "
 	"document ; le studio de musique, qui charge 87 Mo de sons, en 2,9 s.",
 	"**Tokens** : sur les trois dernières semaines, Claude a généré 3,8 millions de tokens (le code, les documents, "
 	"les réponses) et relu 2,3 milliards de tokens de contexte, presque tous depuis le cache.",
 ])
-para ("Une comparaison mesurée avec Raspberry Pi OS, sur le même Pi, reste à faire. Elle ne serait d'ailleurs pas "
-      "tout à fait équitable : Raspberry Pi OS est un système généraliste, bien plus complet.")
+para ("À titre de repère, Hackaday a chronométré 37 s pour démarrer Raspberry Pi OS Bookworm sur un Pi 4 de 8 Go. Une "
+      "comparaison sur le même Pi, dans les mêmes conditions, reste à faire. Elle ne serait d'ailleurs pas tout à fait "
+      "équitable : Raspberry Pi OS est un système généraliste, bien plus complet.")
 
 h ("Les forces, et le revers de la médaille")
 h ("Un sujet technique, mais bien documenté", 2)

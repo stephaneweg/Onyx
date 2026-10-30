@@ -381,3 +381,8 @@ sur le Pi et le résultat attendu.
   le serveur graphique a l'écran à 8,0 s (**3,5 s de noyau**, dont 1,8 s d'USB), le shell prêt à 8,5 s, le
   réseau à 23,2 s ; environ 7 s avant le minuteur depuis la commande `reboot`. `points-cles.md` et le Word mis à
   jour.
+- 2026-10-29 : François Tonic accepte la série PocketQI. **Onyx dans le numéro IA, avant le 2 décembre** ; le
+  279 idéalement avant le 23 décembre, le 280 avant mi-février (sans doute les parties de PocketQI, à confirmer ;
+  longueur et format non précisés).
+- 2026-10-30 : le chrono de l'auteur repris comme chiffre de démarrage d'Onyx (moins de 30 s de la mise sous
+  tension au bureau prêt, Wi-Fi connecté, celui de sa proposition) ; repère Pi OS : 37 s chez Hackaday.
