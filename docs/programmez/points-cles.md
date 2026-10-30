@@ -52,7 +52,9 @@ FAT32.
 
 ### Mesuré sur Onyx (Pi 4, 8 Go, bureau en 1280 × 1024, carte microSD, 27 octobre)
 
-- **Démarrage** (Pi 4) : le bureau est là en **8 s environ**, le réseau en **23,2 s**.
+- **Démarrage** (Pi 4), l'ordre de grandeur retenu par l'auteur : après la mise sous tension, le bureau apparaît
+  au bout de **9 s**, le réseau est connecté au bout de **25 s** ; un Raspberry Pi OS met environ **30 s** pour
+  afficher le bureau.
 - **Démarrage, le détail**, relevé dans `kmsg`, qui date chaque ligne depuis la mise en route de la puce (Pi 4, mode
   pocket 640 × 480) :
 
