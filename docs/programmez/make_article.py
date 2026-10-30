@@ -72,8 +72,8 @@ para ("**Un noyau multitâche préemptif, une centaine d'applications, un naviga
       "développeur, ici, n'est pas celui qu'on croit : retour d'expérience sur une méthode de travail où l'humain "
       "tient la vision, et l'IA le clavier.**")
 
-figure ("bureau-koton.png", "Figure 1 – Koton Studio, le studio de musique d'Onyx : une chanson pensée en "
-        "accords, que les pistes d'accompagnement, de mélodie et de batterie suivent.")
+figure ("bureau-bureautique.png", "Figure 1 – Le mode bureau : Letters, le tableur et le terminal, où ps liste "
+        "les processus du système.")
 
 h ("La genèse : de la borne d'arcade à Claude")
 para ("Tout est parti d'un loisir : une petite borne d'arcade animée par un Raspberry Pi sous Linux. Pour une machine "
@@ -100,12 +100,10 @@ para ("Entre les deux, les **kits** : une bibliothèque partagée par domaine (i
       "AppKit parle au noyau : une application compilée aujourd'hui continue de fonctionner quand le noyau évolue.")
 para ("Ce découpage rend aussi l'interface **adaptative**. Elegant sert le mode **bureau**, PocketUI les modes "
       "**pocket** (petit écran) et **console** (plein écran, à la manette). Chaque serveur charge sa propre version "
-      "d'UIKit sous le même nom : sans recompilation, le même binaire s'affiche en fenêtres ou en plein écran "
-      "(figure 3).")
-figure ("bureau-bureautique.png", "Figure 3a – Le mode bureau : Letters, le tableur et le terminal, où ps liste "
-        "les processus du système.", 14)
-figure ("pocket-letters.png", "Figure 3b – Le mode pocket (640 × 480) : la même application Letters, le même "
-        "binaire.", 10)
+      "d'UIKit sous le même nom : sans recompilation, le même binaire s'affiche en fenêtres (figure 1) ou en "
+      "plein écran (figure 3).")
+figure ("pocket-letters.png", "Figure 3 – Le mode pocket (640 × 480) : la même application Letters qu'en figure 1, "
+        "le même binaire.", 10)
 para ("Enfin, le **préchargement** : Onyx garde en mémoire les programmes et les kits les plus utilisés. Les lancer ne "
       "lit plus la carte SD : le noyau partage leurs pages de code en lecture seule, et chaque processus ne reçoit en "
       "propre que ses données.")
@@ -184,6 +182,8 @@ para ("Le noyau est multitâche préemptif, avec des processus isolés et la pag
       "d'applications tournent dessus, avec leurs bibliothèques partagées, un gestionnaire de paquets signés et une "
       "documentation tenue à jour par Claude lui-même. Onyx, conçu pour le Raspberry Pi 4, a depuis été porté sur "
       "le **Raspberry Pi 5** : il démarre sur un Pi 500, bureau et Wi-Fi vérifiés ; le GPU et l'Ethernet restent à tester.")
+figure ("bureau-koton.png", "Figure 5 – Koton Studio, le studio de musique d'Onyx : une chanson pensée en "
+        "accords, que les pistes d'accompagnement, de mélodie et de batterie suivent.", 14)
 h ("« Qu'est-ce qui manque à Onyx ? » : quand Claude devient Product Manager", 2)
 para ("Si la suite logicielle est si fournie, ce n'est pas parce que j'avais tout prévu. Je demandais souvent à "
       "Claude des idées de logiciels, ou de comparer Onyx aux systèmes grand public : que chercherait en vain un "
@@ -195,9 +195,9 @@ para ("C'est ainsi que sont venus des émulateurs de consoles (la borne d'arcade
       "CNC. Et des outils pour programmer : QBasic, bien sûr, clin d'œil à mes débuts, un studio pour dessiner des "
       "applications fenêtrées en BASIC, un atelier pour piloter les broches du Pi, et un jeu de tortue pour "
       "apprendre la programmation aux enfants.")
-figure ("bureau-gpiolab.png", "Figure 5a – GPIO Lab : les 40 broches du connecteur du Pi, leur mode et leur "
+figure ("bureau-gpiolab.png", "Figure 6a – GPIO Lab : les 40 broches du connecteur du Pi, leur mode et leur "
         "chronogramme.", 13)
-figure ("bureau-turtle.png", "Figure 5b – Turtle Quest : un niveau réussi, un sous-programme qui dessine tous les "
+figure ("bureau-turtle.png", "Figure 6b – Turtle Quest : un niveau réussi, un sous-programme qui dessine tous les "
         "polygones.", 13)
 para ("L'IA n'est donc pas seulement un développeur. Elle tient aussi le rôle d'un Product Manager : elle connaît "
       "ce que font les autres systèmes, propose quoi construire ensuite, et organise le travail. La décision, elle, "
@@ -335,11 +335,11 @@ para ("Le gros du travail a tenu en trois jours intensifs. Surtout, rien de ce q
 doc.add_page_break ()
 h ("Illustrations (fichiers PNG fournis à part)")
 bullets ([
-	"`bureau-koton.png` – Koton Studio, le studio de musique d'Onyx.",
-	"`architecture.png` – L'architecture d'Onyx : le noyau et Circle, les serveurs, les kits, les applications.",
 	"`bureau-bureautique.png` – Le mode bureau : Letters, le tableur et le terminal.",
+	"`architecture.png` – L'architecture d'Onyx : le noyau et Circle, les serveurs, les kits, les applications.",
 	"`pocket-letters.png` – Le mode pocket (640 × 480) : la même application Letters, le même binaire.",
 	"`bureau-jet.png` – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! sur un Raspberry Pi 4.",
+	"`bureau-koton.png` – Koton Studio, le studio de musique d'Onyx.",
 	"`bureau-gpiolab.png` – GPIO Lab : les broches du Pi, leur mode et leur chronogramme.",
 	"`bureau-turtle.png` – Turtle Quest : un niveau réussi.",
 	"En réserve : `bureau-3dforge.png` (3DForge, la CAO paramétrique), `pocket-lanceur.png` (le lanceur du mode "
