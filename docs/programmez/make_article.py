@@ -75,6 +75,14 @@ para ("**Un noyau multitâche préemptif, une centaine d'applications, un naviga
 figure ("bureau-jet.png", "Figure 1 – Jet, le navigateur d'Onyx basé sur WebKit, affiche le site de Programmez! "
         "sur un Raspberry Pi 4.")
 
+h ("Prologue : repartir de zéro")
+para ("Au moment où je termine cet article, je suis déjà sur le projet suivant. Avec Claude, j'ai commencé un nouvel "
+      "OS pour le Raspberry Pi 4, ARMPI, et cette fois de zéro, sans m'appuyer sur Circle. Le système est écrit en "
+      "assembleur AArch64, avec FASM ARM. C'est un micronoyau : comme dans Minix ou QNX, les services et les pilotes "
+      "tournent en espace utilisateur.")
+para ("Le gros du travail a tenu en trois jours intensifs. Surtout, rien de ce qui a été appris sur Onyx n'a été perdu : "
+      "sur cette base, WebKit, le moteur de Jet, a été porté en quelques heures seulement, et la chaîne de compilation "
+      "GCC tourne désormais sur ce nouvel OS. Ce qui suit raconte comment tout cela est devenu possible.")
 h ("La genèse : une borne d'arcade")
 para ("Tout est parti d'un loisir : la construction d'une petite borne d'arcade, animée par un Raspberry Pi sous "
       "Linux. Très vite, une idée s'impose : pour une machine dédiée au jeu, un système généraliste est "
@@ -289,13 +297,13 @@ h ("Le coût : savoir attendre", 2)
 para ("Sur un projet de cette taille, les tokens se consomment vite. Le gros du volume ne vient pas du code écrit, "
       "mais du contexte relu : à chaque étape, le modèle relit le code ouvert et la conversation en cours. Le cache "
       "rend cette relecture bien moins chère, mais elle pèse sur le quota.")
-para ("La vraie question est : accepte-t-on parfois d'attendre ? J'étais sur l'abonnement Max à 100 $ par mois, et "
+para ("La vraie question est : accepte-t-on parfois d'attendre ? J'étais sur l'abonnement Max, à environ 90 € HTVA par mois, et "
       "cela marchait très bien. Puis, un jour, mon quota de la semaine s'est épuisé. Plutôt que d'attendre trois "
       "jours, je suis passé à la formule supérieure.")
-para ("Avec moins d'impatience et moins de dispersion, l'abonnement à 100 $ aurait sans doute suffi. Cinq "
+para ("Avec moins d'impatience et moins de dispersion, cet abonnement aurait sans doute suffi. Cinq "
       "conversations en parallèle consomment le quota cinq fois plus vite : l'arbitrage se fait entre discipline et "
-      "budget. Pour mémoire, Claude propose une formule gratuite, Pro à environ 20 $ par mois, puis Max à 100 $ ou "
-      "200 $ par mois selon l'usage.")
+      "budget. Pour mémoire, Claude propose une formule gratuite, Pro à environ 18 € par mois, puis Max à environ "
+      "90 € ou 175 € par mois selon l'usage (prix HTVA, convertis depuis les tarifs en dollars).")
 
 h ("Ce que je retiens")
 para ("L'IA n'a pas écrit Onyx toute seule. Elle a écrit le code d'un projet dont j'ai tenu la vision, arbitré "
@@ -332,7 +340,7 @@ code (["sudo apt update && sudo apt install -y git build-essential python3 curl 
        "sh tools/build-sdcard.sh"])
 para ("Le script télécharge la chaîne de compilation d'Arm (GCC pour AArch64), récupère et compile Circle, puis le "
       "noyau, les bibliothèques et les applications, et dépose le tout dans `sdcard/`. Comptez environ cinq minutes "
-      "sur un processeur à quatre cœurs. Avec l'option `--card` suivie du chemin de la carte SD, il l'y copie aussi. "
+      "sur un processeur à quatre cœurs. "
       "Sous WSL, clonez le dépôt dans votre dossier Linux plutôt que sous `/mnt/c`, bien plus lent. Le navigateur "
       "n'est pas compilé par le script, car WebKit demande des heures de compilation : il s'installe, là aussi, par "
       "le gestionnaire de paquets. Pour le recompiler depuis ses sources, un second script, `tools/build-jet.sh`, "

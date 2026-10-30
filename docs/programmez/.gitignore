@@ -1,3 +1,4 @@
 # personal: the author photo, and the Word draft that holds it (rebuilt by make_article.py)
 auteur-*.jpg
 Onyx-Programmez-*.docx
+envoi/

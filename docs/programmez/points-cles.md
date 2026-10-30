@@ -26,9 +26,9 @@
   - Le total du projet est plus élevé : ce relevé ne couvre ni septembre et le début d'octobre, ni les
     sessions lancées dans le cloud ou sous WSL.
 - **Le coût réel est celui de l'abonnement**, pas un prix au token. Au départ, il s'agissait de
-  l'abonnement Max à 100 $ par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
-  trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 200 $ par mois ; les prix sont
-  à vérifier sur claude.com/pricing). À la facturation à l'usage de l'API, le même volume coûterait
+  l'abonnement Max, à environ 90 € HTVA par mois. Le quota hebdomadaire a été épuisé une fois, et plutôt que d'attendre
+  trois jours, l'auteur est passé à la formule supérieure (Max 20x, environ 175 € HTVA par mois ; prix convertis depuis les tarifs en dollars, à
+  vérifier sur claude.com/pricing). À la facturation à l'usage de l'API, le même volume coûterait
   nettement plus cher : c'est tout l'intérêt de l'abonnement pour un projet de cette taille.
 
 ## La taille
