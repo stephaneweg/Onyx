@@ -1,0 +1,42 @@
+- [WSL build environment for the WebKit port](wsl-webkit-build-env.md) — since 2026-10-19: ~/onyx + ~/webkit, build-jet.sh passes, copy main+start.html (not app.txt), how to push/publish
+- [WebKit roadmap order](webkit-roadmap-order.md) — usable browser (kotonstudio.com) → V3D compositor → JIT → video → host+webview → lazy loading (the user's order; read first)
+- [WebKit graphics roadmap](webkit-graphics-roadmap.md) — CPU rendering first, then a V3D compositor, WebGL later via our own ANGLE back end + Mesa's compiler only (the user's choices)
+- [WebKit browser window decisions](webkit-browser-ui-decisions.md) — no toolbar menu button, target=_blank = new window, overnight autonomy to deliver the browser (2026-10-03)
+- [No tabs in the WebKit browser](webkit-browser-no-tabs.md) — one page per browser window (the user's choice)
+- [Web view as a reusable component](webkit-webview-reusable.md) — small host window + attached web view, lazy ELF loading, reuse in the Mail client (the user's direction)
+- [Web-view daemon at boot](webkit-webview-daemon.md) — a later stage: an idle daemon that starts the UI / web / network roles when a window asks for a web view
+- [JIT before video](webkit-jit-before-video.md) — the JavaScriptCore JIT is to be done before media in the WebKit port (the user's ordering)
+- [WebKit replaces Jet](webkit-replaces-jet.md) — done 2026-10-04: NetSurf's Jet removed, the WebKit browser is Jet (`user/Apps/jet`, package `jet`); what keeps the name "web"
+- [Full-screen video later](webkit-fullscreen-later.md) — postponed, lower priority (the user, 2026-10-04): do not start it unasked
+- [Jet's package needs the local binary](jet-package-needs-local-binary.md) — publish from a clone without `jet.app/main` = an empty jet package; check the .opk's size, and the merge, before pushing
+- [Pi remote access](pi-remote-access.md) — the Pi at 192.168.0.7: telnet / VNC, deploy by package and test myself (allowed 2026-10-03)
+- [Pi network trial](pi-net-trial.md) — a Wi-Fi / SDIO / TCP change is tried through the kernel's one-boot trial file, never as a test kernel's default (it cut the Pi off on 2026-10-04)
+- [Wi-Fi sends without A-MPDU](wifi-ampdu-tx-off.md) — on purpose since 2026-10-04 (aggregated, what the Pi sent was lost during downloads: RDP froze); the test to run before changing it
+- [sudo commands go to the user](sudo-commands-to-user.md) — give the command, the user runs it
+- [Windows checkout is the source of truth](windows-checkout-source-of-truth.md) — edit in C:\Projects\Onyx; other sessions share it: commit only my files
+- [Onyx stays single-user](onyx-stays-single-user.md) — multi-user set aside by the user on 2026-10-05 (study kept in docs/MULTI-USER-PLAN.md); do not start or re-propose it
+- [Printing test setup](printing-test-setup.md) — the HP DeskJet 2700 at 192.168.0.14 (IPP, PWG Raster), ftpd deployment to the Pi, never a mass TCP scan from the Pi
+- [wtk is UIKit now](uikit-rename.md) — fully renamed 2026-10-05 (user/uikit, namespace uikit, uk_*, uikit.so); libraries are "kits"
+- [BASIC: objects and native back end](basic-oo-native-decisions.md) — CLASS = reference, TYPE = data only; native: at load then standalone app, on by default, `-m` = "Managé" (the user, 2026-10-05)
+- [BASIC native test setup](basic-native-test-setup.md) — qemu + bare-metal toolchain (no Linux cross compiler), publishing from a worktree with my own packages clone, the heredoc `\n` trap, Pi cautions
+- [Updating the Pi by packages](pi-package-update.md) — pkg check, pkg update -a, reboot for onyx; verify pkg list (the Pi stayed on an old onyx for hours on 2026-10-05)
+- [Scan before a kapi table change](kapi-table-change-scan.md) — AppKit only protects programs built through it; the byte pattern that finds the ones reading the kernel's table directly
+- [user/ layout and headers](user-tree-layout-and-headers.md) — Apps / BinUtils / Kits, apps include appkit/appkit.h (no kapi.h), headers = declarations only (the user, 2026-10-05)
+- [Kits first](kits-first-rule.md) — one kit per domain: reusable code goes into the right kit (create one if needed), apps draw on the kits, never on the kernel (the user's standing rule, 2026-10-05)
+- [Onyx is not self-hosted](onyx-not-self-hosted.md) — no GCC / binutils / Clang port, cross development from a PC (the user, 2026-10-05); do not start or re-propose it
+- [BASIC #import of kits](basic-kits-import-decisions.md) — the user's choices (flat C for C++ kits, nothing checked, the program frees), steps 1 and 3 done; ask before the UIKit layer
+- [Elegant, the graphics server](elegant-graphics-server.md) — the window server in a user process: branch UserSpaceElegant, the user's decisions, pi_deploy.py, no packages from the branch
+- [Mockup first for apps](mockup-first-for-apps.md) — every new app starts with a mockup of the screens, code after it is agreed
+- [Outreach says "built with Claude"](outreach-disclose-claude.md) — press / forum texts state it up front; the user's description of his role; who was already emailed
+- [3DForge, the CAD app](cad-app-decisions.md) — the user's choices and the changes he asked while it was built; built 2026-10-05, its GPU path not yet run on the Pi; publish from a clean worktree
+- [English + French, system language](localization-en-fr.md) — Language & Region sets it; new apps translated from the start, old ones as they are touched; check.py, fresh packages clone
+- [Donkey, the eDonkey client](donkey-edonkey-client.md) — the user's choices; waiting on him: live-network tests, Kad, embedded player; not published (no key that day)
+- [PocketUI P7 local setup](pocketui-p7-local-setup.md) — WSL ~/p7 host builds, adaptive.sh per app, device build from the checkout; no ffmpeg program / pandoc / signing key here; traps
+- [PocketUI overnight mandate](pocketui-overnight-mandate.md) — 2026-10-09: continue alone through P10, HANDOFF says where it stands; the Pi on at 192.168.0.10; his three choices that day
+- [PocketUI modern, flat and dark](pocketui-modern-flat-dark.md) — for the Waveshare PocketTerm35 (640x480) the user is buying: Select = menu bar focus, responsive toolbars, mock-ups before code (2026-10-10)
+- [NDS emulator local tests](nds-emulator-local-tests.md) — the user's ROMs in C:\Temp\Roms, ndstest in WSL ~/ndsw, missing tools, traps (locked OnyxRemote.exe breaks git merge)
+- [3DS emulator decisions](n3ds-emulator-decisions.md) — option C, Old 3DS first; 2026-10-10: V3D chosen, the app modelled on ndsemu, then the sound; how I test on the Pi
+- [Kernel build from the PC](kernel-build-local-wsl.md) — WSL rebuilt 2026-10-19 (old disk lost): ~/onyx clone + Circle, build-sdcard.sh passes, toolchains, compat symlinks
+- [3DForge for Windows](3dforge-windows.md) — pc/3DForge WPF + forgecore.dll; test with --shot off-screen, never capture the screen (the user works on it)
+- [4K by cmdline.txt cut the Pi off](pi-4k-cmdline-trap.md) — 2026-10-27: test a resolution live first, never cmdline + reboot from afar
+- [Timing Onyx's boot](boot-time-measure.md) — kmsg times each line since kapi v100 (1024 events kept); 2026-10-27: kernel 3.5 s to the display
